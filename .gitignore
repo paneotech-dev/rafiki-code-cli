@@ -32,3 +32,9 @@ UPCOMING_CHANGELOG.md
 logs/
 *.bun-build
 tsconfig.tsbuildinfo
+
+# Rafiki Code: no AI assistant traces in the public repo
+CLAUDE.md
+.claude/
+SESSION_LOG.md
+*.session.md
