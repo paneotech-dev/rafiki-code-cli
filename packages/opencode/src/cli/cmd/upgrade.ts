@@ -7,7 +7,8 @@ import { InstallationVersion } from "@opencode-ai/core/installation/version"
 
 export const UpgradeCommand = {
   command: "upgrade [target]",
-  describe: `upgrade ${Brand.name} to the latest or a specific version`,
+  aliases: ["update"],
+  describe: `upgrade ${Brand.name} to the latest or a specific version (alias: update)`,
   builder: (yargs: Argv) => {
     return yargs
       .positional("target", {
@@ -52,7 +53,7 @@ export const UpgradeCommand = {
       return
     }
 
-    prompts.log.info(`From ${InstallationVersion} → ${target}`)
+    prompts.log.info(`From ${InstallationVersion} to ${target}`)
     const spinner = prompts.spinner()
     spinner.start("Upgrading...")
     const err = await Installation.upgrade(method, target).catch((err) => err)

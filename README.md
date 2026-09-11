@@ -6,17 +6,28 @@ It is a thin fork of [opencode](https://github.com/anomalyco/opencode) (MIT). Se
 
 ## Install
 
-Installation channels ship with the first beta release:
+One line installer for Linux and macOS (Windows through WSL for now):
 
 ```bash
-# one line installer (Linux, macOS)
 curl -fsSL https://get.rafikiai.io | bash
+```
 
-# npm
+The installer detects your platform, downloads the release archive from the project's GitHub releases, verifies it against the published `SHA256SUMS`, installs the binary into `~/.rafikicode/bin`, and prints the PATH line for your shell. Options: `--version 1.2.3` pins a release, `--prefix DIR` chooses another directory, `--no-modify-path` leaves your shell files alone, `--dry-run` only shows what would happen. The script is `install/install.sh` in this repository.
+
+npm as a second channel:
+
+```bash
 npm install -g rafikicode
 ```
 
-Until then, build from source (see [Development](#development)).
+Keeping it current:
+
+```bash
+rafikicode update            # latest release, checksum verified, binary swapped in place
+rafikicode update 1.2.3      # a specific version
+```
+
+Automatic update checks are off by default. Installation channels go live with the first tagged release; until then, build from source (see [Development](#development)). Release archives are unsigned in this phase and verified by checksum only, see `docs/RELEASE_TODO.md`.
 
 ## Quick start
 
@@ -62,6 +73,8 @@ Useful environment variables:
 |---|---|
 | `RAFIKICODE_API_KEY` | key for headless and CI use |
 | `RAFIKICODE_GATEWAY_URL` | override the gateway base URL (local mocks, staging) |
+| `RAFIKICODE_INSTALL_DIR` | installer target directory (default `~/.rafikicode/bin`) |
+| `RAFIKICODE_RELEASE_API`, `RAFIKICODE_RELEASE_BASE` | point the installer and updater at another release server (tests, mirrors) |
 | `OPENCODE_CONFIG_DIR` | use another config directory |
 | `OPENCODE_*` | advanced upstream switches keep their upstream names so upstream documentation and plugins keep working |
 
@@ -86,7 +99,14 @@ cd packages/opencode
 bun run src/index.ts --help           # run from source
 bun test test/brand                   # brand defaults
 bun run script/build.ts --single      # standalone binary in dist/
+bash install/test-install.sh          # installer against a local mock release server
 ```
+
+`bun install` needs `make` for one optional native module; on a machine without a compiler use `bun install --ignore-scripts` (the module has a WebAssembly fallback).
+
+### Releases
+
+Pushing a tag `v<version>` runs `.github/workflows/release.yml`: every platform binary is built on one Linux runner, archived as `rafikicode-<os>-<arch>.tar.gz` (Linux) or `.zip` (macOS, Windows), listed in `SHA256SUMS`, and attached to the GitHub release. The npm packages (`rafikicode` plus one `rafikicode-<os>-<arch>` package per binary) are published by `packages/opencode/script/publish-npm.ts` when an `NPM_TOKEN` secret exists. Open items, including binary signing, are tracked in `docs/RELEASE_TODO.md`.
 
 A local OpenAI compatible mock of the gateway for offline checks:
 

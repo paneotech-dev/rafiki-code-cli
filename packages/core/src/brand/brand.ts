@@ -35,6 +35,38 @@ export const Brand = {
     apiKey: "RAFIKICODE_API_KEY",
     // Overrides the gateway base URL, used for local mocks and staging.
     gatewayURL: "RAFIKICODE_GATEWAY_URL",
+    // Overrides the release API URL (mock release servers in tests).
+    releaseAPI: "RAFIKICODE_RELEASE_API",
+    // Overrides the release download base URL (mock release servers in tests).
+    releaseBase: "RAFIKICODE_RELEASE_BASE",
+  },
+  // Where builds are published. The installer script and the self updater read
+  // these; the release workflow tags v<version> and uploads the archives plus
+  // SHA256SUMS to this repository's releases.
+  release: {
+    owner: "paneotech-dev",
+    repo: "rafiki-code-cli",
+    // One line installer, served at get.rafikiai.io (DNS by Julien, Phase 2).
+    installer: "https://get.rafikiai.io",
+    // GitHub releases API for this repository (latest release lookup).
+    api() {
+      return process.env[Brand.env.releaseAPI] || `https://api.github.com/repos/${Brand.release.owner}/${Brand.release.repo}`
+    },
+    // Base URL that <base>/download/v<version>/<asset> resolves under.
+    base() {
+      return process.env[Brand.env.releaseBase] || `https://github.com/${Brand.release.owner}/${Brand.release.repo}/releases`
+    },
+    // Asset file name for a platform, matching script/build.ts output names.
+    asset(os: string, arch: string, variant = "") {
+      const ext = os === "linux" ? ".tar.gz" : ".zip"
+      return `${Brand.name}-${os === "win32" ? "windows" : os}-${arch}${variant ? `-${variant}` : ""}${ext}`
+    },
+    checksums: "SHA256SUMS",
+  },
+  npm: {
+    // Meta package users install; platform packages are <name>-<os>-<arch>.
+    meta: "rafikicode",
+    registry: "https://registry.npmjs.org",
   },
   gateway: { url: gatewayDefault },
   models,

@@ -1,0 +1,137 @@
+name: release
+
+# Builds every rafikicode binary from one Linux runner (bun cross compiles),
+# publishes the archives and SHA256SUMS on the GitHub release for the tag, and
+# publishes the npm packages when an NPM_TOKEN secret exists.
+#
+# Trigger: push a tag v<version>, for example v0.1.0.
+# Secrets: NPM_TOKEN (optional, npm publish is skipped without it).
+# Signing: not yet, see docs/RELEASE_TODO.md.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build (for example v0.1.0)"
+        required: true
+        type: string
+
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build:
+    name: build all platforms
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-tags: true
+
+      - id: meta
+        shell: bash
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - uses: ./.github/actions/setup-bun
+
+      - name: Build binaries
+        shell: bash
+        run: ./packages/opencode/script/build.ts
+        env:
+          OPENCODE_VERSION: ${{ steps.meta.outputs.version }}
+          OPENCODE_CHANNEL: latest
+
+      - name: Package archives and checksums
+        shell: bash
+        working-directory: packages/opencode/dist
+        run: |
+          set -euo pipefail
+          for dir in rafikicode-*/; do
+            name="${dir%/}"
+            case "$name" in
+              *linux*) tar -czf "${name}.tar.gz" -C "${name}/bin" . ;;
+              *) (cd "${name}/bin" && zip -qr "../../${name}.zip" .) ;;
+            esac
+          done
+          sha256sum rafikicode-*.tar.gz rafikicode-*.zip > SHA256SUMS
+          cat SHA256SUMS
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: rafikicode-release
+          path: |
+            packages/opencode/dist/rafikicode-*.tar.gz
+            packages/opencode/dist/rafikicode-*.zip
+            packages/opencode/dist/SHA256SUMS
+            packages/opencode/dist/rafikicode-*/package.json
+            packages/opencode/dist/rafikicode-*/bin/*
+          if-no-files-found: error
+
+      - name: Publish GitHub release
+        shell: bash
+        working-directory: packages/opencode/dist
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.meta.outputs.tag }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" rafikicode-*.tar.gz rafikicode-*.zip SHA256SUMS --clobber
+          else
+            gh release create "$TAG" rafikicode-*.tar.gz rafikicode-*.zip SHA256SUMS \
+              --title "$TAG" --generate-notes --verify-tag
+          fi
+
+  npm:
+    name: publish npm packages
+    needs: build
+    runs-on: ubuntu-24.04
+    # The secret is only readable inside a step, so the job checks for it there
+    # and skips publishing with a message when it is absent.
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ needs.build.outputs.tag }}
+
+      - uses: ./.github/actions/setup-bun
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: rafikicode-release
+          path: packages/opencode/dist
+
+      - name: Publish to npm
+        shell: bash
+        working-directory: packages/opencode
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          OPENCODE_VERSION: ${{ needs.build.outputs.version }}
+          OPENCODE_CHANNEL: latest
+        run: |
+          set -euo pipefail
+          if [ -z "${NODE_AUTH_TOKEN}" ]; then
+            echo "NPM_TOKEN is not set, running the publish script in dry run mode."
+            DRY_RUN=1 bun run script/publish-npm.ts
+            exit 0
+          fi
+          bun run script/publish-npm.ts
