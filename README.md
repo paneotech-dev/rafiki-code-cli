@@ -26,12 +26,26 @@ rafikicode            # interactive terminal UI
 rafikicode run "explain the build setup in this repo"
 ```
 
-Sign in with `rafikicode login` (device flow against Rafiki Console, arriving in the next release). On servers and in CI, set a key instead:
+## Sign in
 
 ```bash
-export RAFIKICODE_API_KEY=...   # a Rafiki Console server key
+rafikicode login     # prints a code and a Console URL, waits for approval in the browser
+rafikicode whoami    # account, key alias, wallet and key budget (never the key itself)
+rafikicode logout    # revokes this terminal's key at the Console and removes it locally
+```
+
+`login` never opens a browser by itself: it prints the code and the URL and polls until you approve or deny at `console.rafikiai.io/device`. The approved key is stored at `~/.rafikicode/credentials` (file mode 0600, directory 0700) and is used for every gateway call from then on. Session keys live 30 days; `login` rotates a key that expires within a week, and `login --refresh` rotates on demand (at most once an hour). `--label` names the terminal on the approval page.
+
+On servers and in CI there is no browser, so set a key instead. `login` detects a missing terminal or a `CI` variable, prints this instruction and exits with code 2:
+
+```bash
+export RAFIKICODE_API_KEY=...   # a server key from console.rafikiai.io/keys
 rafikicode run "fix the failing test in packages/api"
 ```
+
+`RAFIKICODE_API_KEY` takes precedence over a stored login. `RAFIKICODE_CONSOLE_URL` and `RAFIKICODE_GATEWAY_URL` point the CLI at a staging Console or gateway.
+
+Exit codes: 0 success, 1 the task or the sign-in failed, 2 usage or not signed in, 3 wallet or budget, 4 network or gateway, 5 internal.
 
 ## Models
 
@@ -88,13 +102,18 @@ bun test test/brand                   # brand defaults
 bun run script/build.ts --single      # standalone binary in dist/
 ```
 
-A local OpenAI compatible mock of the gateway for offline checks:
+Local mocks of the gateway and of the Console device flow for offline checks:
 
 ```bash
 node packages/opencode/test/brand/mock-gateway.mjs 4180
 RAFIKICODE_GATEWAY_URL=http://127.0.0.1:4180/v1 RAFIKICODE_API_KEY=stub \
   bun run packages/opencode/src/index.ts run "hello"
+
+MOCK_CONSOLE_AUTO=approve node packages/opencode/test/brand/mock-console.mjs 4181
+RAFIKICODE_CONSOLE_URL=http://127.0.0.1:4181 bun run packages/opencode/src/index.ts login
 ```
+
+The wire shapes for sign-in live in `packages/opencode/src/rafiki/contract.ts`, the only file to touch if the Console contract changes.
 
 ### Fork discipline
 

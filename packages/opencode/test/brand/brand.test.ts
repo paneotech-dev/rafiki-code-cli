@@ -69,6 +69,17 @@ describe("brand constants", () => {
     expect(Brand.env.apiKey).toBe("RAFIKICODE_API_KEY")
   })
 
+  test("Console URL default and override", () => {
+    expect(Brand.console.url).toBe("https://console.rafikiai.io")
+    const before = process.env[Brand.env.consoleURL]
+    delete process.env[Brand.env.consoleURL]
+    expect(Brand.consoleURL()).toBe("https://console.rafikiai.io")
+    process.env[Brand.env.consoleURL] = "http://127.0.0.1:4181/"
+    expect(Brand.consoleURL()).toBe("http://127.0.0.1:4181")
+    if (before === undefined) delete process.env[Brand.env.consoleURL]
+    else process.env[Brand.env.consoleURL] = before
+  })
+
   test("config file name is config.json", () => {
     expect(Brand.configFile).toBe("config.json")
   })
