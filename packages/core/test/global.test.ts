@@ -3,10 +3,11 @@ import fs from "fs/promises"
 import os from "os"
 import path from "path"
 import { Global } from "@opencode-ai/core/global"
+import { Brand } from "@opencode-ai/core/brand/brand"
 
 describe("global paths", () => {
   test("tmp path is under the system temp directory", () => {
-    expect(Global.Path.tmp).toBe(path.join(os.tmpdir(), "opencode"))
+    expect(Global.Path.tmp).toBe(path.join(os.tmpdir(), Brand.dir))
     expect(Global.make().tmp).toBe(Global.Path.tmp)
   })
 

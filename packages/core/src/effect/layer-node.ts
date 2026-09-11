@@ -182,6 +182,12 @@ function walk<Result>(
   const stack: AnyNode[] = []
 
   const recur = (node: AnyNode): Result => {
+    if (node === undefined) {
+      throw new Error(
+        `Undefined layer node dependency under ${stack.map((item) => item.name).join(" -> ") || "root"} ` +
+          "(a module evaluation order or circular import problem)",
+      )
+    }
     const target = options.resolve?.(node) ?? node
     const cached = cache.get(target)
     if (cached !== undefined || cache.has(target)) return cached!
