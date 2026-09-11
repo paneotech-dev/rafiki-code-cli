@@ -185,8 +185,16 @@ export const WhoamiCommand = effectCmd({
     UI.println(`Credential: ${envKey ? `${Brand.env.apiKey} (environment)` : Credentials.file(Brand.configDir())}`)
 
     if (!args.offline) {
-      const remote = yield* Effect.tryPromise(() => DeviceFlow.me(DeviceFlow.client({ consoleURL }), key)).pipe(
+      const remote = yield* Effect.tryPromise({
+        try: () => DeviceFlow.me(DeviceFlow.client({ consoleURL }), key),
+        catch: (cause) => cause,
+      }).pipe(
         Effect.catch((cause) => {
+          // A revoked or unknown key is an answer, not an outage: say so and
+          // exit 2, the way every other command does once the key is dead.
+          if (cause instanceof DeviceFlow.DeviceFlowError && cause.exitCode === Contract.EXIT.usage) {
+            return fail(cause.message, cause.exitCode)
+          }
           const message = cause instanceof Error ? cause.message : String(cause)
           UI.println(`${UI.Style.TEXT_DIM}Could not load the account from the Console (${message}).${UI.Style.TEXT_NORMAL}`)
           return Effect.succeed(undefined)
