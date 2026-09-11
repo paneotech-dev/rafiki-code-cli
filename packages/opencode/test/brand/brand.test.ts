@@ -90,9 +90,15 @@ describe("brand constants", () => {
     expect(Global.Path.config).toBe(Brand.configDir())
   })
 
-  test("default config wires the gateway provider and only the aliases", () => {
+  test("default config registers the gateway provider only when a key is present", () => {
+    const before = process.env[Brand.env.apiKey]
+    delete process.env[Brand.env.apiKey]
+    expect(Brand.config().provider).toBeUndefined()
+    process.env[Brand.env.apiKey] = "sk-test"
     const config = Brand.config()
-    const provider = config.provider.rafiki
+    if (before === undefined) delete process.env[Brand.env.apiKey]
+    else process.env[Brand.env.apiKey] = before
+    const provider = config.provider!.rafiki
     expect(provider.npm).toBe("@ai-sdk/openai-compatible")
     expect(provider.env).toEqual(["RAFIKICODE_API_KEY"])
     expect(provider.options.baseURL).toBe(Brand.gatewayURL())

@@ -4,6 +4,7 @@ import path from "path"
 import { Effect, FileSystem, Layer } from "effect"
 import { CrossSpawnSpawner } from "@opencode-ai/core/cross-spawn-spawner"
 
+import { Brand } from "@opencode-ai/core/brand/brand"
 import { Instruction } from "../../src/session/instruction"
 import type { MessageV2 } from "../../src/session/message-v2"
 import { MessageID, PartID, SessionID } from "../../src/session/schema"
@@ -222,9 +223,10 @@ describe("Instruction.system", () => {
         expect(paths.has(path.join(globalTmp, "AGENTS.md"))).toBe(true)
 
         const rules = yield* svc.system()
-        expect(rules).toHaveLength(2)
+        expect(rules).toHaveLength(3)
         expect(rules[0]).toBe(`Instructions from: ${path.join(globalTmp, "AGENTS.md")}\n# Global Instructions`)
         expect(rules[1]).toBe(`Instructions from: ${path.join(projectTmp, "AGENTS.md")}\n# Project Instructions`)
+        expect(rules[2]).toBe(Brand.houseStyle)
       }).pipe(provideInstance(projectTmp), provideInstruction({ home: globalTmp, config: globalTmp }))
     }),
   )
@@ -239,7 +241,7 @@ describe("Instruction.system", () => {
         const paths = yield* svc.systemPaths()
         expect(paths.has(path.join(globalTmp, ".claude", "CLAUDE.md"))).toBe(false)
         expect(paths.has(path.join(projectTmp, "CLAUDE.md"))).toBe(false)
-        expect(yield* svc.system()).toEqual([])
+        expect(yield* svc.system()).toEqual([Brand.houseStyle])
       }).pipe(
         provideInstance(projectTmp),
         provideInstruction({ home: globalTmp, config: globalTmp }, { disableClaudeCodePrompt: true }),

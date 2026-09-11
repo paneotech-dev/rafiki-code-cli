@@ -37,7 +37,6 @@ export const Brand = {
     gatewayURL: "RAFIKICODE_GATEWAY_URL",
   },
   gateway: { url: gatewayDefault },
-  provider: { id: providerID, name: "Rafiki" },
   models,
   // Lowest index is the least preferred; the default picker takes the last entry first.
   priority: [...models].reverse(),
@@ -61,12 +60,25 @@ export const Brand = {
     if (xdg) return path.join(xdg, Brand.dir)
     return path.join(home, Brand.configDirName)
   },
+  // True when a gateway credential is available to this process.
+  hasKey() {
+    return Boolean(process.env[Brand.env.apiKey])
+  },
   // Built in defaults seeded under the user's global config. Anything the user
   // writes to ~/.rafikicode/config.json or a project config overrides these.
+  // The gateway provider is only registered once a credential exists, so an
+  // unauthenticated install behaves like upstream until rafikicode login runs.
   config() {
     return {
       autoupdate: false as const,
-      provider: {
+      ...(Brand.hasKey() ? { provider: Brand.provider.config() } : {}),
+    }
+  },
+  provider: {
+    id: providerID,
+    name: "Rafiki",
+    config() {
+      return {
         [providerID]: {
           name: Brand.provider.name,
           npm: "@ai-sdk/openai-compatible",
@@ -87,7 +99,7 @@ export const Brand = {
             ]),
           ),
         },
-      },
-    }
+      }
+    },
   },
 }

@@ -22,12 +22,12 @@ describe("ServerAuth", () => {
     expect(ServerAuth.headers()).toBeUndefined()
   })
 
-  test("defaults to the opencode username", () => {
+  test("defaults to the rafikicode username", () => {
     Flag.OPENCODE_SERVER_PASSWORD = "secret"
     Flag.OPENCODE_SERVER_USERNAME = undefined
 
     expect(ServerAuth.headers()).toEqual({
-      Authorization: `Basic ${Buffer.from("opencode:secret").toString("base64")}`,
+      Authorization: `Basic ${Buffer.from("rafikicode:secret").toString("base64")}`,
     })
   })
 
