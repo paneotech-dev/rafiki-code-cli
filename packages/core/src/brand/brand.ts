@@ -18,6 +18,13 @@ const labels: Record<(typeof models)[number], string> = {
   "rafiki-max": "Rafiki Max",
 }
 
+let warned = false
+function warnOnce(message: string) {
+  if (warned) return
+  warned = true
+  process.stderr.write(message + "\n")
+}
+
 export const Brand = {
   // Binary and script name, also the npm package name.
   name: "rafikicode",
@@ -79,11 +86,26 @@ export const Brand = {
   hasKey() {
     return Boolean(process.env[Brand.env.apiKey]) || Credentials.exists(Brand.configDir())
   },
+  // A stored browser sign-in was approved for a person at a terminal, not for
+  // a pipeline: when CI is set and no server key is given, it is refused with
+  // a warning (contract, Server keys). The env var, when set, always wins.
+  sessionKeyRefusedInCI() {
+    if (process.env[Brand.env.apiKey]) return false
+    if (!process.env["CI"]) return false
+    const stored = Brand.credential()
+    return Boolean(stored) && stored?.kind !== "server"
+  },
   // Built in defaults seeded under the user's global config. Anything the user
   // writes to ~/.rafikicode/config.json or a project config overrides these.
   // The gateway provider is only registered once a credential exists, so an
   // unauthenticated install behaves like upstream until rafikicode login runs.
   config() {
+    if (Brand.sessionKeyRefusedInCI()) {
+      warnOnce(
+        `${Brand.product}: CI is set, so the stored browser sign-in is not used. Create a server key at ${Brand.consoleURL()}/keys and set ${Brand.env.apiKey}.`,
+      )
+      return { autoupdate: false as const }
+    }
     return {
       autoupdate: false as const,
       ...(Brand.hasKey() ? { provider: Brand.provider.config() } : {}),
@@ -102,7 +124,12 @@ export const Brand = {
           name: Brand.provider.name,
           npm: "@ai-sdk/openai-compatible",
           env: [Brand.env.apiKey],
-          options: { baseURL: Brand.gatewayURL(), ...(stored ? { apiKey: stored.key } : {}) },
+          options: {
+            baseURL: Brand.gatewayURL(),
+            // Every gateway call names its surface (contract, Gateway usage).
+            headers: { "X-Rafiki-Surface": "cli" },
+            ...(stored ? { apiKey: stored.key } : {}),
+          },
           models: Object.fromEntries(
             models.map((id) => [
               id,

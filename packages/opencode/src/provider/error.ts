@@ -3,6 +3,7 @@ import { STATUS_CODES } from "http"
 import { iife } from "@/util/iife"
 import type { ProviderV2 } from "@opencode-ai/core/provider"
 import { isContextOverflow } from "@opencode-ai/llm"
+import * as RafikiGateway from "@/rafiki/gateway-errors"
 
 export class HeaderTimeoutError extends Error {
   public override readonly name = "ProviderHeaderTimeoutError"
@@ -181,6 +182,18 @@ export function parseAPICallError(input: { providerID: ProviderV2.ID; error: API
   }
 
   const metadata = input.error.url ? { url: input.error.url } : undefined
+  const rafiki = RafikiGateway.isRafikiProvider(input.providerID) ? RafikiGateway.classify(input.error) : undefined
+  if (rafiki) {
+    return {
+      type: "api_error",
+      message: rafiki.message,
+      statusCode: input.error.statusCode,
+      isRetryable: rafiki.isRetryable,
+      responseHeaders: input.error.responseHeaders,
+      responseBody: input.error.responseBody,
+      metadata: RafikiGateway.annotate(rafiki, metadata),
+    }
+  }
   return {
     type: "api_error",
     message: m,

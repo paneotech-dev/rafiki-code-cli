@@ -19,6 +19,9 @@ export interface StoredCredential {
   key: string
   key_id?: string
   key_alias?: string
+  // "session" for a browser sign-in, "server" for a key made on the /keys page.
+  // A session credential is refused when CI is set (contract, Server keys).
+  kind?: "session" | "server"
   gateway_url: string
   console_url: string
   scope?: string

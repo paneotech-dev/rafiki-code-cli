@@ -11,6 +11,11 @@ export const GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code"
 export const TIERS = ["fast", "pro", "max"] as const
 export type Tier = (typeof TIERS)[number]
 
+// Every gateway call names the surface it comes from (contract, Gateway usage).
+export const HEADER = {
+  surface: "X-Rafiki-Surface",
+} as const
+
 export const PATH = {
   deviceCode: "/api/v1/device/code",
   deviceToken: "/api/v1/device/token",
@@ -46,6 +51,17 @@ export const ERROR = {
   unauthenticated: "unauthenticated",
   keyRevoked: "key_revoked",
   wrongKeyKind: "wrong_key_kind",
+  // Surface codes mapped from gateway responses (contract, Gateway usage).
+  keyBudgetExhausted: "key_budget_exhausted",
+  tierNotAllowed: "tier_not_allowed",
+  gatewayUnavailable: "gateway_unavailable",
+  requestTimeout: "request_timeout",
+} as const
+
+// Gateway error types (LiteLLM's error.type values) the surface must recognise.
+export const GATEWAY_ERROR_TYPE = {
+  budgetExceeded: "budget_exceeded",
+  keyModelAccessDenied: "key_model_access_denied",
 } as const
 
 // Messages the CLI prints for conditions the user must act on. The Console
@@ -59,6 +75,11 @@ export const MESSAGE: Record<string, string> = {
   [ERROR.keyRevoked]: "This key was revoked or has expired. Run rafikicode login.",
   [ERROR.wrongKeyKind]: "This key cannot be refreshed here. Create a new key at console.rafikiai.io/keys.",
   [ERROR.serviceUnavailable]: "The service is not available.",
+  [ERROR.keyBudgetExhausted]: "Your key has run out of budget. Top up or raise the key's budget at console.rafikiai.io/keys.",
+  [ERROR.tierNotAllowed]: "This key is not allowed to use the <tier> tier. Approve it at console.rafikiai.io/keys.",
+  [ERROR.gatewayUnavailable]: "The model gateway is having trouble. Try again shortly.",
+  [ERROR.requestTimeout]: "The request timed out.",
+  [ERROR.rateLimited]: "Too many requests. Try again in <n> seconds.",
 }
 
 // CLI exit codes from the contract: scripts branch on these.

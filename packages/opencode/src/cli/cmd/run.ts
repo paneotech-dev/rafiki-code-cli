@@ -25,6 +25,7 @@ import { EOL } from "os"
 import { Filesystem } from "@/util/filesystem"
 import { createOpencodeClient, type OpencodeClient, type ToolPart } from "@opencode-ai/sdk/v2"
 import { FormatError, FormatUnknownError } from "../error"
+import * as RafikiGateway from "@/rafiki/gateway-errors"
 import { INTERACTIVE_INPUT_ERROR, resolveInteractiveStdin } from "./run/runtime.stdin"
 
 type ModelInput = Parameters<OpencodeClient["session"]["prompt"]>[0]["model"]
@@ -787,6 +788,7 @@ export const RunCommand = effectCmd({
                 err = String(props.error.data.message)
               }
               error = error ? error + EOL + err : err
+              process.exitCode = RafikiGateway.exitCodeFor(props.error) ?? process.exitCode
               if (emit("error", { error: props.error })) continue
               UI.error(err)
             }
@@ -840,7 +842,7 @@ export const RunCommand = effectCmd({
           async function finish() {
             if (args.attach) return
             const error = await completed
-            if (error) process.exitCode = 1
+            if (error) process.exitCode = process.exitCode || 1
           }
 
           if (args.command) {

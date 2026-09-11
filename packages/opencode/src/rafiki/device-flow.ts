@@ -206,6 +206,7 @@ export function toCredential(token: Contract.TokenResponse, now: number = Date.n
     key: token.access_token,
     key_id: token.key_id,
     key_alias: token.key_alias,
+    kind: "session",
     gateway_url: token.gateway_url || Brand.gateway.url,
     console_url: token.console_url || Brand.consoleURL(),
     scope: token.scope,
