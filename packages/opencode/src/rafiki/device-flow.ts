@@ -64,7 +64,9 @@ async function parse(response: Response): Promise<{ body: any; error?: Contract.
 }
 
 function failure(status: number, error: Contract.ErrorEnvelope["error"], ref: string | undefined, fallback: string) {
-  const code = error?.code || error?.type || (status >= 500 ? "internal" : "invalid_request")
+  // A 401 from any Console route means the key is dead here, whatever the
+  // body says; the contract's key_revoked copy tells the person what to do.
+  const code = status === 401 ? Contract.ERROR.keyRevoked : error?.code || error?.type || (status >= 500 ? "internal" : "invalid_request")
   const message = Contract.MESSAGE[code] || error?.message || fallback
   const exitCode =
     status === 401 || code === Contract.ERROR.unauthenticated || code === Contract.ERROR.keyRevoked
