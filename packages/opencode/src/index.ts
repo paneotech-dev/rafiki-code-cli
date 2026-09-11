@@ -30,6 +30,7 @@ import { errorMessage } from "./util/error"
 import { PluginCommand } from "./cli/cmd/plug"
 import { Heap } from "./cli/heap"
 import { Brand } from "@opencode-ai/core/brand/brand"
+import { LoginCommand, LogoutCommand, WhoamiCommand } from "./rafiki/cmd"
 
 const args = hideBin(process.argv)
 
@@ -87,6 +88,9 @@ const cli = yargs(args)
   .command(GenerateCommand)
   .command(DebugCommand)
   .command(ConsoleCommand)
+  .command(LoginCommand)
+  .command(LogoutCommand)
+  .command(WhoamiCommand)
   .command(ProvidersCommand)
   .command(AgentCommand)
   .command(UpgradeCommand)
@@ -133,7 +137,7 @@ try {
     UI.error("Unexpected error" + EOL)
     process.stderr.write(errorMessage(e) + EOL)
   }
-  process.exitCode = 1
+  if (process.exitCode === undefined) process.exitCode = 1
 } finally {
   // Some subprocesses don't react properly to SIGTERM and similar signals.
   // Most notably, some docker-container-based MCP servers don't handle such signals unless
