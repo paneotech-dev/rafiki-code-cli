@@ -1,15 +1,7 @@
-# js
+# rafikicode
 
-To install dependencies:
-
-```bash
-bun install
-```
-
-To run:
+The Rafiki Code terminal coding agent. See the repository README for installation, configuration, and attribution.
 
 ```bash
-bun run index.ts
+rafikicode --help
 ```
-
-This project was created using `bun init` in bun v1.2.12. [Bun](https://bun.sh) is a fast all-in-one JavaScript runtime.

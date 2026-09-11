@@ -1,3 +1,4 @@
+import { Brand } from "@opencode-ai/core/brand/brand"
 import type { PermissionV1 } from "@opencode-ai/core/v1/permission"
 import { FSUtil } from "@opencode-ai/core/fs-util"
 // CLI entry point for `opencode run` and `opencode --mini`.
@@ -125,7 +126,7 @@ async function toolError(part: ToolPart) {
 
 export const RunCommand = effectCmd({
   command: "run [message..]",
-  describe: "run opencode with a message",
+  describe: `run ${Brand.name} with a message`,
   // --attach connects to a remote server (no local instance needed); the
   // default path runs an in-process server and needs the project instance.
   instance: (args) => !args.attach,
@@ -189,7 +190,7 @@ export const RunCommand = effectCmd({
       })
       .option("attach", {
         type: "string",
-        describe: "attach to a running opencode server (e.g., http://localhost:4096)",
+        describe: `attach to a running ${Brand.name} server (e.g., http://localhost:4096)`,
       })
       .option("password", {
         alias: ["p"],
@@ -199,7 +200,7 @@ export const RunCommand = effectCmd({
       .option("username", {
         alias: ["u"],
         type: "string",
-        describe: "basic auth username (defaults to OPENCODE_SERVER_USERNAME or 'opencode')",
+        describe: `basic auth username (defaults to OPENCODE_SERVER_USERNAME or '${Brand.name}')`,
       })
       .option("dir", {
         type: "string",
@@ -982,7 +983,7 @@ type MiniCommandInput = {
 export async function runMini(input: MiniCommandInput) {
   if (!RunCommand.handler) throw new Error("Mini command handler is unavailable")
   await RunCommand.handler({
-    $0: "opencode",
+    $0: Brand.name,
     _: ["mini"],
     message: input.prompt ? [input.prompt] : [],
     command: undefined,

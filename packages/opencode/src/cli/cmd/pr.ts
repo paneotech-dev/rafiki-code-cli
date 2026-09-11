@@ -1,3 +1,4 @@
+import { Brand } from "@opencode-ai/core/brand/brand"
 import { Effect } from "effect"
 import { UI } from "../ui"
 import { effectCmd, fail } from "../effect-cmd"
@@ -7,7 +8,7 @@ import { Process } from "@/util/process"
 
 export const PrCommand = effectCmd({
   command: "pr <number>",
-  describe: "fetch and checkout a GitHub PR branch, then run opencode",
+  describe: `fetch and checkout a GitHub PR branch, then run ${Brand.name}`,
   builder: (yargs) =>
     yargs.positional("number", {
       type: "number",
@@ -76,11 +77,11 @@ export const PrCommand = effectCmd({
         const sessionMatch = prInfo.body.match(/https:\/\/opncd\.ai\/s\/([a-zA-Z0-9_-]+)/)
         if (sessionMatch) {
           const sessionUrl = sessionMatch[0]
-          UI.println(`Found opencode session: ${sessionUrl}`)
+          UI.println(`Found ${Brand.name} session: ${sessionUrl}`)
           UI.println(`Importing session...`)
 
           const importResult = yield* Effect.promise(() =>
-            Process.text(["opencode", "import", sessionUrl], { nothrow: true }),
+            Process.text([Brand.name, "import", sessionUrl], { nothrow: true }),
           )
           if (importResult.code === 0) {
             const sessionIdMatch = importResult.text.trim().match(/Imported session: ([a-zA-Z0-9_-]+)/)
@@ -95,13 +96,13 @@ export const PrCommand = effectCmd({
 
     UI.println(`Successfully checked out PR #${prNumber} as branch '${localBranchName}'`)
     UI.println()
-    UI.println("Starting opencode...")
+    UI.println(`Starting ${Brand.name}...`)
     UI.println()
 
     const opencodeArgs = sessionId ? ["-s", sessionId] : []
     const code = yield* Effect.promise(
       () =>
-        Process.spawn(["opencode", ...opencodeArgs], {
+        Process.spawn([Brand.name, ...opencodeArgs], {
           stdin: "inherit",
           stdout: "inherit",
           stderr: "inherit",
@@ -110,6 +111,6 @@ export const PrCommand = effectCmd({
     )
     // Match legacy throw semantics — propagate as a defect so the top-level
     // index.ts catch handles it identically (exit 1, "Unexpected error" banner).
-    if (code !== 0) return yield* Effect.die(new Error(`opencode exited with code ${code}`))
+    if (code !== 0) return yield* Effect.die(new Error(`${Brand.name} exited with code ${code}`))
   }),
 })

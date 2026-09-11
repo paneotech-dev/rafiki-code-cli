@@ -1,3 +1,4 @@
+import { Brand } from "@opencode-ai/core/brand/brand"
 import type { Argv, InferredOptionTypes } from "yargs"
 import { ConfigV1 } from "@opencode-ai/core/v1/config/config"
 import type { Config } from "@/config/config"
@@ -21,8 +22,8 @@ const options = {
   },
   "mdns-domain": {
     type: "string" as const,
-    describe: "custom domain name for mDNS service (default: opencode.local)",
-    default: "opencode.local",
+    describe: `custom domain name for mDNS service (default: ${Brand.name}.local)`,
+    default: `${Brand.name}.local`,
   },
   cors: {
     type: "string" as const,

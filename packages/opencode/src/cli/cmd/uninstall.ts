@@ -1,3 +1,4 @@
+import { Brand } from "@opencode-ai/core/brand/brand"
 import type { Argv } from "yargs"
 import { UI } from "../ui"
 import * as prompts from "@clack/prompts"
@@ -24,7 +25,7 @@ interface RemovalTargets {
 
 export const UninstallCommand = {
   command: "uninstall",
-  describe: "uninstall opencode and remove all related files",
+  describe: `uninstall ${Brand.name} and remove all related files`,
   builder: (yargs: Argv) =>
     yargs
       .option("keep-config", {

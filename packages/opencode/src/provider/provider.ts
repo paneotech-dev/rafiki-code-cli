@@ -13,6 +13,7 @@ import { type LanguageModelV3 } from "@ai-sdk/provider"
 import { ModelsDev } from "@opencode-ai/core/models-dev"
 import { Auth } from "../auth"
 import { Env } from "../env"
+import { Brand } from "@opencode-ai/core/brand/brand"
 import { InstallationVersion } from "@opencode-ai/core/installation/version"
 import { iife } from "@/util/iife"
 import { Global } from "@opencode-ai/core/global"
@@ -2044,7 +2045,7 @@ const layer = Layer.effect(
   }),
 )
 
-const priority = ["gpt-5", "claude-sonnet-4", "big-pickle", "gemini-3-pro"]
+const priority = ["gpt-5", "claude-sonnet-4", "big-pickle", "gemini-3-pro", ...Brand.priority]
 const smallModelFamilyPriority = ["gemini-flash", "gpt-nano", "claude-haiku"]
 export function sort<T extends { id: string }>(models: T[]) {
   return sortBy(

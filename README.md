@@ -1,129 +1,109 @@
-<p align="center">
-  <a href="https://opencode.ai">
-    <picture>
-      <source srcset="packages/console/app/src/asset/logo-ornate-dark.svg" media="(prefers-color-scheme: dark)">
-      <source srcset="packages/console/app/src/asset/logo-ornate-light.svg" media="(prefers-color-scheme: light)">
-      <img src="packages/console/app/src/asset/logo-ornate-light.svg" alt="OpenCode logo">
-    </picture>
-  </a>
-</p>
-<p align="center">The open source AI coding agent.</p>
-<p align="center">
-  <a href="https://opencode.ai/discord"><img alt="Discord" src="https://img.shields.io/discord/1391832426048651334?style=flat-square&label=discord" /></a>
-  <a href="https://www.npmjs.com/package/opencode-ai"><img alt="npm" src="https://img.shields.io/npm/v/opencode-ai?style=flat-square" /></a>
-  <a href="https://github.com/anomalyco/opencode/actions/workflows/publish.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/anomalyco/opencode/publish.yml?style=flat-square&branch=dev" /></a>
-</p>
+# Rafiki Code CLI
 
-<p align="center">
-  <a href="README.md">English</a> |
-  <a href="README.zh.md">简体中文</a> |
-  <a href="README.zht.md">繁體中文</a> |
-  <a href="README.ko.md">한국어</a> |
-  <a href="README.de.md">Deutsch</a> |
-  <a href="README.es.md">Español</a> |
-  <a href="README.fr.md">Français</a> |
-  <a href="README.it.md">Italiano</a> |
-  <a href="README.da.md">Dansk</a> |
-  <a href="README.ja.md">日本語</a> |
-  <a href="README.pl.md">Polski</a> |
-  <a href="README.ru.md">Русский</a> |
-  <a href="README.bs.md">Bosanski</a> |
-  <a href="README.ar.md">العربية</a> |
-  <a href="README.no.md">Norsk</a> |
-  <a href="README.br.md">Português (Brasil)</a> |
-  <a href="README.th.md">ไทย</a> |
-  <a href="README.tr.md">Türkçe</a> |
-  <a href="README.uk.md">Українська</a> |
-  <a href="README.bn.md">বাংলা</a> |
-  <a href="README.gr.md">Ελληνικά</a> |
-  <a href="README.vi.md">Tiếng Việt</a>
-</p>
+`rafikicode` is the terminal coding agent of [Rafiki Code](https://code.rafikiai.io), a Rafiki Console product by PANEOTECH. It runs in your repository, reads your project's `AGENTS.md`, edits files, runs commands, and routes every model call through the Rafiki gateway so usage is metered against one Rafiki Console credit wallet.
 
-[![OpenCode Terminal UI](packages/web/src/assets/lander/screenshot.png)](https://opencode.ai)
+It is a thin fork of [opencode](https://github.com/anomalyco/opencode) (MIT). See [Attribution](#attribution).
 
----
+## Install
 
-### Installation
+Installation channels ship with the first beta release:
 
 ```bash
-# YOLO
-curl -fsSL https://opencode.ai/install | bash
+# one line installer (Linux, macOS)
+curl -fsSL https://get.rafikiai.io | bash
 
-# Package managers
-npm i -g opencode-ai@latest        # or bun/pnpm/yarn
-scoop install opencode             # Windows
-choco install opencode             # Windows
-brew install anomalyco/tap/opencode # macOS and Linux (recommended, always up to date)
-brew install opencode              # macOS and Linux (official brew formula, updated less)
-sudo pacman -S opencode            # Arch Linux (Stable)
-paru -S opencode-bin               # Arch Linux (Latest from AUR)
-mise use -g opencode               # Any OS
-nix run nixpkgs#opencode           # or github:anomalyco/opencode for latest dev branch
+# npm
+npm install -g rafikicode
 ```
 
-> [!TIP]
-> Remove versions older than 0.1.x before installing.
+Until then, build from source (see [Development](#development)).
 
-### Desktop App (BETA)
-
-OpenCode is also available as a desktop application. Download directly from the [releases page](https://github.com/anomalyco/opencode/releases) or [opencode.ai/download](https://opencode.ai/download).
-
-| Platform              | Download                           |
-| --------------------- | ---------------------------------- |
-| macOS (Apple Silicon) | `opencode-desktop-mac-arm64.dmg`   |
-| macOS (Intel)         | `opencode-desktop-mac-x64.dmg`     |
-| Windows               | `opencode-desktop-windows-x64.exe` |
-| Linux                 | `.deb`, `.rpm`, or `.AppImage`     |
+## Quick start
 
 ```bash
-# macOS (Homebrew)
-brew install --cask opencode-desktop
-# Windows (Scoop)
-scoop bucket add extras; scoop install extras/opencode-desktop
+cd your-project
+rafikicode            # interactive terminal UI
+rafikicode run "explain the build setup in this repo"
 ```
 
-#### Installation Directory
-
-The install script respects the following priority order for the installation path:
-
-1. `$OPENCODE_INSTALL_DIR` - Custom installation directory
-2. `$XDG_BIN_DIR` - XDG Base Directory Specification compliant path
-3. `$HOME/bin` - Standard user binary directory (if it exists or can be created)
-4. `$HOME/.opencode/bin` - Default fallback
+Sign in with `rafikicode login` (device flow against Rafiki Console, arriving in the next release). On servers and in CI, set a key instead:
 
 ```bash
-# Examples
-OPENCODE_INSTALL_DIR=/usr/local/bin curl -fsSL https://opencode.ai/install | bash
-XDG_BIN_DIR=$HOME/.local/bin curl -fsSL https://opencode.ai/install | bash
+export RAFIKICODE_API_KEY=...   # a Rafiki Console server key
+rafikicode run "fix the failing test in packages/api"
 ```
 
-### Agents
+## Models
 
-OpenCode includes two built-in agents you can switch between with the `Tab` key.
+All inference goes through the Rafiki gateway. The CLI exposes three aliases and never references provider model names:
 
-- **build** - Default, full-access agent for development work
-- **plan** - Read-only agent for analysis and code exploration
-  - Denies file edits by default
-  - Asks permission before running bash commands
-  - Ideal for exploring unfamiliar codebases or planning changes
+| alias | use it for | credit cost |
+|---|---|---|
+| `rafiki-fast` | everyday edits and fixes (default) | lowest |
+| `rafiki-pro` | long agentic tasks and larger features | higher |
+| `rafiki-max` | the hardest problems | highest |
 
-Also included is a **general** subagent for complex searches and multistep tasks.
-This is used internally and can be invoked using `@general` in messages.
+Pick one with `--model rafiki/rafiki-pro`, from the model dialog in the terminal UI, or set `"model": "rafiki/rafiki-pro"` in your config.
 
-Learn more about [agents](https://opencode.ai/docs/agents).
+## Configuration
 
-### Documentation
+Global configuration lives at `~/.rafikicode/config.json`. Project configuration in `opencode.json` or a `.opencode/` directory at the repository root works as upstream documents it and overrides the global file.
 
-For more info on how to configure OpenCode, [**head over to our docs**](https://opencode.ai/docs).
+```json
+{
+  "model": "rafiki/rafiki-fast",
+  "instructions": ["docs/style.md"]
+}
+```
 
-### Contributing
+Useful environment variables:
 
-If you're interested in contributing to OpenCode, please read our [contributing docs](./CONTRIBUTING.md) before submitting a pull request.
+| variable | purpose |
+|---|---|
+| `RAFIKICODE_API_KEY` | key for headless and CI use |
+| `RAFIKICODE_GATEWAY_URL` | override the gateway base URL (local mocks, staging) |
+| `OPENCODE_CONFIG_DIR` | use another config directory |
+| `OPENCODE_*` | advanced upstream switches keep their upstream names so upstream documentation and plugins keep working |
 
-### Building on OpenCode
+## Project instructions
 
-If you are working on a project that's related to OpenCode and is using "opencode" as part of its name, for example "opencode-dashboard" or "opencode-mobile", please add a note to your README to clarify that it is not built by the OpenCode team and is not affiliated with us in any way.
+Put an `AGENTS.md` at the root of your repository (or in any subdirectory) and `rafikicode` reads it into every session. A global `~/.rafikicode/AGENTS.md` applies to all projects.
 
----
+## Headless and CI
 
-**Join our community** [Discord](https://discord.gg/opencode) | [X.com](https://x.com/opencode)
+```bash
+RAFIKICODE_API_KEY=... rafikicode run --format json "update the changelog for 1.4.0"
+rafikicode serve --port 4096      # HTTP server for editors and automation
+```
+
+## Development
+
+Requirements: Bun 1.3 or newer, Node 22 or newer.
+
+```bash
+bun install
+cd packages/opencode
+bun run src/index.ts --help           # run from source
+bun test test/brand                   # brand defaults
+bun run script/build.ts --single      # standalone binary in dist/
+```
+
+A local OpenAI compatible mock of the gateway for offline checks:
+
+```bash
+node packages/opencode/test/brand/mock-gateway.mjs 4180
+RAFIKICODE_GATEWAY_URL=http://127.0.0.1:4180/v1 RAFIKICODE_API_KEY=stub \
+  bun run packages/opencode/src/index.ts run "hello"
+```
+
+### Fork discipline
+
+Everything Rafiki specific lives in `packages/core/src/brand/`. Upstream files import from that module through single line touchpoints and nothing else. `script/fork-diff-report.sh` lists the files that differ from `upstream/dev`; keep that list short so weekly upstream merges stay cheap.
+
+## Attribution
+
+Rafiki Code CLI is a fork of [opencode](https://github.com/anomalyco/opencode), copyright (c) 2025 opencode and contributors, licensed under the MIT License (see [LICENSE](./LICENSE) and [NOTICE](./NOTICE)). It is not built by, affiliated with, or endorsed by the opencode team. Upstream documentation for features that are unchanged in this fork is at [opencode.ai/docs](https://opencode.ai/docs).
+
+## License
+
+MIT. See [LICENSE](./LICENSE).

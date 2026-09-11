@@ -1,3 +1,4 @@
+import { Brand } from "@opencode-ai/core/brand/brand"
 import type { Argv } from "yargs"
 import { Auth } from "../../auth"
 import { cmd } from "./cmd"
@@ -304,7 +305,7 @@ export const ProvidersLoginCommand = effectCmd({
   builder: (yargs: Argv) =>
     yargs
       .positional("url", {
-        describe: "opencode auth provider",
+        describe: `${Brand.name} auth provider`,
         type: "string",
       })
       .option("provider", {

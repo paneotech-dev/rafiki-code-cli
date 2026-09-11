@@ -11,6 +11,7 @@ import { Flag } from "@opencode-ai/core/flag/flag"
 import { FSUtil } from "@opencode-ai/core/fs-util"
 import { withTransientReadRetry } from "@/util/effect-http-client"
 import { Global } from "@opencode-ai/core/global"
+import { Brand } from "@opencode-ai/core/brand/brand"
 import type { MessageV2 } from "./message-v2"
 import type { MessageID } from "./schema"
 
@@ -165,6 +166,7 @@ const layer: Layer.Layer<
       return [
         ...Array.from(paths).flatMap((item, i) => (files[i] ? [`Instructions from: ${item}\n${files[i]}`] : [])),
         ...urls.flatMap((item, i) => (remote[i] ? [`Instructions from: ${item}\n${remote[i]}`] : [])),
+        Brand.houseStyle,
       ]
     })
 

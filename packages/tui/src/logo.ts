@@ -1,11 +1,1 @@
-export const logo = {
-  left: ["                   ", "█▀▀█ █▀▀█ █▀▀█ █▀▀▄", "█__█ █__█ █^^^ █__█", "▀▀▀▀ █▀▀▀ ▀▀▀▀ ▀~~▀"],
-  right: ["             ▄     ", "█▀▀▀ █▀▀█ █▀▀█ █▀▀█", "█___ █__█ █__█ █^^^", "▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀"],
-}
-
-export const go = {
-  left: ["    ", "█▀▀▀", "█_^█", "▀▀▀▀"],
-  right: ["    ", "█▀▀█", "█__█", "▀▀▀▀"],
-}
-
-export const marks = "_^~,"
+export { logo, go, marks } from "@opencode-ai/core/brand/wordmark"

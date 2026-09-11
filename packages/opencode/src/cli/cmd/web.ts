@@ -1,3 +1,4 @@
+import { Brand } from "@opencode-ai/core/brand/brand"
 import { Effect } from "effect"
 import { UI } from "../ui"
 import { effectCmd } from "../effect-cmd"
@@ -31,7 +32,7 @@ function getNetworkIPs() {
 export const WebCommand = effectCmd({
   command: "web",
   builder: (yargs) => withNetworkOptions(yargs),
-  describe: "start opencode server and open web interface",
+  describe: `start ${Brand.name} server and open web interface`,
   // Server loads instances per-request via x-opencode-directory header — no
   // ambient project InstanceContext needed at startup.
   instance: false,
