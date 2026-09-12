@@ -119,6 +119,20 @@ export const LoginCommand = effectCmd({
     const credential = store(token)
     UI.empty()
     UI.println(`${UI.Style.TEXT_SUCCESS_BOLD}Signed in${UI.Style.TEXT_NORMAL} as ${describeOwner(credential.owner)}.`)
+    // The previous sign-in's key would otherwise stay live at the gateway
+    // until it expires. Best effort: a failure here never undoes the login.
+    if (existing?.key_id && existing.key !== token.access_token) {
+      const previous = DeviceFlow.client({ consoleURL: existing.console_url || Brand.consoleURL() })
+      const revoked = yield* Effect.tryPromise(() => DeviceFlow.revoke(previous, existing.key, existing.key_id!)).pipe(
+        Effect.map(() => true),
+        Effect.catch(() => Effect.succeed(false)),
+      )
+      if (revoked) UI.println(`${UI.Style.TEXT_DIM}Revoked the previous key ${existing.key_alias ?? existing.key_id}.${UI.Style.TEXT_NORMAL}`)
+      else
+        UI.println(
+          `${UI.Style.TEXT_WARNING}Could not revoke the previous key ${existing.key_alias ?? existing.key_id}. Revoke it at ${existing.console_url || Brand.consoleURL()}${Contract.PATH.keysPage}.${UI.Style.TEXT_NORMAL}`,
+        )
+    }
     UI.println(`Key ${credential.key_alias ?? "(no alias)"} stored at ${Credentials.file(dir)} (${expiry(credential)}).`)
     if (token.limits?.max_budget_usd != null) {
       UI.println(`${UI.Style.TEXT_DIM}Budget reserved for this key: ${token.limits.max_budget_usd} USD.${UI.Style.TEXT_NORMAL}`)

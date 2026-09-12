@@ -16,6 +16,8 @@ RELEASE_API="${RAFIKICODE_RELEASE_API:-https://api.github.com/repos/${OWNER}/${R
 RELEASE_BASE="${RAFIKICODE_RELEASE_BASE:-https://github.com/${OWNER}/${REPO}/releases}"
 CHECKSUMS=SHA256SUMS
 INSTALL_DIR="${RAFIKICODE_INSTALL_DIR:-$HOME/.${APP}/bin}"
+# File name of the binary inside the archive and on disk (.exe on Windows).
+BIN_NAME="$APP"
 
 MUTED='\033[0;2m'
 RED='\033[0;31m'
@@ -166,6 +168,7 @@ detect_platform() {
 
     archive_ext=".zip"
     if [ "$os" = "linux" ]; then archive_ext=".tar.gz"; fi
+    if [ "$os" = "windows" ]; then BIN_NAME="$APP.exe"; fi
 
     local is_musl=false
     if [ "$os" = "linux" ]; then
@@ -210,11 +213,11 @@ resolve_version() {
 }
 
 check_installed() {
-    if [ -x "${INSTALL_DIR}/${APP}" ]; then
+    if [ -x "${INSTALL_DIR}/${BIN_NAME}" ]; then
         local installed_version
-        installed_version=$("${INSTALL_DIR}/${APP}" --version 2>/dev/null || echo "")
+        installed_version=$("${INSTALL_DIR}/${BIN_NAME}" --version 2>/dev/null || echo "")
         if [[ -n "$installed_version" && "$installed_version" == "$specific_version" ]]; then
-            print_message info "${MUTED}Version ${NC}$specific_version${MUTED} is already installed at ${NC}${INSTALL_DIR}/${APP}"
+            print_message info "${MUTED}Version ${NC}$specific_version${MUTED} is already installed at ${NC}${INSTALL_DIR}/${BIN_NAME}"
             exit 0
         elif [[ -n "$installed_version" ]]; then
             print_message info "${MUTED}Installed version: ${NC}$installed_version"
@@ -256,13 +259,13 @@ download_and_install() {
     else
         unzip -q "$tmp_dir/$filename" -d "$tmp_dir"
     fi
-    [ -f "$tmp_dir/$APP" ] || fail "the archive does not contain ${APP}."
+    [ -f "$tmp_dir/$BIN_NAME" ] || fail "the archive does not contain ${BIN_NAME}."
 
     mkdir -p "$INSTALL_DIR"
-    chmod 755 "$tmp_dir/$APP"
+    chmod 755 "$tmp_dir/$BIN_NAME"
     # Stage next to the target and rename over it so the path never disappears.
-    mv "$tmp_dir/$APP" "${INSTALL_DIR}/${APP}.new"
-    mv -f "${INSTALL_DIR}/${APP}.new" "${INSTALL_DIR}/${APP}"
+    mv "$tmp_dir/$BIN_NAME" "${INSTALL_DIR}/${BIN_NAME}.new"
+    mv -f "${INSTALL_DIR}/${BIN_NAME}.new" "${INSTALL_DIR}/${BIN_NAME}"
 }
 
 install_from_binary() {
@@ -356,13 +359,13 @@ else
         echo "dry run: ${APP} ${specific_version} for ${target}"
         echo "  archive:   ${url}"
         echo "  checksums: ${sums_url}"
-        echo "  install:   ${INSTALL_DIR}/${APP}"
+        echo "  install:   ${INSTALL_DIR}/${BIN_NAME}"
         exit 0
     fi
     check_installed
     download_and_install
 fi
 
-print_message info "${MUTED}Installed ${NC}${APP}${MUTED} at ${NC}${INSTALL_DIR}/${APP}"
+print_message info "${MUTED}Installed ${NC}${APP}${MUTED} at ${NC}${INSTALL_DIR}/${BIN_NAME}"
 path_note
 print_message info "\nRun ${APP} login to connect your Rafiki Console account, or set RAFIKICODE_API_KEY on servers."

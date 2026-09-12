@@ -107,6 +107,29 @@ describe("rafikicode login, whoami, logout", () => {
     expect(nobody.all).toContain("rafikicode login")
   }, 120_000)
 
+  test("signing in again revokes the previous key", async () => {
+    mock = createMockConsole({ quiet: true, interval: 1, auto: "approve", autoAfter: 1 })
+    await mock.ready
+
+    const first = await run(["login", "--label", "first terminal"])
+    expect(first.exitCode).toBe(0)
+    const before = JSON.parse(fs.readFileSync(credentials(), "utf8"))
+
+    const second = await run(["login", "--label", "second terminal"])
+    expect(second.exitCode).toBe(0)
+    expect(second.all).toContain("Signed in")
+    expect(second.all).toContain(`Revoked the previous key ${before.key_alias}`)
+    const after = JSON.parse(fs.readFileSync(credentials(), "utf8"))
+    expect(after.key).not.toBe(before.key)
+
+    const keys = [...mock.keys.values()] as any[]
+    expect(keys.length).toBe(2)
+    expect(keys.find((k) => k.id === before.key_id)?.revoked).toBe(true)
+    expect(keys.find((k) => k.id === after.key_id)?.revoked).toBe(false)
+    const revokes = mock.requests.filter((r: any) => r.method === "DELETE")
+    expect(revokes.length).toBe(1)
+  }, 120_000)
+
   test("denied in the browser", async () => {
     mock = createMockConsole({ quiet: true, interval: 1, auto: "deny", autoAfter: 1 })
     await mock.ready
