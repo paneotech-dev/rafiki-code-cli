@@ -438,7 +438,8 @@ const layer = Layer.effect(
 
         for (const dir of directories) {
           if (dir.endsWith(".opencode") || dir === Flag.OPENCODE_CONFIG_DIR) {
-            for (const file of ["opencode.json", "opencode.jsonc"]) {
+            const files = dir === Flag.OPENCODE_CONFIG_DIR ? [Brand.configFile, "opencode.json", "opencode.jsonc"] : ["opencode.json", "opencode.jsonc"]
+            for (const file of files) {
               const source = path.join(dir, file)
               yield* Effect.logDebug(`loading config from ${source}`)
               yield* merge(source, yield* loadFile(source, authEnv))
