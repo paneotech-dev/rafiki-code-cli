@@ -6,17 +6,28 @@ It is a thin fork of [opencode](https://github.com/anomalyco/opencode) (MIT). Se
 
 ## Install
 
-Installation channels ship with the first beta release:
+One line installer for Linux and macOS (Windows through WSL for now):
 
 ```bash
-# one line installer (Linux, macOS)
 curl -fsSL https://get.rafikiai.io | bash
+```
 
-# npm
+The installer detects your platform, downloads the release archive from the project's GitHub releases, verifies it against the published `SHA256SUMS`, installs the binary into `~/.rafikicode/bin`, and prints the PATH line for your shell. Options: `--version 1.2.3` pins a release, `--prefix DIR` chooses another directory, `--no-modify-path` leaves your shell files alone, `--dry-run` only shows what would happen. The script is `install/install.sh` in this repository.
+
+npm as a second channel:
+
+```bash
 npm install -g rafikicode
 ```
 
-Until then, build from source (see [Development](#development)).
+Keeping it current:
+
+```bash
+rafikicode update            # latest release, checksum verified, binary swapped in place
+rafikicode update 1.2.3      # a specific version
+```
+
+Automatic update checks are off by default. Installation channels go live with the first tagged release; until then, build from source (see [Development](#development)). Release archives are unsigned in this phase and verified by checksum only, see `docs/RELEASE_TODO.md`.
 
 ## Quick start
 
@@ -26,26 +37,12 @@ rafikicode            # interactive terminal UI
 rafikicode run "explain the build setup in this repo"
 ```
 
-## Sign in
+Sign in with `rafikicode login` (device flow against Rafiki Console, arriving in the next release). On servers and in CI, set a key instead:
 
 ```bash
-rafikicode login     # prints a code and a Console URL, waits for approval in the browser
-rafikicode whoami    # account, key alias, wallet and key budget (never the key itself)
-rafikicode logout    # revokes this terminal's key at the Console and removes it locally
-```
-
-`login` never opens a browser by itself: it prints the code and the URL and polls until you approve or deny at `console.rafikiai.io/device`. The approved key is stored at `~/.rafikicode/credentials` (file mode 0600, directory 0700) and is used for every gateway call from then on. Session keys live 30 days; `login` rotates a key that expires within a week, and `login --refresh` rotates on demand (at most once an hour). `--label` names the terminal on the approval page.
-
-On servers and in CI there is no browser, so set a key instead. `login` detects a missing terminal or a `CI` variable, prints this instruction and exits with code 2:
-
-```bash
-export RAFIKICODE_API_KEY=...   # a server key from console.rafikiai.io/keys
+export RAFIKICODE_API_KEY=...   # a Rafiki Console server key
 rafikicode run "fix the failing test in packages/api"
 ```
-
-`RAFIKICODE_API_KEY` takes precedence over a stored login. `RAFIKICODE_CONSOLE_URL` and `RAFIKICODE_GATEWAY_URL` point the CLI at a staging Console or gateway.
-
-Exit codes: 0 success, 1 the task or the sign-in failed, 2 usage or not signed in, 3 wallet or budget, 4 network or gateway, 5 internal.
 
 ## Models
 
@@ -76,6 +73,8 @@ Useful environment variables:
 |---|---|
 | `RAFIKICODE_API_KEY` | key for headless and CI use |
 | `RAFIKICODE_GATEWAY_URL` | override the gateway base URL (local mocks, staging) |
+| `RAFIKICODE_INSTALL_DIR` | installer target directory (default `~/.rafikicode/bin`) |
+| `RAFIKICODE_RELEASE_API`, `RAFIKICODE_RELEASE_BASE` | point the installer and updater at another release server (tests, mirrors) |
 | `OPENCODE_CONFIG_DIR` | use another config directory |
 | `OPENCODE_*` | advanced upstream switches keep their upstream names so upstream documentation and plugins keep working |
 
@@ -100,20 +99,22 @@ cd packages/opencode
 bun run src/index.ts --help           # run from source
 bun test test/brand                   # brand defaults
 bun run script/build.ts --single      # standalone binary in dist/
+bash install/test-install.sh          # installer against a local mock release server
 ```
 
-Local mocks of the gateway and of the Console device flow for offline checks:
+`bun install` needs `make` for one optional native module; on a machine without a compiler use `bun install --ignore-scripts` (the module has a WebAssembly fallback).
+
+### Releases
+
+Pushing a tag `v<version>` runs `.github/workflows/release.yml`: every platform binary is built on one Linux runner, archived as `rafikicode-<os>-<arch>.tar.gz` (Linux) or `.zip` (macOS, Windows), listed in `SHA256SUMS`, and attached to the GitHub release. The npm packages (`rafikicode` plus one `rafikicode-<os>-<arch>` package per binary) are published by `packages/opencode/script/publish-npm.ts` when an `NPM_TOKEN` secret exists. Open items, including binary signing, are tracked in `docs/RELEASE_TODO.md`.
+
+A local OpenAI compatible mock of the gateway for offline checks:
 
 ```bash
 node packages/opencode/test/brand/mock-gateway.mjs 4180
 RAFIKICODE_GATEWAY_URL=http://127.0.0.1:4180/v1 RAFIKICODE_API_KEY=stub \
   bun run packages/opencode/src/index.ts run "hello"
-
-MOCK_CONSOLE_AUTO=approve node packages/opencode/test/brand/mock-console.mjs 4181
-RAFIKICODE_CONSOLE_URL=http://127.0.0.1:4181 bun run packages/opencode/src/index.ts login
 ```
-
-The wire shapes for sign-in live in `packages/opencode/src/rafiki/contract.ts`, the only file to touch if the Console contract changes.
 
 ### Fork discipline
 

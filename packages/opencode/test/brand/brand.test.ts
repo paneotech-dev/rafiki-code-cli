@@ -119,11 +119,22 @@ describe("brand constants", () => {
     expect(JSON.stringify(config)).not.toMatch(upstreamWord)
   })
 
+  test("release locations and npm names come from the brand module", () => {
+    expect(Brand.release.owner).toBe("paneotech-dev")
+    expect(Brand.release.repo).toBe("rafiki-code-cli")
+    expect(Brand.release.installer).toBe("https://get.rafikiai.io")
+    expect(Brand.release.checksums).toBe("SHA256SUMS")
+    expect(Brand.release.asset("linux", "x64")).toBe("rafikicode-linux-x64.tar.gz")
+    expect(Brand.npm.meta).toBe("rafikicode")
+    expect(Brand.env.releaseAPI).toBe("RAFIKICODE_RELEASE_API")
+    expect(Brand.env.releaseBase).toBe("RAFIKICODE_RELEASE_BASE")
+  })
+
   test("house style forbids attribution, emoji, and long dashes", () => {
     expect(Brand.houseStyle).toContain("Co-Authored-By")
     expect(Brand.houseStyle).toContain("Imperative")
-    expect(Brand.houseStyle).not.toContain("—")
-    expect(Brand.houseStyle).not.toContain("–")
+    expect(Brand.houseStyle).not.toContain("\u2014")
+    expect(Brand.houseStyle).not.toContain("\u2013")
     expect(Brand.houseStyle).not.toMatch(upstreamWord)
   })
 
