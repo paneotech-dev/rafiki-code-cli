@@ -70,6 +70,28 @@ describe("credentials store", () => {
     expect(Credentials.exists(dir)).toBe(false)
   })
 
+  test("warns once about a credential file readable by others and still reads it", () => {
+    const dir = Brand.configDir()
+    Credentials.write(dir, sample)
+    const warnings: string[] = []
+    const previous = Credentials.warn
+    Credentials.setWarn((m) => warnings.push(m))
+    try {
+      expect(Credentials.read(dir)).toEqual(sample)
+      expect(warnings).toEqual([])
+      fs.chmodSync(Credentials.file(dir), 0o644)
+      expect(Credentials.read(dir)).toEqual(sample)
+      expect(Credentials.read(dir)).toEqual(sample)
+      expect(warnings.length).toBe(1)
+      expect(warnings[0]).toContain("readable by other users")
+      expect(warnings[0]).toContain("mode 0644")
+      expect(warnings[0]).toContain(`chmod 600 ${Credentials.file(dir)}`)
+      expect(warnings[0]).not.toContain(sample.key)
+    } finally {
+      Credentials.setWarn(previous)
+    }
+  })
+
   test("stored login wires the provider with its key and gateway URL", () => {
     expect(Brand.hasKey()).toBe(false)
     expect(Brand.config().provider).toBeUndefined()

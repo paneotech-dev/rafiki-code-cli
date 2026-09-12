@@ -41,8 +41,34 @@ export function file(dir: string) {
   return path.join(dir, FILE_NAME)
 }
 
+// Set by tests to capture the warning instead of writing to stderr.
+export let warn: (message: string) => void = (message) => process.stderr.write(message + "\n")
+export function setWarn(fn: (message: string) => void) {
+  warn = fn
+}
+
+let warnedLoose: string | undefined
+
+// A credential copied in from elsewhere may carry loose permissions; say so
+// once per process, the way ssh does for a private key, and keep going.
+function checkMode(target: string) {
+  if (process.platform === "win32") return
+  if (warnedLoose === target) return
+  try {
+    const mode = fs.statSync(target).mode & 0o777
+    if ((mode & 0o077) === 0) return
+    warnedLoose = target
+    warn(
+      `Warning: the credential file ${target} is readable by other users (mode ${mode.toString(8).padStart(4, "0")}). Run: chmod ${FILE_MODE.toString(8)} ${target}`,
+    )
+  } catch {
+    // Missing file or unreadable stat: read() reports that on its own.
+  }
+}
+
 export function read(dir: string): StoredCredential | undefined {
   try {
+    checkMode(file(dir))
     const raw = fs.readFileSync(file(dir), "utf8")
     const data = JSON.parse(raw)
     if (!data || typeof data !== "object") return undefined
