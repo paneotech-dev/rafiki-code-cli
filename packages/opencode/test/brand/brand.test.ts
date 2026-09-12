@@ -15,7 +15,7 @@ const root = path.resolve(import.meta.dir, "../..")
 // names, which stay unchanged for plugin and documentation compatibility.
 const upstreamWord = /(?<![A-Z_])opencode(?![A-Z_])/i
 
-async function help(args: string[]) {
+async function help(args: string[], extraEnv: Record<string, string> = {}) {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), "rafikicode-brand-"))
   const proc = Bun.spawn(["bun", "run", path.join(root, "src/index.ts"), ...args], {
     cwd: root,
@@ -34,6 +34,7 @@ async function help(args: string[]) {
       OPENCODE_PURE: "1",
       OPENCODE_DISABLE_AUTOUPDATE: "1",
       OPENCODE_DISABLE_MODELS_FETCH: "1",
+      ...extraEnv,
     },
   })
   const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])
@@ -82,6 +83,18 @@ describe("brand constants", () => {
 
   test("config file name is config.json", () => {
     expect(Brand.configFile).toBe("config.json")
+  })
+
+  test("OPENCODE_CONFIG_DIR reads config.json as well as the upstream file names", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "rafikicode-configdir-"))
+    await fs.writeFile(path.join(dir, Brand.configFile), JSON.stringify({ username: "from-config-json" }))
+    await fs.writeFile(path.join(dir, "opencode.json"), JSON.stringify({ model: "configdir/model" }))
+    const result = await help(["debug", "config"], { OPENCODE_CONFIG_DIR: dir })
+    await fs.rm(dir, { recursive: true, force: true })
+    expect(result.exitCode).toBe(0)
+    const config = JSON.parse(result.stdout)
+    expect(config.username).toBe("from-config-json")
+    expect(config.model).toBe("configdir/model")
   })
 
   test("config directory defaults to ~/.rafikicode and honors XDG_CONFIG_HOME", () => {
