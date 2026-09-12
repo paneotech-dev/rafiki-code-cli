@@ -10,7 +10,8 @@ import { $ } from "bun"
 import { Brand } from "@opencode-ai/core/brand/brand"
 import { RafikiUpdate } from "../../src/rafiki/update"
 
-const PORT = Number(process.env["RAFIKICODE_TEST_UPDATE_PORT"] ?? 4151)
+// 0 lets the kernel pick a free port; the URLs below read it back from the server.
+const PORT = Number(process.env["RAFIKICODE_TEST_UPDATE_PORT"] ?? 0)
 const VERSION = "9.9.9"
 const asset = Brand.release.asset("linux", "x64")
 
@@ -48,8 +49,8 @@ beforeAll(async () => {
       return new Response("not found", { status: 404 })
     },
   })
-  process.env[Brand.env.releaseAPI] = `http://127.0.0.1:${PORT}/api`
-  process.env[Brand.env.releaseBase] = `http://127.0.0.1:${PORT}/dl`
+  process.env[Brand.env.releaseAPI] = `http://127.0.0.1:${server.port}/api`
+  process.env[Brand.env.releaseBase] = `http://127.0.0.1:${server.port}/dl`
 })
 
 afterAll(async () => {
@@ -65,8 +66,8 @@ describe("RafikiUpdate", () => {
     delete process.env[Brand.env.releaseBase]
     expect(Brand.release.api()).toBe(`https://api.github.com/repos/${Brand.release.owner}/${Brand.release.repo}`)
     expect(Brand.release.base()).toBe(`https://github.com/${Brand.release.owner}/${Brand.release.repo}/releases`)
-    process.env[Brand.env.releaseAPI] = `http://127.0.0.1:${PORT}/api`
-    process.env[Brand.env.releaseBase] = `http://127.0.0.1:${PORT}/dl`
+    process.env[Brand.env.releaseAPI] = `http://127.0.0.1:${server.port}/api`
+    process.env[Brand.env.releaseBase] = `http://127.0.0.1:${server.port}/dl`
   })
 
   test("asset names match the build script output", () => {
