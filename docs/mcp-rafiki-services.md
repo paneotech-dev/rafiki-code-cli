@@ -6,7 +6,7 @@ Read the section "What is confirmed" before copying anything: the configuration 
 
 ## Configuration format
 
-MCP servers live under the `mcp` key of a configuration file: the global `~/.rafikicode/config.json` for servers you want in every project, or the project file (`opencode.json` at the repository root, see [Configuration](./configuration.md)) for servers the whole team shares. Two kinds exist:
+MCP servers live under the `mcp` key of a configuration file: the global `~/.rafikicode/config.json` for servers you want in every project, or the project configuration file at the repository root (its name is given in [Configuration](./configuration.md)) for servers the whole team shares. Two kinds exist:
 
 ```json
 {
@@ -51,7 +51,7 @@ rafikicode mcp add n8n --url https://n8n.example.com/mcp/my-workflow --header "A
 rafikicode mcp list
 ```
 
-`mcp add` writes the entry into the project or global file (it asks which) and `mcp list` shows whether each server connects. `rafikicode mcp --help` lists the rest (`auth`, `logout`, `debug` for OAuth servers).
+With a name and `--url`, `mcp add` writes the entry without prompting and prints the file it wrote to; run it with no arguments for the interactive form, which asks whether the server belongs to the current project or to your global configuration. `mcp list` shows whether each server connects. `rafikicode mcp --help` lists the rest (`auth`, `logout`, `debug` for OAuth servers).
 
 ## Which key to use
 
@@ -110,7 +110,7 @@ A Dify knowledge base that answers questions about your product, exposed this wa
 
 ## Sharing with a team
 
-Put the entries in the project's `opencode.json` and the token names in the project's `AGENTS.md` or README ("export `N8N_MCP_TOKEN` from the team vault before starting"). Everyone then gets the same tools, and nobody commits a token.
+Put the entries in the project configuration file and the token names in the project's `AGENTS.md` or README ("export `N8N_MCP_TOKEN` from the team vault before starting"). Everyone then gets the same tools, and nobody commits a token.
 
 ## What is confirmed
 
