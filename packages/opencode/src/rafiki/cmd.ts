@@ -26,6 +26,32 @@ function tryFlow<A>(what: Promise<A>) {
   )
 }
 
+// Commands that still run with an unsafe credential file: they report it,
+// replace it, or remove it.
+const unsafeAllowed = new Set(["login", "logout", "doctor"])
+
+// Runs before every command (src/index.ts). A credential file that is a link,
+// belongs to someone else, or is readable by others is refused: print the fix
+// and exit, unless RAFIKICODE_API_KEY is set.
+export function refuseUnsafeCredential(command: unknown) {
+  if (typeof command === "string" && unsafeAllowed.has(command)) return
+  const problem = Brand.unsafeCredential()
+  if (!problem) return
+  UI.error(`${problem.message}\nOr set ${Brand.env.apiKey} to use a server key instead.`)
+  process.exit(problem.exitCode)
+}
+
+// The stored credential, or undefined when the file is unsafe and the
+// caller is about to replace or remove it anyway.
+function storedOrUnsafe(): { stored?: Credentials.StoredCredential; unsafe?: Credentials.UnsafeCredentialError } {
+  try {
+    return { stored: Brand.credential() }
+  } catch (cause) {
+    if (cause instanceof Credentials.UnsafeCredentialError) return { unsafe: cause }
+    throw cause
+  }
+}
+
 function describeOwner(owner?: Contract.Owner) {
   if (!owner) return "unknown account"
   return [owner.name, owner.email].filter(Boolean).join(" ") || owner.id
@@ -64,9 +90,10 @@ export const LoginCommand = effectCmd({
       }),
   handler: Effect.fn("Cli.rafiki.login")(function* (args) {
     const dir = Brand.configDir()
-    const existing = Brand.credential()
+    const { stored: existing, unsafe } = storedOrUnsafe()
 
     if (args.refresh) {
+      if (unsafe) return yield* fail(unsafe.message, unsafe.exitCode)
       if (!existing) return yield* fail(Contract.MESSAGE[Contract.ERROR.unauthenticated], Contract.EXIT.usage)
       if (!DeviceFlow.shouldRefresh(existing, Date.now(), true)) {
         UI.println("The key was rotated less than an hour ago. Nothing to do.")
@@ -147,7 +174,14 @@ export const LogoutCommand = effectCmd({
   instance: false,
   handler: Effect.fn("Cli.rafiki.logout")(function* () {
     const dir = Brand.configDir()
-    const existing = Brand.credential()
+    const { stored: existing, unsafe } = storedOrUnsafe()
+    if (unsafe) {
+      // Its key is not trusted enough to send anywhere, so it is not revoked.
+      Credentials.remove(dir)
+      UI.println(`Removed ${Credentials.file(dir)} without revoking its key, because the file ${unsafe.reason}.`)
+      UI.println(`Revoke that key at ${Brand.consoleURL()}${Contract.PATH.keysPage} if it was yours.`)
+      return
+    }
     if (!existing) {
       if (process.env[Brand.env.apiKey]) {
         UI.println(`No stored login. ${Brand.env.apiKey} is set in the environment; unset it to stop using that key.`)

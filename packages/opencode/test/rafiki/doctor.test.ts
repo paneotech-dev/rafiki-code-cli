@@ -286,6 +286,28 @@ describe("doctor checks", () => {
     expect(expired.key).toBeUndefined()
     expect(JSON.stringify(expired.line)).not.toContain("sk-old")
   })
+
+  test("an unsafe credential file fails the credential check with its fix; the env key still passes", () => {
+    Credentials.write(dir, {
+      version: 1,
+      key: "sk-loose",
+      gateway_url: "http://127.0.0.1:1/v1",
+      console_url: "http://127.0.0.1:1",
+      created_at: new Date().toISOString(),
+    })
+    fs.chmodSync(Credentials.file(dir), 0o644)
+    const refused = Doctor.checkCredential({}, dir, "http://127.0.0.1:1", Date.now())
+    expect(refused.line.status).toBe("fail")
+    expect(refused.line.detail).toContain("refused: the file can be read or written by other users (mode 0644)")
+    expect(refused.line.fix).toContain(`chmod 600 ${Credentials.file(dir)}`)
+    expect(refused.key).toBeUndefined()
+    expect(JSON.stringify(refused.line)).not.toContain("sk-loose")
+
+    const env = Doctor.checkCredential({ RAFIKICODE_API_KEY: "sk-env" }, dir, "http://127.0.0.1:1", Date.now())
+    expect(env.line.status).toBe("ok")
+    expect(env.line.detail).toContain("is not used because the file can be read or written by other users")
+    expect(env.source).toBe("environment")
+  })
 })
 
 describe("rafikicode doctor as a subprocess", () => {

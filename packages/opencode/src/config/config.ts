@@ -7,6 +7,7 @@ import os from "os"
 import { mergeDeep } from "remeda"
 import { Global } from "@opencode-ai/core/global"
 import { Brand } from "@opencode-ai/core/brand/brand"
+import * as BrandGuard from "@opencode-ai/core/brand/guard"
 import fsNode from "fs/promises"
 import { Flag } from "@opencode-ai/core/flag/flag"
 import { Auth } from "../auth"
@@ -363,7 +364,8 @@ const layer = Layer.effect(
           result.plugin_origins = plugins
         })
 
-        const merge = (source: string, next: Info, kind?: ConfigPlugin.Scope) => {
+        const merge = (source: string, next: Info, kind?: ConfigPlugin.Scope, project = false) => {
+          next = project ? BrandGuard.projectConfig(source, next) : BrandGuard.trust(next)
           result = mergeConfigConcatArrays(result, next)
           return mergePluginOrigins(source, next.plugin, kind)
         }
@@ -420,7 +422,7 @@ const layer = Layer.effect(
 
         if (!Flag.OPENCODE_DISABLE_PROJECT_CONFIG) {
           for (const file of yield* ConfigPaths.files(Brand.project.fileNames, ctx.directory, ctx.worktree).pipe(Effect.orDie)) {
-            yield* merge(file, yield* loadFile(file, authEnv), "local")
+            yield* merge(file, yield* loadFile(file, authEnv), "local", true)
           }
         }
 
@@ -442,7 +444,8 @@ const layer = Layer.effect(
             for (const file of files) {
               const source = path.join(dir, file)
               yield* Effect.logDebug(`loading config from ${source}`)
-              yield* merge(source, yield* loadFile(source, authEnv))
+              const project = BrandGuard.isProjectDir(dir, { config: Global.Path.config, home: Global.Path.home, configDir: Flag.OPENCODE_CONFIG_DIR })
+              yield* merge(source, yield* loadFile(source, authEnv), undefined, project)
               result.agent ??= {}
               result.mode ??= {}
               result.plugin ??= []
