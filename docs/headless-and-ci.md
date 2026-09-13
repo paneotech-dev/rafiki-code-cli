@@ -16,7 +16,7 @@ Put it in the environment of the job:
 export RAFIKICODE_API_KEY=...
 ```
 
-`RAFIKICODE_API_KEY` takes precedence over any credential stored by `rafikicode login`. `rafikicode whoami --offline` confirms which credential is in use without printing the key.
+`RAFIKICODE_API_KEY` takes precedence over any credential stored by `rafikicode login`. `rafikicode whoami --offline` confirms which credential is in use without printing the key, and `rafikicode doctor` checks the whole chain (see below).
 
 Store the key in the secret store of your CI system, never in the repository. Revoke it from the same Console page when the machine is retired; the next request fails immediately with a clear message.
 
@@ -43,6 +43,36 @@ Flags that matter in automation, all listed by `rafikicode run --help`:
 Standard input is read as the message when it is not a terminal, so a script that pipes nothing should redirect `< /dev/null` or pass the message as arguments.
 
 `rafikicode serve --port 4096` starts the HTTP server for editor integrations and long lived automation on the same machine; `rafikicode attach` and `rafikicode run --attach` talk to it.
+
+## Checking a machine with doctor
+
+`rafikicode doctor` runs the checks a headless job depends on and prints one line each, `ok`, `FAIL` with a fix hint, or `skip` when an earlier check makes it moot:
+
+```text
+ok    config      /home/ci/.rafikicode/config.json not created yet, built in defaults apply
+ok    credential  RAFIKICODE_API_KEY from the environment
+ok    gateway     https://gateway.rafikiai.io answered in 135 ms
+ok    key         key ci-review, spent 0.31 USD of 5 USD budget, no expiry
+ok    tiers       rafiki-fast, rafiki-pro (not on this key: rafiki-max)
+ok    console     https://console.rafikiai.io, account Jane jane@example.com, wallet 12.4 USD available
+ok    version     rafikicode 1.2.3, latest channel, installed by the installer script, rafikicode update applies
+
+All checks passed.
+```
+
+The checks, in order:
+
+| line | what it verifies |
+|---|---|
+| `config` | `~/.rafikicode/config.json` is absent (defaults apply) or valid JSON with comments allowed; the default model is shown |
+| `credential` | which credential a run would use: `RAFIKICODE_API_KEY`, a stored sign-in, or none. A stored browser sign-in is reported as refused when `CI` is set |
+| `gateway` | the gateway answers its liveness probe, with the round trip time |
+| `key` | the gateway knows the key: alias, spend, budget and expiry as numbers and dates. A revoked key, a spent budget or an expired key fail here |
+| `tiers` | which of `rafiki-fast`, `rafiki-pro`, `rafiki-max` the key may use |
+| `console` | Rafiki Console answers, and with a key, the account and wallet balance |
+| `version` | the installed version, its update channel, and how it was installed |
+
+The exit code is 0 when every line is `ok` and 1 otherwise, so a pipeline can run it as a first step and stop before spending anything. `--timeout N` sets the seconds to wait for each network check (default 8). The key value is never printed. Set `RAFIKICODE_GATEWAY_URL` or `RAFIKICODE_CONSOLE_URL` to check a staging or local mock instead of production; the fix hints name the variable when it is set.
 
 ## Exit codes
 
@@ -71,7 +101,7 @@ A refused request from a revoked or expired key is reported the same way with a 
 
 ## Examples
 
-GitHub Actions job that reviews a pull request and posts the result as a check output:
+Pull request review in GitHub Actions is packaged as a composite action in this repository, `.github/actions/rafikicode-review`, with an example workflow next to it; see [Pull request review](./review-recipe.md). The hand written job below shows the same idea in plain steps for other CI systems:
 
 ```yaml
 name: rafikicode review
@@ -93,6 +123,7 @@ jobs:
         env:
           RAFIKICODE_API_KEY: ${{ secrets.RAFIKICODE_API_KEY }}
         run: |
+          rafikicode doctor
           rafikicode run --format json \
             "review the diff between origin/${{ github.base_ref }} and HEAD; list bugs and risky changes" \
             < /dev/null > review.jsonl

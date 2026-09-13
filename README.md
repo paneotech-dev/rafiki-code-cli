@@ -38,7 +38,7 @@ rafikicode run "explain the build setup in this repo"
 rafikicode                             # the interactive terminal UI
 ```
 
-`login` gives this terminal its own gateway key with a budget you can see and revoke in Rafiki Console; the key is stored in `~/.rafikicode/credentials`, readable by your user only. `whoami` shows the account, key budget and wallet balance; `logout` revokes the key. On servers and in CI there is no browser, so set a server key instead:
+`login` gives this terminal its own gateway key with a budget you can see and revoke in Rafiki Console; the key is stored in `~/.rafikicode/credentials`, readable by your user only. `whoami` shows the account, key budget and wallet balance; `logout` revokes the key; `doctor` checks the whole setup, one line per check. On servers and in CI there is no browser, so set a server key instead:
 
 ```bash
 export RAFIKICODE_API_KEY=...   # created at console.rafikiai.io/keys
@@ -92,7 +92,9 @@ Put an `AGENTS.md` at the root of your repository (or in any subdirectory) and `
 
 - [Quick start](./docs/quickstart.md): install, sign in, first task, tiers.
 - [Configuration](./docs/configuration.md): files, keys, environment variables.
-- [Headless and CI](./docs/headless-and-ci.md): server keys, non-interactive runs, exit codes, budget exhaustion, pipeline examples.
+- [Headless and CI](./docs/headless-and-ci.md): server keys, non-interactive runs, `rafikicode doctor`, exit codes, budget exhaustion, pipeline examples.
+- [Pull request review](./docs/review-recipe.md): review a diff from the terminal, or every pull request with the bundled GitHub Action.
+- [MCP: n8n and Dify](./docs/mcp-rafiki-services.md): give the agent tools from your n8n workflows and Dify apps.
 - [IDE preset](./docs/ide-preset.md): Cline pointed at the gateway with a Rafiki key.
 - [Troubleshooting](./docs/troubleshooting.md): messages, causes, fixes.
 
