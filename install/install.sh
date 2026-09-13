@@ -23,6 +23,19 @@ MUTED='\033[0;2m'
 RED='\033[0;31m'
 NC='\033[0m'
 
+# Release overrides must be https, or http on a loopback host for local mock
+# release servers. Checked before anything is downloaded.
+for override in "RELEASE_API=${RAFIKICODE_RELEASE_API:-}" "RELEASE_BASE=${RAFIKICODE_RELEASE_BASE:-}"; do
+    value="${override#*=}"
+    case "$value" in
+        ""|https://*|http://127.0.0.1|http://127.0.0.1[:/]*|http://localhost|http://localhost[:/]*) ;;
+        *)
+            printf 'Error: RAFIKICODE_%s must be an https URL (http is accepted only for 127.0.0.1 or localhost).\n' "${override%%=*}" >&2
+            exit 1
+            ;;
+    esac
+done
+
 # Scratch directory for downloads, removed on every exit path.
 TMP_DIR=""
 trap 'if [ -n "$TMP_DIR" ]; then rm -rf "$TMP_DIR"; fi' EXIT

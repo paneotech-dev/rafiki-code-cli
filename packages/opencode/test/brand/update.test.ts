@@ -70,6 +70,48 @@ describe("RafikiUpdate", () => {
     process.env[Brand.env.releaseBase] = `http://127.0.0.1:${server.port}/dl`
   })
 
+  test("a release override that is not https or loopback is not used, and update refuses to run", async () => {
+    const saved = process.env[Brand.env.releaseBase]
+    process.env[Brand.env.releaseBase] = "http://releases.example.com/dl"
+    try {
+      expect(Brand.release.base()).toBe(`https://github.com/${Brand.release.owner}/${Brand.release.repo}/releases`)
+      expect(Brand.release.overrideProblem()).toContain(Brand.env.releaseBase)
+      let calls = 0
+      const target = path.join(work, "untouched-binary")
+      await fs.writeFile(target, "old", { mode: 0o755 })
+      const run = RafikiUpdate.apply({
+        version: VERSION,
+        execPath: target,
+        variant: "",
+        fetch: (async () => {
+          calls++
+          return new Response("no")
+        }) as unknown as typeof fetch,
+      })
+      await expect(run).rejects.toThrow(/must be an https URL/)
+      expect(calls).toBe(0)
+      expect(await fs.readFile(target, "utf8")).toBe("old")
+      process.env[Brand.env.releaseBase] = "https://mirror.example.com/releases"
+      expect(Brand.release.base()).toBe("https://mirror.example.com/releases")
+      expect(Brand.release.overrideProblem()).toBeUndefined()
+    } finally {
+      process.env[Brand.env.releaseBase] = saved
+    }
+  })
+
+  test("the installer script refuses a release override that is not https or loopback", async () => {
+    const script = path.resolve(import.meta.dir, "../../../../install/install.sh")
+    const refused = Bun.spawnSync(["bash", script, "--dry-run"], {
+      env: { PATH: process.env.PATH ?? "", HOME: work, RAFIKICODE_RELEASE_API: "http://api.example.com" },
+    })
+    expect(refused.exitCode).toBe(1)
+    expect(refused.stderr.toString()).toContain("RAFIKICODE_RELEASE_API must be an https URL")
+    const help = Bun.spawnSync(["bash", script, "--help"], {
+      env: { PATH: process.env.PATH ?? "", HOME: work, RAFIKICODE_RELEASE_BASE: `http://127.0.0.1:${server.port}/dl` },
+    })
+    expect(help.exitCode).toBe(0)
+  })
+
   test("asset names match the build script output", () => {
     expect(RafikiUpdate.assetName("linux", "x64")).toBe("rafikicode-linux-x64.tar.gz")
     expect(RafikiUpdate.assetName("linux", "aarch64", "musl")).toBe("rafikicode-linux-arm64-musl.tar.gz")

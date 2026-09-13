@@ -154,6 +154,8 @@ export namespace RafikiUpdate {
 
   // Full update: resolve the version, download, verify, extract, replace.
   export async function apply(opts: Options = {}): Promise<Result> {
+    const problem = Brand.release.overrideProblem()
+    if (problem) throw new UpdateError(`${problem} Nothing was installed.`)
     const platform = opts.platform ?? process.platform
     const arch = opts.arch ?? process.arch
     const execPath = opts.execPath ?? process.execPath

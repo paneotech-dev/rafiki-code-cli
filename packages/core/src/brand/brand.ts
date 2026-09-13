@@ -44,6 +44,20 @@ function warnOnce(message: string) {
   process.stderr.write(message + "\n")
 }
 
+// Release override from the environment, when it is safe to download from.
+function releaseOverride(name: string) {
+  const value = process.env[name]
+  if (!value) return undefined
+  try {
+    const url = new URL(value)
+    if (url.protocol === "https:") return value
+    if (url.protocol === "http:" && ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)) return value
+  } catch {
+    // Not a URL: treated like any other refused value.
+  }
+  return undefined
+}
+
 export const Brand = {
   // Binary and script name, also the npm package name.
   name: "rafikicode",
@@ -127,12 +141,23 @@ export const Brand = {
     // One line installer, served at get.rafikiai.io (DNS by Julien, Phase 2).
     installer: "https://get.rafikiai.io",
     // GitHub releases API for this repository (latest release lookup).
+    // An override is used only when it is https, or http on a loopback host
+    // (local mock release servers); anything else falls back to the default and
+    // is reported by release.overrideProblem().
     api() {
-      return process.env[Brand.env.releaseAPI] || `https://api.github.com/repos/${Brand.release.owner}/${Brand.release.repo}`
+      return releaseOverride(Brand.env.releaseAPI) ?? `https://api.github.com/repos/${Brand.release.owner}/${Brand.release.repo}`
     },
     // Base URL that <base>/download/v<version>/<asset> resolves under.
     base() {
-      return process.env[Brand.env.releaseBase] || `https://github.com/${Brand.release.owner}/${Brand.release.repo}/releases`
+      return releaseOverride(Brand.env.releaseBase) ?? `https://github.com/${Brand.release.owner}/${Brand.release.repo}/releases`
+    },
+    // A message naming the first release override that is set but not allowed.
+    overrideProblem() {
+      for (const name of [Brand.env.releaseAPI, Brand.env.releaseBase]) {
+        const value = process.env[name]
+        if (value && !releaseOverride(name)) return `${name} must be an https URL (http is accepted only for 127.0.0.1 or localhost), so it is not used.`
+      }
+      return undefined
     },
     // Asset file name for a platform, matching script/build.ts output names.
     asset(os: string, arch: string, variant = "") {
