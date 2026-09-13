@@ -273,9 +273,13 @@ describe("rafikicode update, the command", () => {
       expect(lines[0]).toContain("Nothing was installed.")
       expect(process.exitCode).toBe(2)
     } finally {
-      process.env[Brand.env.releaseAPI] = saved.api
-      process.env[Brand.env.releaseBase] = saved.base
-      process.exitCode = saved.code
+      // Assigning undefined would store the string "undefined", and Bun keeps a
+      // nonzero exit code set to undefined, which fails the whole test run.
+      for (const [name, value] of [[Brand.env.releaseAPI, saved.api], [Brand.env.releaseBase, saved.base]] as const) {
+        if (value === undefined) delete process.env[name]
+        else process.env[name] = value
+      }
+      process.exitCode = saved.code ?? 0
     }
   })
 })
