@@ -8,7 +8,7 @@
 |---|---|
 | `~/.rafikicode/config.json` | global settings for your user. Created on first run with the built-in defaults |
 | `~/.rafikicode/AGENTS.md` | instructions applied to every project |
-| `~/.rafikicode/credentials` | the key stored by `rafikicode login`, mode 0600. Do not edit by hand; `logout` removes it |
+| `~/.rafikicode/credentials` | the key stored by `rafikicode login`, mode 0600, in a directory `login` sets to 0700. The file is not used (exit 2, with the fix to run) when it is a symbolic link, belongs to another user, can be read or written by others, or sits in a directory other users can write. Do not edit by hand; `logout` removes it |
 | `rafikicode.json` or `rafikicode.jsonc` at the repository root, or a `.rafikicode/` directory | project settings, committed with the project so the whole team shares them |
 | `AGENTS.md` in the repository (root or a subdirectory) | project instructions, read into every session |
 

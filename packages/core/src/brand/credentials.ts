@@ -94,7 +94,7 @@ export function check(dir: string, uid: number | undefined = currentUid()): Unsa
   if (stat.isSymbolicLink()) {
     return new UnsafeCredentialError(target, "is a symbolic link", `rm ${target}, then sign in again`)
   }
-  return unsafe(target, stat, uid)
+  return unsafe(target, stat, uid) ?? checkDir(dir, uid)
 }
 
 // Reads the stored credential. Throws UnsafeCredentialError for an unsafe file
@@ -121,8 +121,9 @@ export function read(dir: string, uid: number | undefined = currentUid()): Store
       return undefined
     }
     try {
-      // The checks run on the open descriptor, so they describe the bytes read.
-      const problem = unsafe(target, fs.fstatSync(fd), uid)
+      // The checks run on the open descriptor, so they describe the bytes read;
+      // the directory check refuses a file others could have swapped in.
+      const problem = unsafe(target, fs.fstatSync(fd), uid) ?? checkDir(dir, uid)
       if (problem) throw problem
       raw = fs.readFileSync(fd, "utf8")
     } catch (cause) {
@@ -142,16 +143,9 @@ export function read(dir: string, uid: number | undefined = currentUid()): Store
   }
 }
 
-// The directory the credential lives in must be a real directory owned by the
-// current user. A symbolic link or a foreign owner could redirect the write.
-export function checkDir(dir: string, uid: number | undefined = currentUid()): UnsafeCredentialError | undefined {
-  if (process.platform === "win32") return undefined
-  let stat: fs.Stats
-  try {
-    stat = fs.lstatSync(dir)
-  } catch {
-    return undefined
-  }
+// The directory must be a real directory owned by the current user. A symbolic
+// link or a foreign owner could redirect the write.
+function ownDir(dir: string, stat: fs.Stats, uid: number | undefined) {
   if (stat.isSymbolicLink()) {
     return new UnsafeCredentialError(dir, "is a symbolic link", `rm ${dir}, then sign in again`)
   }
@@ -162,14 +156,43 @@ export function checkDir(dir: string, uid: number | undefined = currentUid()): U
   return undefined
 }
 
+// The directory the credential lives in must be a real directory owned by the
+// current user that nobody else can write to: in a directory other users can
+// write, they could replace the credential file between the checks and the
+// read, whatever the file's own mode. On Windows the ACL decides; not checked.
+export function checkDir(dir: string, uid: number | undefined = currentUid()): UnsafeCredentialError | undefined {
+  if (process.platform === "win32") return undefined
+  let stat: fs.Stats
+  try {
+    stat = fs.lstatSync(dir)
+  } catch {
+    return undefined
+  }
+  const problem = ownDir(dir, stat, uid)
+  if (problem) return problem
+  const mode = stat.mode & 0o777
+  if (mode & 0o022) {
+    return new UnsafeCredentialError(dir, `can be changed by other users (mode ${mode.toString(8).padStart(4, "0")})`, `chmod ${DIR_MODE.toString(8)} ${dir}`)
+  }
+  return undefined
+}
+
 // Writes through a new temp file with a random name, created exclusively
 // (O_EXCL does not follow a planted link) and then renamed over the target.
 export function write(dir: string, credential: StoredCredential, uid: number | undefined = currentUid()) {
   fs.mkdirSync(dir, { recursive: true, mode: DIR_MODE })
-  const problem = checkDir(dir, uid)
-  if (problem) throw problem
-  // mkdirSync leaves an existing directory's mode alone; the contract wants 0700.
-  fs.chmodSync(dir, DIR_MODE)
+  if (process.platform !== "win32") {
+    const problem = ownDir(dir, fs.lstatSync(dir), uid)
+    if (problem) throw problem
+    // mkdirSync leaves an existing directory's mode alone (an installer's
+    // mkdir -p under umask 002 gives 0775); the contract wants 0700, and the
+    // directory is ours, so it is tightened before the checks below.
+    fs.chmodSync(dir, DIR_MODE)
+    const after = checkDir(dir, uid)
+    if (after) throw after
+  } else {
+    fs.chmodSync(dir, DIR_MODE)
+  }
   const target = file(dir)
   const tmp = `${target}.${randomBytes(8).toString("hex")}.tmp`
   const fd = fs.openSync(tmp, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | (fs.constants.O_NOFOLLOW ?? 0), FILE_MODE)

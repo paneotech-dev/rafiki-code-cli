@@ -206,6 +206,41 @@ describe("an unsafe credential file at the command line", () => {
   }, 120_000)
 })
 
+describe("credential directory other users can write (F7)", () => {
+  test.skipIf(process.platform === "win32")("a credential in a directory other users can write is refused with the chmod 700 fix", () => {
+    const dir = Brand.configDir()
+    Credentials.write(dir, sample)
+    for (const mode of [0o777, 0o770, 0o702]) {
+      fs.chmodSync(dir, mode)
+      const problem = Credentials.check(dir)
+      expect(problem?.reason).toBe(`can be changed by other users (mode ${mode.toString(8).padStart(4, "0")})`)
+      expect(problem?.fix).toBe(`chmod 700 ${dir}`)
+      expect(() => Credentials.read(dir)).toThrow(Credentials.UnsafeCredentialError)
+      expect(() => Credentials.read(dir)).toThrow(/can be changed by other users/)
+    }
+    fs.chmodSync(dir, 0o755)
+    expect(Credentials.check(dir)).toBeUndefined()
+    expect(Credentials.read(dir)).toEqual(sample)
+  })
+
+  test.skipIf(process.platform === "win32")("without a credential file such a directory is simply signed out", () => {
+    const dir = Brand.configDir()
+    fs.mkdirSync(dir, { recursive: true })
+    fs.chmodSync(dir, 0o777)
+    expect(Credentials.check(dir)).toBeUndefined()
+    expect(Credentials.read(dir)).toBeUndefined()
+  })
+
+  test.skipIf(process.platform === "win32")("signing in tightens an own directory other users could write to 0700", () => {
+    const dir = Brand.configDir()
+    fs.mkdirSync(dir, { recursive: true })
+    fs.chmodSync(dir, 0o775)
+    Credentials.write(dir, sample)
+    expect(fs.statSync(dir).mode & 0o777).toBe(0o700)
+    expect(Credentials.read(dir)).toEqual(sample)
+  })
+})
+
 describe("credential write (B4)", () => {
   test.skipIf(process.platform === "win32")("does not follow a planted credentials.tmp link and leaves no temp file", () => {
     const dir = Brand.configDir()
