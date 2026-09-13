@@ -4,6 +4,7 @@ import { Config } from "@/config/config"
 import { ConfigV1 } from "@opencode-ai/core/v1/config/config"
 import { TuiConfig } from "@opencode-ai/tui/config"
 import { Schema } from "effect"
+import { Brand } from "@opencode-ai/core/brand/brand"
 
 type JsonSchema = Record<string, unknown>
 const MODEL_REF = "https://models.dev/model-schema.json#/$defs/Model"
@@ -20,7 +21,20 @@ function generateEffect(schema: Schema.Top) {
   if (!isRecord(restored)) throw new Error("schema generator produced a non-object schema")
   restored.allowComments = true
   restored.allowTrailingCommas = true
-  return restored
+  return brandDescriptions(restored)
+}
+
+// Descriptions carry the upstream product name and docs links; editors show
+// them on hover, so they are rewritten the same way as system prompts.
+function brandDescriptions(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(brandDescriptions)
+  if (!isRecord(value)) return value
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [
+      key,
+      key === "description" && typeof item === "string" ? Brand.prompt(item) : brandDescriptions(item),
+    ]),
+  )
 }
 
 function normalize(value: unknown): unknown {

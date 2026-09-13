@@ -1,3 +1,4 @@
+import { Brand } from "@opencode-ai/core/brand/brand"
 import path from "path"
 import {
   type ParseError as JsoncParseError,
@@ -31,7 +32,7 @@ export type PatchDeps = {
   readText: (file: string) => Promise<string>
   write: (file: string, text: string) => Promise<void>
   exists: (file: string) => Promise<boolean>
-  files: (dir: string, name: "opencode" | "tui") => string[]
+  files: (dir: string, name: string) => string[]
 }
 
 export type PatchInput = {
@@ -334,19 +335,31 @@ function patchDir(input: PatchInput) {
   if (input.global) return input.config ?? Global.Path.config
   const git = input.vcs === "git" && input.worktree !== "/"
   const root = git ? input.worktree : input.directory
-  return path.join(root, ".opencode")
+  return Brand.project.dirIn(root)
 }
 
-function patchName(kind: Kind): "opencode" | "tui" {
-  if (kind === "server") return "opencode"
+function patchName(kind: Kind): string {
+  if (kind === "server") return Brand.project.file
   return "tui"
 }
 
-async function patchOne(dir: string, target: Target, spec: string, force: boolean, dep: PatchDeps): Promise<PatchOne> {
+async function patchOne(
+  dir: string,
+  target: Target,
+  spec: string,
+  force: boolean,
+  dep: PatchDeps,
+  global = false,
+): Promise<PatchOne> {
   const name = patchName(target.kind)
   await using _ = await Flock.acquire(`plug-config:${Filesystem.resolve(path.join(dir, name))}`)
 
-  const files = dep.files(dir, name)
+  const files =
+    name !== Brand.project.file
+      ? dep.files(dir, name)
+      : global
+        ? Brand.globalFiles.map((file) => path.join(dir, file))
+        : Brand.project.fileNames.flatMap((base) => dep.files(dir, base))
   let cfg = files[0]
   for (const file of files) {
     if (!(await dep.exists(file))) continue
@@ -422,7 +435,7 @@ export async function patchPluginConfig(input: PatchInput, dep: PatchDeps = defa
   const dir = patchDir(input)
   const items: PatchItem[] = []
   for (const target of input.targets) {
-    const hit = await patchOne(dir, target, input.spec, Boolean(input.force), dep)
+    const hit = await patchOne(dir, target, input.spec, Boolean(input.force), dep, Boolean(input.global))
     if (!hit.ok) {
       return {
         ...hit,

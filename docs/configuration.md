@@ -9,7 +9,7 @@
 | `~/.rafikicode/config.json` | global settings for your user. Created on first run with the built-in defaults |
 | `~/.rafikicode/AGENTS.md` | instructions applied to every project |
 | `~/.rafikicode/credentials` | the key stored by `rafikicode login`, mode 0600. Do not edit by hand; `logout` removes it |
-| `opencode.json` or `opencode.jsonc` at the repository root, or a `.opencode/` directory | project settings, committed with the project so the whole team shares them. These file names are kept from the upstream project so existing project configurations keep working |
+| `rafikicode.json` or `rafikicode.jsonc` at the repository root, or a `.rafikicode/` directory | project settings, committed with the project so the whole team shares them |
 | `AGENTS.md` in the repository (root or a subdirectory) | project instructions, read into every session |
 
 The file is JSON; JSONC (JSON with comments) is accepted for the `.jsonc` name. A minimal global file:
@@ -21,7 +21,7 @@ The file is JSON; JSONC (JSON with comments) is accepted for the `.jsonc` name. 
 }
 ```
 
-The environment variable `OPENCODE_CONFIG_DIR` adds another configuration directory (useful for isolated test environments and mocks). Note that the CLI looks for `opencode.json` or `opencode.jsonc` in that directory, not `config.json`; the global `~/.rafikicode/config.json` is still read first. `XDG_CONFIG_HOME`, when set, moves the `~/.rafikicode` directory the same way as on any other XDG aware tool.
+The environment variable `OPENCODE_CONFIG_DIR` adds another configuration directory (useful for isolated test environments and mocks). The CLI reads `config.json`, `rafikicode.json`, or `rafikicode.jsonc` in that directory; the global `~/.rafikicode/config.json` is still read first. `XDG_CONFIG_HOME`, when set, moves the `~/.rafikicode` directory the same way as on any other XDG aware tool.
 
 ## Built-in defaults
 
@@ -73,7 +73,7 @@ The structure of the nested keys (`permissions`, `agents`, `mcp`, and so on) is 
 | `RAFIKICODE_CONSOLE_URL` | override the Console base URL used by `login`, `logout` and `whoami`. Default `https://console.rafikiai.io` |
 | `RAFIKICODE_INSTALL_DIR` | installer target directory. Default `~/.rafikicode/bin` |
 | `RAFIKICODE_RELEASE_API`, `RAFIKICODE_RELEASE_BASE` | point the installer and `rafikicode update` at another release server (mirrors, tests) |
-| `OPENCODE_CONFIG_DIR` | add another configuration directory, read as `opencode.json` or `opencode.jsonc` there |
+| `OPENCODE_CONFIG_DIR` | add another configuration directory, read as `config.json`, `rafikicode.json`, or `rafikicode.jsonc` there |
 | `OPENCODE_SERVER_PASSWORD`, `OPENCODE_SERVER_USERNAME` | basic authentication for `rafikicode serve` and `attach` |
 | `OPENCODE_*` | other advanced switches keep their upstream names so upstream documentation and plugins keep working |
 

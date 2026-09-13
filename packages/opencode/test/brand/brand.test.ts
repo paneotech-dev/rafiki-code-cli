@@ -17,10 +17,14 @@ const root = path.resolve(import.meta.dir, "../..")
 // names, which stay unchanged for plugin and documentation compatibility.
 const upstreamWord = /(?<![A-Z_])opencode(?![A-Z_])/i
 
-async function help(args: string[], extraEnv: Record<string, string> = {}) {
+async function help(
+  args: string[],
+  extraEnv: Record<string, string> = {},
+  options: { cwd?: string; inspect?: (home: string) => Promise<void> } = {},
+) {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), "rafikicode-brand-"))
   const proc = Bun.spawn(["bun", "run", path.join(root, "src/index.ts"), ...args], {
-    cwd: root,
+    cwd: options.cwd ?? root,
     stdout: "pipe",
     stderr: "pipe",
     env: {
@@ -41,6 +45,7 @@ async function help(args: string[], extraEnv: Record<string, string> = {}) {
   })
   const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])
   const exitCode = await proc.exited
+  if (options.inspect) await options.inspect(home)
   await fs.rm(home, { recursive: true, force: true })
   return { exitCode, stdout, stderr }
 }
@@ -134,10 +139,12 @@ describe("brand constants", () => {
     }
   })
 
-  test("default config registers the gateway provider only when a key is present", () => {
+  test("default config registers the gateway provider only with a key and always disables upstream providers", () => {
     const before = process.env[Brand.env.apiKey]
     delete process.env[Brand.env.apiKey]
-    expect(Brand.config().provider).toBeUndefined()
+    const withoutKey = Brand.config()
+    expect(withoutKey.provider).toBeUndefined()
+    expect(withoutKey.disabled_providers).toEqual(["opencode", "opencode-go"])
     process.env[Brand.env.apiKey] = "sk-test"
     const config = Brand.config()
     if (before === undefined) delete process.env[Brand.env.apiKey]
@@ -149,7 +156,62 @@ describe("brand constants", () => {
     expect(Object.keys(provider.models)).toEqual(["rafiki-fast", "rafiki-pro", "rafiki-max"])
     for (const model of Object.values(provider.models)) expect(model.tool_call).toBe(true)
     expect(config.autoupdate).toBe(false)
-    expect(JSON.stringify(config)).not.toMatch(upstreamWord)
+    expect(config.disabled_providers).toEqual(["opencode", "opencode-go"])
+    expect(JSON.stringify(config).replaceAll('"opencode","opencode-go"', "")).not.toMatch(upstreamWord)
+  })
+
+  test("project config names prefer rafikicode and keep reading the upstream names", async () => {
+    expect(Brand.project.dir).toBe(".rafikicode")
+    expect(Brand.project.file).toBe("rafikicode")
+    expect(Brand.project.dirs[0]).toBe(".rafikicode")
+    expect(Brand.project.files[0]).toBe("rafikicode.json")
+    expect(Brand.project.isDir("/a/b/.rafikicode")).toBe(true)
+    expect(Brand.project.isDir("/a/b/.opencode")).toBe(true)
+    expect(Brand.project.isDir("/a/b/.other")).toBe(false)
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "rafikicode-project-"))
+    expect(Brand.project.dirIn(root)).toBe(path.join(root, ".rafikicode"))
+    await fs.mkdir(path.join(root, ".opencode"))
+    expect(Brand.project.dirIn(root)).toBe(path.join(root, ".opencode"))
+    await fs.mkdir(path.join(root, ".rafikicode"))
+    expect(Brand.project.dirIn(root)).toBe(path.join(root, ".rafikicode"))
+    await fs.rm(root, { recursive: true, force: true })
+  })
+
+  test("rafikicode.json, .rafikicode/, and the upstream names are all read from a project", async () => {
+    const project = await fs.mkdtemp(path.join(os.tmpdir(), "rafikicode-projectcfg-"))
+    await fs.writeFile(path.join(project, "rafikicode.json"), JSON.stringify({ username: "from-rafikicode-json" }))
+    await fs.mkdir(path.join(project, ".rafikicode"))
+    await fs.writeFile(path.join(project, ".rafikicode", "rafikicode.json"), JSON.stringify({ model: "dir/model" }))
+    await fs.writeFile(path.join(project, "opencode.json"), JSON.stringify({ small_model: "legacy/model" }))
+    const result = await help(["debug", "config"], { OPENCODE_DISABLE_PROJECT_CONFIG: "" }, { cwd: project })
+    await fs.rm(project, { recursive: true, force: true })
+    expect(result.exitCode).toBe(0)
+    const config = JSON.parse(result.stdout)
+    expect(config.username).toBe("from-rafikicode-json")
+    expect(config.model).toBe("dir/model")
+    expect(config.small_model).toBe("legacy/model")
+  }, 60_000)
+
+  test("a fresh global config is seeded with our schema URL", async () => {
+    let seeded = ""
+    const result = await help(["debug", "config"], { XDG_CONFIG_HOME: "" }, {
+      inspect: async (home) => {
+        seeded = await fs.readFile(path.join(home, ".rafikicode", "config.json"), "utf8")
+      },
+    })
+    expect(result.exitCode).toBe(0)
+    expect(JSON.parse(seeded).$schema).toBe(Brand.schema.config)
+    expect(Brand.schema.config).toBe("https://raw.githubusercontent.com/paneotech-dev/rafiki-code-cli/main/schema/config.json")
+    expect(seeded).not.toMatch(upstreamWord)
+  }, 60_000)
+
+  test("the schema files are checked in and free of upstream names", async () => {
+    for (const name of ["config.json", "tui.json"]) {
+      const text = await fs.readFile(path.join(root, "../../schema", name), "utf8")
+      expect(JSON.parse(text).$schema).toBe("https://json-schema.org/draft/2020-12/schema")
+      expect(text).not.toMatch(upstreamWord)
+      expect(text).not.toContain("opencode.ai")
+    }
   })
 
   test("release locations and npm names come from the brand module", () => {
@@ -192,6 +254,7 @@ describe("brand constants", () => {
     }
     const rewritten = Brand.prompt("You are opencode. Report issues at https://github.com/anomalyco/opencode/issues")
     expect(rewritten).toBe(`You are ${Brand.name}. Report issues at ${Brand.docs}/issues`)
+    expect(Brand.prompt("see https://opencode.ai/docs/agents and https://opencode.ai/docs")).toBe(`see ${Brand.docs} and ${Brand.docs}`)
     // Config file names and project directories are left alone.
     expect(Brand.prompt("see opencode.json and .opencode/agents")).toBe("see opencode.json and .opencode/agents")
   })
@@ -227,6 +290,7 @@ describe("help output", () => {
     const result = await help(["--help"])
     expect(result.exitCode).toBe(0)
     expect(result.stderr).toContain("rafikicode run [message..]")
+    expect(result.stderr).not.toContain("rafikicode github")
     expect(result.stderr).toContain("rafikicode [project]")
     expect(result.stderr).toContain(Brand.wordmark[1])
     expect(result.stderr).not.toMatch(upstreamWord)
