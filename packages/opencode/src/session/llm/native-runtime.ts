@@ -18,6 +18,7 @@ import {
 } from "@opencode-ai/llm"
 import type { LLMClientShape } from "@opencode-ai/llm/route"
 import { LLMNative } from "./native-request"
+import * as BrandGuard from "@opencode-ai/core/brand/guard"
 
 export type RuntimeStatus =
   | { readonly type: "supported"; readonly apiKey: string; readonly baseURL?: string }
@@ -63,6 +64,8 @@ function statusWithFetch(
 
   const apiKey = typeof input.provider.options.apiKey === "string" ? input.provider.options.apiKey : input.provider.key
   if (!apiKey) return { type: "unsupported", reason: "API key is not configured" }
+  const baseURL = typeof input.provider.options.baseURL === "string" ? input.provider.options.baseURL : input.model.api.url
+  if (!BrandGuard.allowed(baseURL ?? "", [apiKey])) return { type: "unsupported", reason: "the Rafiki key is only sent to the Rafiki gateway" }
 
   return {
     type: "supported",
