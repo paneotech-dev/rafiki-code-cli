@@ -4,6 +4,7 @@ import type { JSONSchema7 } from "@ai-sdk/provider"
 import type * as Provider from "./provider"
 import type * as ModelsDev from "@opencode-ai/core/models-dev"
 import { iife } from "@/util/iife"
+import { Brand } from "@opencode-ai/core/brand/brand"
 
 type Modality = NonNullable<ModelsDev.Model["modalities"]>["input"][number]
 
@@ -1465,7 +1466,10 @@ export function providerOptions(model: Provider.Model, options: { [x: string]: a
   return { [key]: normalized }
 }
 
-export function maxOutputTokens(model: Provider.Model, outputTokenMax = OUTPUT_TOKEN_MAX): number {
+export function maxOutputTokens(
+  model: Provider.Model,
+  outputTokenMax = model.providerID === Brand.provider.id && model.limit.output > 0 ? model.limit.output : OUTPUT_TOKEN_MAX,
+): number {
   return Math.min(model.limit.output, outputTokenMax) || outputTokenMax
 }
 

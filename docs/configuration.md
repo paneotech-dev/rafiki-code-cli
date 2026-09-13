@@ -72,10 +72,24 @@ The structure of the nested keys (`permissions`, `agents`, `mcp`, and so on) is 
 | `RAFIKICODE_GATEWAY_URL` | override the gateway base URL (local mocks, staging). Default `https://gateway.rafikiai.io/v1` |
 | `RAFIKICODE_CONSOLE_URL` | override the Console base URL used by `login`, `logout` and `whoami`. Default `https://console.rafikiai.io` |
 | `RAFIKICODE_INSTALL_DIR` | installer target directory. Default `~/.rafikicode/bin` |
-| `RAFIKICODE_RELEASE_API`, `RAFIKICODE_RELEASE_BASE` | point the installer and `rafikicode update` at another release server (mirrors, tests) |
+| `RAFIKICODE_RELEASE_API`, `RAFIKICODE_RELEASE_BASE` | point the installer and `rafikicode update` at another release server (mirrors, tests). Must be https; plain http is accepted only for `127.0.0.1` or `localhost` |
+| `RAFIKICODE_REASONING_EFFORT` | reasoning effort sent on every tier: `none`, `low`, `medium`, `high`, or `default` for no parameter. See [Reasoning and output limits](#reasoning-and-output-limits) |
+| `RAFIKICODE_MAX_OUTPUT_TOKENS` | output token limit for every tier, 1024 to 128000 |
 | `OPENCODE_CONFIG_DIR` | add another configuration directory, read as `config.json`, `rafikicode.json`, or `rafikicode.jsonc` there |
 | `OPENCODE_SERVER_PASSWORD`, `OPENCODE_SERVER_USERNAME` | basic authentication for `rafikicode serve` and `attach` |
 | `OPENCODE_*` | other advanced switches keep their upstream names so upstream documentation and plugins keep working |
+
+## Reasoning and output limits
+
+`rafiki-fast` is a *reasoning model*: it thinks before it answers, and the thinking counts against the output token limit. By default `rafiki-fast` may write up to 64000 output tokens and sends no reasoning setting, so the model decides how much to think. `rafiki-pro` and `rafiki-max` may write up to 32000.
+
+If a reply stops with "The model used its whole output budget reasoning and wrote no answer", turn reasoning off with the `none` variant:
+
+```bash
+rafikicode run --variant none "your request"
+```
+
+In the terminal interface, press `ctrl+t` to cycle the model's variants until `none` is selected. To turn reasoning off for every run, set `RAFIKICODE_REASONING_EFFORT=none`. `rafiki-fast` and `rafiki-max` offer the variants `none`, `low`, `medium` and `high`; `rafiki-pro` offers none.
 
 ## Choosing a tier per project
 

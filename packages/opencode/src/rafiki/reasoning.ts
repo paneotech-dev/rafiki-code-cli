@@ -6,7 +6,7 @@
 import { Brand } from "@opencode-ai/core/brand/brand"
 import { NamedError } from "@opencode-ai/core/util/error"
 
-export const EMPTY_LENGTH_MESSAGE = `The model used its whole output budget reasoning and wrote no answer. Try again with a lower reasoning variant or a shorter request, or raise ${Brand.env.maxOutputTokens}.`
+export const EMPTY_LENGTH_MESSAGE = `The model used its whole output budget reasoning and wrote no answer. Try again with reasoning off: the none variant (--variant none, or ${Brand.env.reasoningEffort}=none). A shorter request or a higher ${Brand.env.maxOutputTokens} also helps.`
 
 interface TurnInfo {
   providerID: string

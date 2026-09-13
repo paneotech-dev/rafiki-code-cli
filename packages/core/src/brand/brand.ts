@@ -21,16 +21,24 @@ const labels: Record<(typeof models)[number], string> = {
 
 // Request defaults for the gateway tiers. rafiki-fast is a reasoning model
 // (its completion tokens include reasoning), so a small output cap can end a
-// turn with no answer at all: every tier gets the fork's full 32000 token
-// output limit, and fast asks for low reasoning effort, which the gateway
-// accepted and which left room for a whole page scaffold (2026-09-13).
-// rafiki-pro sends no effort and offers no effort variants: a call carrying
-// one was answered by the max fallback instead of pro. The two env names let
-// the orchestrator set a per turn budget for the engine in a sandbox.
+// turn with no answer at all. Measured on the gateway 2026-09-13: a streamed
+// rafiki-fast call with reasoning_effort "low" reasons exactly as much as one
+// with no effort parameter, while "none" reasons not at all, and a scaffold
+// sized answer needs about 64000 output tokens with default reasoning. So fast
+// gets a 64000 token output limit and sends no effort by default; pro and max
+// keep 32000.
+//
+// Turning reasoning off: every tier with variants offers none, low, medium and
+// high. The none variant sends reasoning_effort "none" (rafikicode run
+// --variant none, or ctrl+t to cycle variants in the terminal interface), and
+// RAFIKICODE_REASONING_EFFORT=none sends it on every tier. rafiki-pro sends no
+// effort and offers no effort variants: a call carrying one was answered by
+// the max fallback instead of pro. The two env names let the orchestrator set
+// a per turn budget for the engine in a sandbox.
 const reasoningEfforts = ["none", "low", "medium", "high"] as const
 type ReasoningEffort = (typeof reasoningEfforts)[number]
 const requestDefaults: Record<(typeof models)[number], { output: number; effort?: ReasoningEffort; variants: boolean }> = {
-  "rafiki-fast": { output: 32_000, effort: "low", variants: true },
+  "rafiki-fast": { output: 64_000, variants: true },
   "rafiki-pro": { output: 32_000, variants: false },
   "rafiki-max": { output: 32_000, variants: true },
 }
@@ -125,11 +133,12 @@ export const Brand = {
     releaseBase: "RAFIKICODE_RELEASE_BASE",
     // Overrides the Console base URL for the device flow, used for local mocks and staging.
     consoleURL: "RAFIKICODE_CONSOLE_URL",
-    // Output token limit for every rafiki-* model (1024 to 128000). Above 32000
-    // the fork's runtime cap OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX must be raised too.
+    // Output token limit for every rafiki-* model (1024 to 128000). The rafiki
+    // provider is not held to the upstream 32000 runtime cap; an explicit
+    // OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX still lowers it.
     maxOutputTokens: "RAFIKICODE_MAX_OUTPUT_TOKENS",
     // Reasoning effort for every rafiki-* model: none, low, medium, high, or
-    // default to send none.
+    // default to send no effort parameter. none turns reasoning off.
     reasoningEffort: "RAFIKICODE_REASONING_EFFORT",
   },
   // Where builds are published. The installer script and the self updater read

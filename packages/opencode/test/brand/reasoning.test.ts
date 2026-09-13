@@ -1,13 +1,16 @@
 // Request defaults for the rafiki-* models, and the message for a turn that
 // ends empty on its output limit. rafiki-fast is a reasoning model: with a
-// tiny output cap or its default effort it can spend every token reasoning
-// and answer nothing (measured on the gateway, 2026-09-13).
+// tiny output cap it can spend every token reasoning and answer nothing, and
+// a streamed "low" effort reasons as much as no effort at all, so the default
+// sends none and the none variant turns reasoning off (measured on the
+// gateway, 2026-09-13).
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import fs from "fs"
 import os from "os"
 import path from "path"
 import { Brand } from "@opencode-ai/core/brand/brand"
 import { EMPTY_LENGTH_MESSAGE, emptyLengthError, isEmptyLengthTurn } from "../../src/rafiki/reasoning"
+import { ProviderTransform } from "../../src/provider/transform"
 import { createMockGateway } from "./mock-gateway.mjs"
 
 const root = path.resolve(import.meta.dir, "../..")
@@ -25,12 +28,15 @@ function models() {
 }
 
 describe("rafiki model request defaults", () => {
-  test("no tiny output cap, low effort on fast, effort variants where the gateway accepted them", () => {
+  test("fast gets 64000 output tokens and no effort, pro and max 32000, effort variants where the gateway accepted them", () => {
     delete process.env[Brand.env.maxOutputTokens]
     delete process.env[Brand.env.reasoningEffort]
     const m = models()
-    for (const id of Brand.models) expect(m[id].limit.output).toBe(32_000)
-    expect(m["rafiki-fast"].options).toEqual({ reasoningEffort: "low" })
+    expect(m["rafiki-fast"].limit.output).toBe(64_000)
+    expect(m["rafiki-pro"].limit.output).toBe(32_000)
+    expect(m["rafiki-max"].limit.output).toBe(32_000)
+    expect(m["rafiki-fast"].options).toBeUndefined()
+    expect(m["rafiki-fast"].variants.none).toEqual({ reasoningEffort: "none" })
     expect(m["rafiki-pro"].options).toBeUndefined()
     expect(m["rafiki-max"].options).toBeUndefined()
     const variants = Object.fromEntries(Brand.provider.reasoningEfforts.map((e) => [e, { reasoningEffort: e }]))
@@ -51,12 +57,21 @@ describe("rafiki model request defaults", () => {
     process.env[Brand.env.maxOutputTokens] = "16"
     m = models()
     expect(m["rafiki-fast"].options).toBeUndefined()
-    expect(m["rafiki-fast"].limit.output).toBe(32_000)
+    expect(m["rafiki-fast"].limit.output).toBe(64_000)
     process.env[Brand.env.reasoningEffort] = "extreme"
     process.env[Brand.env.maxOutputTokens] = "12k"
     m = models()
-    expect(m["rafiki-fast"].options).toEqual({ reasoningEffort: "low" })
-    expect(m["rafiki-fast"].limit.output).toBe(32_000)
+    expect(m["rafiki-fast"].options).toBeUndefined()
+    expect(m["rafiki-fast"].limit.output).toBe(64_000)
+    expect(m["rafiki-pro"].limit.output).toBe(32_000)
+  })
+
+  test("the rafiki provider is held to its own output limit, not the upstream 32000 cap; an explicit cap still wins", () => {
+    const fast = { providerID: Brand.provider.id, limit: { context: 128_000, output: 64_000 } } as any
+    const other = { providerID: "openai", limit: { context: 400_000, output: 128_000 } } as any
+    expect(ProviderTransform.maxOutputTokens(fast)).toBe(64_000)
+    expect(ProviderTransform.maxOutputTokens(fast, 20_000)).toBe(20_000)
+    expect(ProviderTransform.maxOutputTokens(other)).toBe(ProviderTransform.OUTPUT_TOKEN_MAX)
   })
 
   test("an empty turn that stopped on length gets a clear error; text, tools and other providers do not", () => {
@@ -69,6 +84,8 @@ describe("rafiki model request defaults", () => {
     const error = emptyLengthError({ providerID: "rafiki", finish: "length" }, reasoningOnly) as any
     expect(error.name).toBe("UnknownError")
     expect(error.data.message).toBe(EMPTY_LENGTH_MESSAGE)
+    expect(EMPTY_LENGTH_MESSAGE).toContain("--variant none")
+    expect(EMPTY_LENGTH_MESSAGE).toContain(`${Brand.env.reasoningEffort}=none`)
     expect(EMPTY_LENGTH_MESSAGE).not.toMatch(/deepseek|rafiki-fast|opencode/i)
     expect(emptyLengthError({ providerID: "openai", finish: "length" }, reasoningOnly)).toBeUndefined()
     expect(emptyLengthError({ providerID: "rafiki", finish: "length", error: { name: "APIError" } }, reasoningOnly)).toBeUndefined()
@@ -122,12 +139,14 @@ describe("rafikicode run against the mock gateway", () => {
   const promptCalls = (marker: string) =>
     gateway!.requests.filter((r: any) => r.path === "/v1/chat/completions" && String(r.last_user ?? "").includes(marker))
 
-  test("the prompt carries the full output cap and the tier's effort; a variant and the env names change them", async () => {
+  test("the prompt carries the full output limit and no effort; the none variant and the env names change them", async () => {
     gateway = createMockGateway({ quiet: true })
     await gateway.ready
     const plain = await run(["run", "defaults check"])
     expect(plain.exitCode).toBe(0)
-    expect(promptCalls("defaults check").at(-1)).toMatchObject({ model: "rafiki-fast", max_tokens: 32_000, reasoning_effort: "low" })
+    const plainCall = promptCalls("defaults check").at(-1) as any
+    expect(plainCall).toMatchObject({ model: "rafiki-fast", max_tokens: 64_000 })
+    expect(plainCall.reasoning_effort).toBeUndefined()
     for (const call of gateway.requests.filter((r: any) => r.path === "/v1/chat/completions")) {
       if ((call as any).max_tokens !== undefined) expect((call as any).max_tokens).toBeGreaterThanOrEqual(1_024)
     }
@@ -147,6 +166,7 @@ describe("rafikicode run against the mock gateway", () => {
     const result = await run(["run", "empty check"])
     expect(result.all).toContain("whole output budget reasoning and wrote no answer")
     expect(result.all).toContain(Brand.env.maxOutputTokens)
+    expect(result.all).toContain("--variant none")
     // One agent turn (the call with tools); the title call carries the same text and no tools.
     expect(promptCalls("empty check").filter((r: any) => r.tools > 0).length).toBe(1)
   }, 120_000)
