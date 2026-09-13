@@ -20,6 +20,7 @@
 //   MOCK_GATEWAY_ENFORCE=1       require a minted key even before any was minted
 //   MOCK_GATEWAY_COST=0.001      spend added per successful chat call, in USD
 //   MOCK_GATEWAY_FAIL=budget|revoked|denied|down|rate   fail every chat call that way
+//   MOCK_GATEWAY_EMPTY_LENGTH=1  answer like a reasoning model out of budget: reasoning only, no content, finish length
 import http from "node:http"
 import fs from "node:fs"
 import crypto from "node:crypto"
@@ -35,6 +36,7 @@ export function createMockGateway(options = {}) {
     enforce: options.enforce ?? false,
     cost: options.cost ?? 0.001,
     fail: options.fail,
+    emptyLength: options.emptyLength ?? process.env.MOCK_GATEWAY_EMPTY_LENGTH === "1",
   }
   // token -> { alias, models, max_budget, budget_duration, rpm_limit, tpm_limit, spend, metadata, deleted }
   const keys = new Map()
@@ -104,7 +106,11 @@ export function createMockGateway(options = {}) {
       object: "chat.completion",
       created: Math.floor(Date.now() / 1000),
       model,
-      choices: [{ index: 0, message: { role: "assistant", content: text }, finish_reason: "stop" }],
+      choices: [
+        opts.emptyLength
+          ? { index: 0, message: { role: "assistant", content: "", reasoning_content: "Planning the answer..." }, finish_reason: "length" }
+          : { index: 0, message: { role: "assistant", content: text }, finish_reason: "stop" },
+      ],
       usage: { prompt_tokens: 12, completion_tokens: 8, total_tokens: 20 },
     }
   }
@@ -121,8 +127,13 @@ export function createMockGateway(options = {}) {
     const chunk = (delta, finish) =>
       "data: " + JSON.stringify({ id, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta, finish_reason: finish }] }) + "\n\n"
     res.write(chunk({ role: "assistant", content: "" }, null))
-    for (const word of text.split(" ")) res.write(chunk({ content: word + " " }, null))
-    res.write(chunk({}, "stop"))
+    if (opts.emptyLength) {
+      res.write(chunk({ reasoning_content: "Planning the answer..." }, null))
+      res.write(chunk({}, "length"))
+    } else {
+      for (const word of text.split(" ")) res.write(chunk({ content: word + " " }, null))
+      res.write(chunk({}, "stop"))
+    }
     res.write(
       "data: " +
         JSON.stringify({ id, object: "chat.completion.chunk", created, model, choices: [], usage: { prompt_tokens: 12, completion_tokens: 8, total_tokens: 20 } }) +
@@ -191,6 +202,8 @@ export function createMockGateway(options = {}) {
         stream: body.stream === true,
         messages: messages.length,
         tools: Array.isArray(body.tools) ? body.tools.length : 0,
+        max_tokens: body.max_tokens ?? body.max_completion_tokens,
+        reasoning_effort: body.reasoning_effort,
         last_user: typeof last?.content === "string" ? last.content.slice(0, 120) : undefined,
         status: check.status ?? 200,
         error_type: check.type,
