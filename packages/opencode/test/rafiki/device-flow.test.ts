@@ -232,10 +232,11 @@ describe("policy helpers", () => {
   test("token to credential", () => {
     const now = Date.parse("2026-09-11T22:00:00Z")
     const credential = DeviceFlow.toCredential(
-      { access_token: "sk-x", token_type: "bearer", expires_in: 3600, key_id: "k", key_alias: "a", gateway_url: "http://g/v1", console_url: "http://c", owner: { id: "u" } },
+      { access_token: "sk-x", token_type: "bearer", expires_in: 3600, key_id: "k", key_alias: "a", gateway_url: "https://g/v1", console_url: "http://c", owner: { id: "u" } },
       now,
     )
-    expect(credential).toMatchObject({ version: 1, key: "sk-x", key_id: "k", key_alias: "a", gateway_url: "http://g/v1", console_url: "http://c" })
+    // A plain http gateway URL is replaced by the default (gateway-scheme.test.ts).
+    expect(credential).toMatchObject({ version: 1, key: "sk-x", key_id: "k", key_alias: "a", gateway_url: "https://g/v1", console_url: "http://c" })
     expect(credential.expires_at).toBe("2026-09-11T23:00:00.000Z")
     expect(credential.created_at).toBe("2026-09-11T22:00:00.000Z")
   })

@@ -45,25 +45,50 @@ const requestDefaults: Record<(typeof models)[number], { output: number; effort?
 const outputFloor = 1_024
 const outputCeiling = 128_000
 
-let warned = false
+const warned = new Set<string>()
 function warnOnce(message: string) {
-  if (warned) return
-  warned = true
+  if (warned.has(message)) return
+  warned.add(message)
   process.stderr.write(message + "\n")
 }
 
-// Release override from the environment, when it is safe to download from.
+function parseURL(value: string) {
+  try {
+    return new URL(value)
+  } catch {
+    return undefined
+  }
+}
+
+// Hosts that name this machine. URL parsing gives [::1] with brackets.
+const loopbackNames = new Set(["127.0.0.1", "[::1]", "::1", "localhost"])
+function isLoopback(hostname: string) {
+  return loopbackNames.has(hostname.toLowerCase())
+}
+
+// A URL the key or a download may use: https with a plain host (no user
+// info), or plain http when allowHttp says the host qualifies.
+function safeURL(value: string | undefined, allowHttp: (url: URL) => boolean) {
+  if (!value) return false
+  const url = parseURL(value)
+  if (!url || url.username || url.password) return false
+  if (url.protocol === "https:") return true
+  return url.protocol === "http:" && allowHttp(url)
+}
+
+// Release override from the environment, when it is safe to download from:
+// https, or plain http to a literal loopback address (127.0.0.1 or [::1])
+// with the installer test switch set, the same rule as install/install.sh.
 function releaseOverride(name: string) {
   const value = process.env[name]
-  if (!value) return undefined
-  try {
-    const url = new URL(value)
-    if (url.protocol === "https:") return value
-    if (url.protocol === "http:" && ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)) return value
-  } catch {
-    // Not a URL: treated like any other refused value.
-  }
-  return undefined
+  const loopbackAllowed = process.env[Brand.env.allowHttpLoopback] === "1"
+  return safeURL(value, (url) => loopbackAllowed && ["127.0.0.1", "[::1]"].includes(url.hostname)) ? value : undefined
+}
+
+// The gateway receives the key, so it is https only; plain http is accepted
+// for this machine (local mocks and tunnels).
+function gatewayAllowed(value: string | undefined) {
+  return safeURL(value, (url) => isLoopback(url.hostname))
 }
 
 export const Brand = {
@@ -139,6 +164,9 @@ export const Brand = {
     releaseAPI: "RAFIKICODE_RELEASE_API",
     // Overrides the release download base URL (mock release servers in tests).
     releaseBase: "RAFIKICODE_RELEASE_BASE",
+    // Test switch shared with the installers: 1 lets the release overrides use
+    // plain http on 127.0.0.1 or [::1].
+    allowHttpLoopback: "RAFIKICODE_INSTALL_ALLOW_HTTP_LOOPBACK",
     // Overrides the Console base URL for the device flow, used for local mocks and staging.
     consoleURL: "RAFIKICODE_CONSOLE_URL",
     // Alias of OPENCODE_DISABLE_PROJECT_CONFIG: nothing is loaded from the working
@@ -167,9 +195,10 @@ export const Brand = {
     // One line installer, served at get.rafikiai.io (DNS by Julien, Phase 2).
     installer: "https://get.rafikiai.io",
     // GitHub releases API for this repository (latest release lookup).
-    // An override is used only when it is https, or http on a loopback host
-    // (local mock release servers); anything else falls back to the default and
-    // is reported by release.overrideProblem().
+    // An override is used only when it is https, or http on 127.0.0.1 or [::1]
+    // with RAFIKICODE_INSTALL_ALLOW_HTTP_LOOPBACK=1 (local mock release
+    // servers); anything else falls back to the default and is reported by
+    // release.overrideProblem().
     api() {
       return releaseOverride(Brand.env.releaseAPI) ?? `https://api.github.com/repos/${Brand.release.owner}/${Brand.release.repo}`
     },
@@ -181,9 +210,16 @@ export const Brand = {
     overrideProblem() {
       for (const name of [Brand.env.releaseAPI, Brand.env.releaseBase]) {
         const value = process.env[name]
-        if (value && !releaseOverride(name)) return `${name} must be an https URL (http is accepted only for 127.0.0.1 or localhost), so it is not used.`
+        if (value && !releaseOverride(name))
+          return `${name} must be an https URL (http is accepted only for 127.0.0.1 or [::1] with ${Brand.env.allowHttpLoopback}=1), so it is not used.`
       }
       return undefined
+    },
+    // True when a release download may go to url: every redirect hop is
+    // checked with this, under the same rule as the overrides.
+    allowed(url: string) {
+      const loopbackAllowed = process.env[Brand.env.allowHttpLoopback] === "1"
+      return safeURL(url, (parsed) => loopbackAllowed && ["127.0.0.1", "[::1]"].includes(parsed.hostname))
     },
     // Asset file name for a platform, matching script/build.ts output names.
     asset(os: string, arch: string, variant = "") {
@@ -225,15 +261,30 @@ export const Brand = {
   },
   // Gateway base URL: the override env var, else the URL the Console handed
   // out at login, else the default.
+  // Either one is used only when it is https, or http on this machine
+  // (gatewayProblem() names a refused value, with a one time warning).
   gatewayURL() {
     const override = process.env[Brand.env.gatewayURL]
-    if (override) return override
+    if (override && gatewayAllowed(override)) return override
+    if (override) warnOnce(`${Brand.product}: ${Brand.gatewayProblem()}`)
     try {
-      return Brand.credential()?.gateway_url || gatewayDefault
+      const stored = Brand.credential()?.gateway_url
+      return stored && gatewayAllowed(stored) ? stored : gatewayDefault
     } catch {
       // An unsafe credential file is not trusted for its gateway URL either.
       return gatewayDefault
     }
+  },
+  // True when the key may be sent to this base URL at all: https, or http to
+  // 127.0.0.1, [::1] or localhost.
+  gatewayAllowed(url: string | undefined) {
+    return gatewayAllowed(url)
+  },
+  // A message naming a refused gateway override, or undefined.
+  gatewayProblem() {
+    const override = process.env[Brand.env.gatewayURL]
+    if (!override || gatewayAllowed(override)) return undefined
+    return `${Brand.env.gatewayURL} must be an https URL (http is accepted only for 127.0.0.1, [::1] or localhost), so it is not used and the key is not sent there.`
   },
   // Console base URL for the device flow and the account routes.
   consoleURL() {

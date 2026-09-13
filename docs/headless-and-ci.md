@@ -42,7 +42,7 @@ Flags that matter in automation, all listed by `rafikicode run --help`:
 
 Standard input is read as the message when it is not a terminal, so a script that pipes nothing should redirect `< /dev/null` or pass the message as arguments.
 
-`rafikicode serve --port 4096` starts the HTTP server for editor integrations and long lived automation on the same machine; `rafikicode attach` and `rafikicode run --attach` talk to it.
+`rafikicode serve --port 4096` starts the HTTP server for editor integrations and long lived automation on the same machine; `rafikicode attach` and `rafikicode run --attach` talk to it. The server answers with your configuration, including the key, so set `OPENCODE_SERVER_PASSWORD` for it: without one it prints a warning, and it refuses to listen on any address other than `127.0.0.1`, `::1` or `localhost` (exit code 2).
 
 ## Shell commands in headless runs
 

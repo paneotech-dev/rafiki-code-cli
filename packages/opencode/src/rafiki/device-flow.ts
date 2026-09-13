@@ -209,7 +209,8 @@ export function toCredential(token: Contract.TokenResponse, now: number = Date.n
     key_id: token.key_id,
     key_alias: token.key_alias,
     kind: "session",
-    gateway_url: token.gateway_url || Brand.gateway.url,
+    // The key goes to this URL, so only https (or http on this machine) is kept.
+    gateway_url: token.gateway_url && Brand.gatewayAllowed(token.gateway_url) ? token.gateway_url : Brand.gateway.url,
     console_url: token.console_url || Brand.consoleURL(),
     scope: token.scope,
     owner: token.owner,

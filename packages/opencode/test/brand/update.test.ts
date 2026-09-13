@@ -41,6 +41,16 @@ beforeAll(async () => {
       if (url.pathname === "/api/releases/latest") {
         return Response.json({ tag_name: `v${VERSION}` })
       }
+      // Redirects: one to plain http elsewhere, one back to this server.
+      if (url.pathname === "/to-http/releases/latest") {
+        return new Response(null, { status: 302, headers: { location: "http://releases.example.com/api/releases/latest" } })
+      }
+      if (url.pathname === "/to-same/releases/latest") {
+        return new Response(null, { status: 302, headers: { location: "/api/releases/latest" } })
+      }
+      if (url.pathname === "/loop/releases/latest") {
+        return new Response(null, { status: 302, headers: { location: "/loop/releases/latest" } })
+      }
       if (url.pathname === `/dl/download/v${VERSION}/${Brand.release.checksums}`) {
         return new Response(goodSums)
       }
@@ -52,6 +62,8 @@ beforeAll(async () => {
       return new Response("not found", { status: 404 })
     },
   })
+  // The mock server is plain http on 127.0.0.1: the installers' test switch.
+  process.env[Brand.env.allowHttpLoopback] = "1"
   process.env[Brand.env.releaseAPI] = `http://127.0.0.1:${server.port}/api`
   process.env[Brand.env.releaseBase] = `http://127.0.0.1:${server.port}/dl`
 })
@@ -60,6 +72,7 @@ afterAll(async () => {
   server?.stop(true)
   delete process.env[Brand.env.releaseAPI]
   delete process.env[Brand.env.releaseBase]
+  delete process.env[Brand.env.allowHttpLoopback]
   await fs.rm(work, { recursive: true, force: true })
 })
 
@@ -259,20 +272,31 @@ describe("rafikicode update, the command", () => {
     expect(requests.length).toBe(before)
   }, 60_000)
 
-  test("loopback and https overrides pass the check the command runs first", () => {
+  test("https overrides pass; plain http only for literal 127.0.0.1 or [::1] with the installer test switch", () => {
     const saved = { api: process.env[Brand.env.releaseAPI], base: process.env[Brand.env.releaseBase], code: process.exitCode }
     const lines: string[] = []
     try {
-      for (const value of [`http://127.0.0.1:${server.port}/api`, "http://localhost:4100/api", "http://[::1]:4100/api", "https://mirror.example.com/api"]) {
+      for (const value of [`http://127.0.0.1:${server.port}/api`, "http://[::1]:4100/api", "https://mirror.example.com/api"]) {
         process.env[Brand.env.releaseAPI] = value
-        expect(RafikiUpdate.refusedOverride((line) => lines.push(line))).toBe(false)
+        expect(RafikiUpdate.refusedOverride((line) => lines.push(line)), value).toBe(false)
       }
       expect(lines).toEqual([])
-      process.env[Brand.env.releaseAPI] = "http://127.0.0.2/api"
-      expect(RafikiUpdate.refusedOverride((line) => lines.push(line))).toBe(true)
+      for (const value of ["http://127.0.0.2/api", "http://localhost:4100/api", `http://127.0.0.1:${server.port}@releases.example.com/api`, "https://user@mirror.example.com/api"]) {
+        process.env[Brand.env.releaseAPI] = value
+        expect(RafikiUpdate.refusedOverride((line) => lines.push(line)), value).toBe(true)
+      }
       expect(lines[0]).toContain("Nothing was installed.")
+      expect(lines[0]).toContain(`${Brand.env.allowHttpLoopback}=1`)
       expect(process.exitCode).toBe(2)
+      // Without the switch, loopback http is refused too; https still passes.
+      delete process.env[Brand.env.allowHttpLoopback]
+      process.env[Brand.env.releaseAPI] = `http://127.0.0.1:${server.port}/api`
+      expect(RafikiUpdate.refusedOverride((line) => lines.push(line))).toBe(true)
+      process.env[Brand.env.releaseAPI] = "https://mirror.example.com/api"
+      process.env[Brand.env.releaseBase] = "https://mirror.example.com/releases"
+      expect(RafikiUpdate.refusedOverride((line) => lines.push(line))).toBe(false)
     } finally {
+      process.env[Brand.env.allowHttpLoopback] = "1"
       // Assigning undefined would store the string "undefined", and Bun keeps a
       // nonzero exit code set to undefined, which fails the whole test run.
       for (const [name, value] of [[Brand.env.releaseAPI, saved.api], [Brand.env.releaseBase, saved.base]] as const) {
@@ -280,6 +304,35 @@ describe("rafikicode update, the command", () => {
         else process.env[name] = value
       }
       process.exitCode = saved.code ?? 0
+    }
+  })
+
+  test("update follows redirects itself and refuses one that leaves https", async () => {
+    const saved = process.env[Brand.env.releaseAPI]
+    try {
+      process.env[Brand.env.releaseAPI] = `http://127.0.0.1:${server.port}/to-same`
+      expect(await RafikiUpdate.latest()).toBe(VERSION)
+      const before = requests.length
+      process.env[Brand.env.releaseAPI] = `http://127.0.0.1:${server.port}/to-http`
+      await expect(RafikiUpdate.latest()).rejects.toThrow(/Refused the redirect .* to http:\/\/releases\.example\.com\/api\/releases\/latest: releases are downloaded over https only/)
+      expect(requests.slice(before)).toEqual(["/to-http/releases/latest"])
+      process.env[Brand.env.releaseAPI] = `http://127.0.0.1:${server.port}/loop`
+      await expect(RafikiUpdate.latest()).rejects.toThrow(`More than ${RafikiUpdate.MAX_REDIRECTS} redirects`)
+      // A redirect to another https host is followed; the hop is checked before the request.
+      const hops: string[] = []
+      const fake = (async (url: string) => {
+        hops.push(url)
+        if (url.startsWith("https://api.example.com/")) {
+          return new Response(null, { status: 301, headers: { location: "https://objects.example.com/latest" } })
+        }
+        return Response.json({ tag_name: "v1.2.3" })
+      }) as unknown as typeof fetch
+      process.env[Brand.env.releaseAPI] = "https://api.example.com"
+      expect(await RafikiUpdate.latest({ fetch: fake })).toBe("1.2.3")
+      expect(hops).toEqual(["https://api.example.com/releases/latest", "https://objects.example.com/latest"])
+    } finally {
+      if (saved === undefined) delete process.env[Brand.env.releaseAPI]
+      else process.env[Brand.env.releaseAPI] = saved
     }
   })
 })

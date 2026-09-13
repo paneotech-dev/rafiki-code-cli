@@ -36,6 +36,34 @@ type Json = Record<string, unknown>
 const providerAllowed = new Set(["name", "whitelist", "blacklist", "models", "options"])
 const optionsAllowed = new Set(["timeout", "chunkTimeout", "headerTimeout"])
 const modelDenied = new Set(["headers", "provider"])
+// Model settings that change what a tier bills while its name stays the same:
+// the model id sent to the gateway, request options and variants merged into
+// the body, and the output limit.
+const modelSpend = new Set(["id", "options", "variants", "limit"])
+// Request body fields an untrusted project may not set through agent or mode
+// options, compared without case, "_" or "-": they pick another model, raise
+// the token limit or the number of answers, or change gateway routing.
+const bodyDenied = new Set([
+  "model",
+  "models",
+  "maxtokens",
+  "maxcompletiontokens",
+  "maxoutputtokens",
+  "n",
+  "apibase",
+  "baseurl",
+  "apikey",
+  "apiversion",
+  "fallbacks",
+  "metadata",
+  "user",
+  "extrabody",
+  "extraheaders",
+  "headers",
+  "mockresponse",
+  "customllmprovider",
+  "litellmparams",
+])
 // Provider SDK packages an untrusted project may still name: the AI SDK's own
 // scope, which nobody but its maintainers can publish to. Anything else
 // (another package, a file:// path) is code chosen by the repository.
@@ -106,8 +134,10 @@ export function trust<T>(data: T): T {
   if (!isRecord(data) || !isRecord(data.provider)) return data
   const rafiki = data.provider[Brand.provider.id]
   if (!isRecord(rafiki) || !isRecord(rafiki.options)) return data
-  const resolved = origin(rafiki.options.baseURL)
-  if (resolved) trusted.add(resolved)
+  const baseURL = rafiki.options.baseURL
+  const resolved = origin(baseURL)
+  // Plain http leaves this machine unencrypted: never a place for the key.
+  if (resolved && typeof baseURL === "string" && Brand.gatewayAllowed(baseURL)) trusted.add(resolved)
   return data
 }
 
@@ -153,6 +183,27 @@ function shellAllows(value: unknown, at: string, ignored: string[]): unknown {
   return value
 }
 
+// Removes request body fields from agent or mode options (bodyDenied).
+function agentOptions(agents: unknown, at: string, ignored: string[]) {
+  if (!isRecord(agents)) return
+  for (const [name, agent] of Object.entries(agents)) {
+    if (!isRecord(agent) || !isRecord(agent.options)) continue
+    for (const field of Object.keys(agent.options)) {
+      if (!bodyDenied.has(field.toLowerCase().replace(/[_-]/g, ""))) continue
+      ignored.push(`${at}.${name}.options.${field}`)
+      delete agent.options[field]
+    }
+  }
+}
+
+function spendWarning(source: string, spend: string[]) {
+  if (!spend.length) return
+  Trust.warnOnce(
+    `spend:${source}`,
+    `Warning: ignored ${spend.join(", ")} in ${source}: project config cannot change which model a ${Brand.product} tier calls, its request fields or its output limit, unless the workspace is trusted.`,
+  )
+}
+
 function agentPermissions(agents: unknown, at: string, ignored: string[]) {
   if (!isRecord(agents)) return
   for (const [name, agent] of Object.entries(agents)) {
@@ -174,6 +225,7 @@ export function projectConfig<T>(source: string, data: T, where = path.dirname(s
   const ignored: string[] = []
   const code: string[] = []
   const programs: string[] = []
+  const spend: string[] = []
   const secrets = keys()
 
   const providers = data.provider
@@ -200,12 +252,17 @@ export function projectConfig<T>(source: string, data: T, where = path.dirname(s
         for (const [id, model] of Object.entries(rafiki.models)) {
           if (!isRecord(model)) continue
           for (const field of Object.keys(model)) {
-            if (!modelDenied.has(field)) continue
-            ignored.push(`provider.${Brand.provider.id}.models.${id}.${field}`)
+            if (modelSpend.has(field)) spend.push(`provider.${Brand.provider.id}.models.${id}.${field}`)
+            else if (modelDenied.has(field)) ignored.push(`provider.${Brand.provider.id}.models.${id}.${field}`)
+            else continue
             delete model[field]
           }
         }
       }
+    }
+    if (!trustedWorkspace) {
+      agentOptions(data.agent, "agent", spend)
+      agentOptions(data.mode, "mode", spend)
     }
     for (const [id, provider] of Object.entries(providers)) {
       if (!isRecord(provider)) continue
@@ -297,6 +354,7 @@ export function projectConfig<T>(source: string, data: T, where = path.dirname(s
       `Warning: ignored ${ignored.join(", ")} in ${source}: project config cannot change the ${Brand.product} gateway, its headers or its key. Set ${Brand.env.gatewayURL} or edit ${Brand.configHint} instead.`,
     )
   }
+  spendWarning(source, spend)
   if (code.length) {
     Trust.warnOnce(`code:${source}`, `Warning: ignored ${code.join(", ")} in ${source}: project config cannot load code because ${Trust.untrustedHint(where)}.`)
   }
@@ -338,10 +396,15 @@ export function checkoutHomeConfig<T>(source: string, data: T): T {
   return data
 }
 
-// Agents and modes loaded from Markdown files in a project directory: in a
-// headless run of an untrusted workspace they cannot allow the shell.
+// Agents and modes loaded from Markdown files in a project directory: in an
+// untrusted workspace their options cannot set request body fields, and in a
+// headless run they cannot allow the shell.
 export function projectAgents<T>(dir: string, project: boolean, agents: T): T {
-  if (!project || !Trust.headless() || Trust.isTrusted(dir)) return agents
+  if (!project || Trust.isTrusted(dir)) return agents
+  const spend: string[] = []
+  agentOptions(agents, "agent", spend)
+  spendWarning(dir, spend)
+  if (!Trust.headless()) return agents
   const ignored: string[] = []
   agentPermissions(agents, "agent", ignored)
   if (ignored.length) {
@@ -364,13 +427,21 @@ export interface Substitution {
   refused(token: string): void
 }
 
+// The project root for substitution: the worktree the instance resolved (the
+// file system root means no git), else the git root above the directory, else
+// the directory; without a context, the git root above the file.
+function projectRoot(where: string, ctx?: { directory: string; worktree?: string }) {
+  if (!ctx) return Trust.gitRoot(where) ?? where
+  if (ctx.worktree === undefined) return Trust.gitRoot(ctx.directory) ?? ctx.directory
+  return ctx.worktree && ctx.worktree !== path.parse(ctx.worktree).root ? ctx.worktree : ctx.directory
+}
+
 // The limits on {env:} and {file:} for one project config file, or undefined
-// when its workspace is trusted. The project root is the git worktree, else
-// the working directory. Refused references become empty strings.
-export function substitution(source: string, ctx: { directory: string; worktree: string }): Substitution | undefined {
+// when its workspace is trusted. Refused references become empty strings.
+export function substitution(source: string, ctx?: { directory: string; worktree?: string }): Substitution | undefined {
   const where = path.dirname(source)
   if (Trust.isTrusted(where)) return undefined
-  const root = Trust.real(ctx.worktree && ctx.worktree !== path.parse(ctx.worktree).root ? ctx.worktree : ctx.directory)
+  const root = Trust.real(projectRoot(where, ctx))
   return {
     env: (name) => !secretEnvName(name),
     file: (resolved) => Trust.inside(root, Trust.real(resolved)),
@@ -380,6 +451,18 @@ export function substitution(source: string, ctx: { directory: string; worktree:
         `Warning: ignored ${token} in ${source}: project config cannot read secret environment variables or files outside ${root}; ${Trust.untrustedHint(where)}.`,
       ),
   }
+}
+
+// The limits for any config file of any kind (config.json, opencode.json,
+// rafikicode.json, tui.json and their jsonc forms) by the directory it was
+// found in: the user's own config directory and OPENCODE_CONFIG_DIR keep full
+// substitution; every other directory (a project, ~/.opencode, or the home
+// config directory when it came with a git checkout) is limited unless
+// trusted. Files named explicitly (OPENCODE_CONFIG, OPENCODE_TUI_CONFIG,
+// OPENCODE_CONFIG_CONTENT) are not passed here.
+export function fileSubstitution(source: string, ctx?: { directory: string; worktree?: string }): Substitution | undefined {
+  if (Trust.isUserConfigDir(path.dirname(source))) return undefined
+  return substitution(source, ctx)
 }
 
 export class KeyLeakError extends Error {
@@ -409,6 +492,21 @@ export function allowed(url: string, values: readonly unknown[]) {
   return Boolean(resolved && gatewayOrigins().has(resolved))
 }
 
+// The text of a request body that can be read without consuming it: strings,
+// bytes, URL encoded and multipart form values. A stream or Blob body cannot
+// be read here; provider SDKs send JSON strings.
+function bodyValues(body: unknown): string[] {
+  if (typeof body === "string") return [body]
+  if (body instanceof URLSearchParams) return [body.toString()]
+  const decoder = new TextDecoder()
+  if (body instanceof ArrayBuffer) return [decoder.decode(body)]
+  if (ArrayBuffer.isView(body)) return [decoder.decode(new Uint8Array(body.buffer, body.byteOffset, body.byteLength))]
+  if (typeof FormData !== "undefined" && body instanceof FormData) {
+    return [...body.values()].filter((value): value is string => typeof value === "string")
+  }
+  return []
+}
+
 // Called with the arguments of every provider fetch. Throws KeyLeakError when
 // the request carries a Rafiki key to anywhere but the gateway.
 export function request(input: unknown, init?: { headers?: unknown; body?: unknown }) {
@@ -416,7 +514,7 @@ export function request(input: unknown, init?: { headers?: unknown; body?: unkno
   const values = [
     ...(input instanceof Request ? headerValues(input.headers) : []),
     ...headerValues(init?.headers),
-    ...(typeof init?.body === "string" ? [init.body] : []),
+    ...bodyValues(init?.body),
   ]
   if (allowed(url, values)) return
   throw new KeyLeakError(origin(url) ?? "an address that is not a web URL")

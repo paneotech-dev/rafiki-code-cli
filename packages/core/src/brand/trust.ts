@@ -17,6 +17,7 @@
 // inside a git checkout (HOME set to a checkout in some CI images).
 import fs from "fs"
 import path from "path"
+import { Effect } from "effect"
 import { Brand } from "./brand"
 
 // The switch. Change this one value to move the product default:
@@ -226,6 +227,13 @@ export function plugins<L extends readonly unknown[]>(where: string, list: L | u
   if (allowsCodeDir(where)) return list
   warnOnce(`plugins:${where}`, `Warning: not loading ${list.length} project plugin${list.length === 1 ? "" : "s"} from ${where}: ${untrustedHint(where)}.`)
   return [] as unknown as L
+}
+
+// Runs self only when code may load from dir: the background dependency
+// install into a project .rafikicode or .opencode directory is skipped for an
+// untrusted one, since nothing it installs would be imported.
+export function whenCodeDir(dir: string) {
+  return <A, E, R>(self: Effect.Effect<A, E, R>): Effect.Effect<A | void, E, R> => (allowsCodeDir(dir) ? self : Effect.void)
 }
 
 // Filters the plugin and tool directories a registry scans.

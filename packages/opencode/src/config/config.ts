@@ -273,9 +273,10 @@ const layer = Layer.effect(
             .pipe(Effect.catch(() => Effect.void))
         }
       }
-      result = mergeConfig(result, yield* loadFile(path.join(Global.Path.config, "config.json"), env))
-      result = mergeConfig(result, yield* loadFile(path.join(Global.Path.config, "opencode.json"), env))
-      result = mergeConfig(result, yield* loadFile(path.join(Global.Path.config, "opencode.jsonc"), env))
+      for (const name of Brand.globalFiles) {
+        const file = path.join(Global.Path.config, name)
+        result = mergeConfig(result, yield* loadFile(file, env, BrandGuard.fileSubstitution(file)))
+      }
 
       const legacy = path.join(Global.Path.config, "config")
       if (existsSync(legacy)) {
@@ -473,6 +474,7 @@ const layer = Layer.effect(
                   : Effect.void,
               ),
               Effect.asVoid,
+              BrandTrust.whenCodeDir(dir),
               Effect.forkDetach,
             )
           deps.push(dep)

@@ -42,11 +42,31 @@ export namespace RafikiUpdate {
     }
   }
 
+  export const MAX_REDIRECTS = 10
+
+  // GET that follows redirects itself, so that every hop is checked with the
+  // release URL rule (https, or loopback http with the test switch) before
+  // anything is requested from it. A plain fetch would follow https to http.
+  export async function get(f: typeof fetch, url: string, headers: Record<string, string>) {
+    let current = url
+    for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+      const res = await f(current, { headers, redirect: "manual" })
+      const location = res.status >= 300 && res.status < 400 ? res.headers.get("location") : null
+      if (!location) return res
+      const next = new URL(location, current).href
+      if (!Brand.release.allowed(next)) {
+        throw new UpdateError(`Refused the redirect from ${current} to ${next}: releases are downloaded over https only. Nothing was installed.`)
+      }
+      current = next
+    }
+    throw new UpdateError(`More than ${MAX_REDIRECTS} redirects from ${url}. Nothing was installed.`)
+  }
+
   // Latest release tag from the releases API, without the leading v.
   export async function latest(opts: Pick<Options, "fetch"> = {}): Promise<string> {
     const f = opts.fetch ?? fetch
     const url = `${Brand.release.api()}/releases/latest`
-    const res = await f(url, { headers: { Accept: "application/vnd.github+json", "User-Agent": Brand.name } })
+    const res = await get(f, url, { Accept: "application/vnd.github+json", "User-Agent": Brand.name })
     if (!res.ok) throw new UpdateError(`Could not read the latest release (${res.status}) from ${url}`)
     const data = (await res.json()) as { tag_name?: string }
     if (!data.tag_name) throw new UpdateError("The latest release has no tag name")
@@ -104,14 +124,14 @@ export namespace RafikiUpdate {
     const f = opts.fetch ?? fetch
     const base = `${Brand.release.base()}/download/v${version}`
     const sumsURL = `${base}/${Brand.release.checksums}`
-    const sumsRes = await f(sumsURL, { headers: { "User-Agent": Brand.name } })
+    const sumsRes = await get(f, sumsURL, { "User-Agent": Brand.name })
     if (!sumsRes.ok) throw new UpdateError(`Could not download ${Brand.release.checksums} (${sumsRes.status}) from ${sumsURL}`)
     const sums = parseChecksums(await sumsRes.text())
     const expected = sums.get(asset)
     if (!expected) throw new UpdateError(`${Brand.release.checksums} for v${version} has no entry for ${asset}`)
     opts.onProgress?.(`Downloading ${asset}`)
     const assetURL = `${base}/${asset}`
-    const res = await f(assetURL, { headers: { "User-Agent": Brand.name } })
+    const res = await get(f, assetURL, { "User-Agent": Brand.name })
     if (!res.ok) throw new UpdateError(`Could not download ${asset} (${res.status}) from ${assetURL}`)
     const bytes = new Uint8Array(await res.arrayBuffer())
     const actual = sha256(bytes)

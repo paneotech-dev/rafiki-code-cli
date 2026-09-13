@@ -1,5 +1,6 @@
 import { Brand } from "@opencode-ai/core/brand/brand"
 import * as BrandTrust from "@opencode-ai/core/brand/trust"
+import * as BrandGuard from "@opencode-ai/core/brand/guard"
 export * as TuiConfig from "./tui"
 
 import path from "path"
@@ -101,7 +102,7 @@ const loadState = Effect.fn("TuiConfig.loadState")(function* (ctx: { directory: 
   const load = (text: string, configFilepath: string): Effect.Effect<Info> =>
     Effect.gen(function* () {
       const expanded = yield* Effect.promise(() =>
-        ConfigVariable.substitute({ text, type: "path", path: configFilepath, missing: "empty" }),
+        ConfigVariable.substitute({ text, type: "path", path: configFilepath, missing: "empty", restrict: configFilepath === Flag.OPENCODE_TUI_CONFIG ? undefined : BrandGuard.fileSubstitution(configFilepath, ctx) }),
       )
       const data = ConfigParse.jsonc(expanded, configFilepath)
       if (!isRecord(data)) return {} as Info
@@ -224,7 +225,7 @@ const loadState = Effect.fn("TuiConfig.loadState")(function* (ctx: { directory: 
   return {
     config: result,
     pluginOrigins: acc.plugin_origins,
-    dirs: result.plugin?.length ? dirs : [],
+    dirs: result.plugin?.length ? dirs.filter(BrandTrust.allowsCodeDir) : [],
   }
 })
 
