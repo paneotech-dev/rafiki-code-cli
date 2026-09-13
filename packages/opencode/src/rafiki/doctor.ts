@@ -130,10 +130,26 @@ export interface CredentialResult {
 export function checkCredential(env: Env, dir: string, consoleURL: string, now: number): CredentialResult {
   const envKey = env[Brand.env.apiKey]
   const file = Credentials.file(dir)
-  const stored = Credentials.read(dir)
+  let stored: Credentials.StoredCredential | undefined
+  let unsafe: Credentials.UnsafeCredentialError | undefined
+  try {
+    stored = Credentials.read(dir)
+  } catch (cause) {
+    if (!(cause instanceof Credentials.UnsafeCredentialError)) throw cause
+    unsafe = cause
+  }
   if (envKey) {
-    const extra = stored ? `; the stored sign-in at ${file} is ignored while it is set` : ""
+    const extra = unsafe
+      ? `; the stored sign-in at ${file} is not used because the file ${unsafe.reason}`
+      : stored
+        ? `; the stored sign-in at ${file} is ignored while it is set`
+        : ""
     return { line: ok("credential", `${Brand.env.apiKey} from the environment${extra}`), key: envKey, source: "environment" }
+  }
+  if (unsafe) {
+    return {
+      line: fail("credential", `stored sign-in at ${file} refused: the file ${unsafe.reason}`, `Run: ${unsafe.fix}. Or set ${Brand.env.apiKey}.`),
+    }
   }
   if (!stored) {
     return {

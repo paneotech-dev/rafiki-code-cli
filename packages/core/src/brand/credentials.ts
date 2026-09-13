@@ -41,35 +41,97 @@ export function file(dir: string) {
   return path.join(dir, FILE_NAME)
 }
 
-// Set by tests to capture the warning instead of writing to stderr.
-export let warn: (message: string) => void = (message) => process.stderr.write(message + "\n")
-export function setWarn(fn: (message: string) => void) {
-  warn = fn
-}
+// A credential file is refused, the way ssh refuses a private key, when it is
+// a symbolic link, is not a regular file, belongs to another user, or can be
+// read or written by anyone but its owner. RAFIKICODE_API_KEY keeps working.
+export const EXIT_UNSAFE = 2
 
-let warnedLoose: string | undefined
-
-// A credential copied in from elsewhere may carry loose permissions; say so
-// once per process, the way ssh does for a private key, and keep going.
-function checkMode(target: string) {
-  if (process.platform === "win32") return
-  if (warnedLoose === target) return
-  try {
-    const mode = fs.statSync(target).mode & 0o777
-    if ((mode & 0o077) === 0) return
-    warnedLoose = target
-    warn(
-      `Warning: the credential file ${target} is readable by other users (mode ${mode.toString(8).padStart(4, "0")}). Run: chmod ${FILE_MODE.toString(8)} ${target}`,
-    )
-  } catch {
-    // Missing file or unreadable stat: read() reports that on its own.
+export class UnsafeCredentialError extends Error {
+  override readonly name = "UnsafeCredentialError"
+  readonly exitCode = EXIT_UNSAFE
+  constructor(
+    readonly file: string,
+    readonly reason: string,
+    readonly fix: string,
+  ) {
+    super(`The credential file ${file} ${reason}, so it is not used. Fix it with: ${fix}`)
   }
 }
 
-export function read(dir: string): StoredCredential | undefined {
+function currentUid() {
+  return typeof process.getuid === "function" ? process.getuid() : undefined
+}
+
+function unsafe(target: string, stat: fs.Stats, uid: number | undefined) {
+  const mode = stat.mode & 0o777
+  const chmod = `chmod ${FILE_MODE.toString(8)} ${target}`
+  if (!stat.isFile()) return new UnsafeCredentialError(target, "is not a regular file", `rm -r ${target}, then sign in again`)
+  if (uid !== undefined && stat.uid !== uid) {
+    return new UnsafeCredentialError(target, `belongs to another user (uid ${stat.uid})`, `chown ${uid} ${target} && ${chmod}`)
+  }
+  if (mode & 0o077) {
+    return new UnsafeCredentialError(target, `can be read or written by other users (mode ${mode.toString(8).padStart(4, "0")})`, chmod)
+  }
+  return undefined
+}
+
+function open(target: string) {
+  return fs.openSync(target, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0))
+}
+
+// The reason the stored file may not be used, or undefined when it is missing
+// or safe. uid is the expected owner, the current user by default.
+export function check(dir: string, uid: number | undefined = currentUid()): UnsafeCredentialError | undefined {
+  if (process.platform === "win32") return undefined
+  const target = file(dir)
+  let stat: fs.Stats
   try {
-    checkMode(file(dir))
-    const raw = fs.readFileSync(file(dir), "utf8")
+    stat = fs.lstatSync(target)
+  } catch {
+    return undefined
+  }
+  if (stat.isSymbolicLink()) {
+    return new UnsafeCredentialError(target, "is a symbolic link", `rm ${target}, then sign in again`)
+  }
+  return unsafe(target, stat, uid)
+}
+
+// Reads the stored credential. Throws UnsafeCredentialError for an unsafe file
+// (see check); returns undefined when there is no usable credential.
+export function read(dir: string, uid: number | undefined = currentUid()): StoredCredential | undefined {
+  const target = file(dir)
+  let raw: string
+  if (process.platform === "win32") {
+    try {
+      raw = fs.readFileSync(target, "utf8")
+    } catch {
+      return undefined
+    }
+  } else {
+    let fd: number
+    try {
+      // O_NOFOLLOW: a link swapped in after check() still fails here (ELOOP).
+      fd = open(target)
+    } catch (cause) {
+      const code = (cause as NodeJS.ErrnoException).code
+      if (code === "ELOOP" || code === "EMLINK") {
+        throw new UnsafeCredentialError(target, "is a symbolic link", `rm ${target}, then sign in again`)
+      }
+      return undefined
+    }
+    try {
+      // The checks run on the open descriptor, so they describe the bytes read.
+      const problem = unsafe(target, fs.fstatSync(fd), uid)
+      if (problem) throw problem
+      raw = fs.readFileSync(fd, "utf8")
+    } catch (cause) {
+      if (cause instanceof UnsafeCredentialError) throw cause
+      return undefined
+    } finally {
+      fs.closeSync(fd)
+    }
+  }
+  try {
     const data = JSON.parse(raw)
     if (!data || typeof data !== "object") return undefined
     if (data.version !== 1 || typeof data.key !== "string" || !data.key) return undefined
@@ -100,5 +162,10 @@ export function remove(dir: string) {
 }
 
 export function exists(dir: string) {
-  return fs.existsSync(file(dir))
+  try {
+    fs.lstatSync(file(dir))
+    return true
+  } catch {
+    return false
+  }
 }

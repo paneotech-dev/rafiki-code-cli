@@ -151,15 +151,35 @@ export const Brand = {
   // Gateway base URL: the override env var, else the URL the Console handed
   // out at login, else the default.
   gatewayURL() {
-    return process.env[Brand.env.gatewayURL] || Brand.credential()?.gateway_url || gatewayDefault
+    const override = process.env[Brand.env.gatewayURL]
+    if (override) return override
+    try {
+      return Brand.credential()?.gateway_url || gatewayDefault
+    } catch {
+      // An unsafe credential file is not trusted for its gateway URL either.
+      return gatewayDefault
+    }
   },
   // Console base URL for the device flow and the account routes.
   consoleURL() {
     return (process.env[Brand.env.consoleURL] || consoleDefault).replace(/\/+$/, "")
   },
   // The stored login credential, if any. Read fresh on every call; it is one small file.
+  // An unsafe file (Credentials.check) throws UnsafeCredentialError, unless
+  // the env key is set, in which case the file is simply not used.
   credential() {
-    return Credentials.read(Brand.configDir())
+    try {
+      return Credentials.read(Brand.configDir())
+    } catch (cause) {
+      if (cause instanceof Credentials.UnsafeCredentialError && process.env[Brand.env.apiKey]) return undefined
+      throw cause
+    }
+  },
+  // The reason the stored credential file may not be used, when this process
+  // would otherwise use it (no env key); undefined when it is safe or absent.
+  unsafeCredential() {
+    if (process.env[Brand.env.apiKey]) return undefined
+    return Credentials.check(Brand.configDir())
   },
   // Config directory. An explicit XDG_CONFIG_HOME wins so isolated test and CI
   // environments keep working; otherwise the brief's ~/.rafikicode.
