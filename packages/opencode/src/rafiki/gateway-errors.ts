@@ -75,7 +75,9 @@ export function classify(input: GatewayErrorInput): GatewayFailure | undefined {
   if (status === 401) {
     return {
       code: Contract.ERROR.keyRevoked,
-      message: Contract.MESSAGE[Contract.ERROR.keyRevoked]!,
+      message: Brand.hasKey()
+        ? Contract.MESSAGE[Contract.ERROR.keyRevoked]!
+        : `Not signed in. Run ${Brand.name} login, or set ${Brand.env.apiKey} for servers and CI.`,
       exitCode: Contract.EXIT.usage,
       isRetryable: false,
     }

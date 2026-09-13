@@ -18,10 +18,23 @@ describe("gateway error mapping", () => {
   })
 
   test("a 401 is key_revoked with the login instruction", () => {
+    const before = process.env["RAFIKICODE_API_KEY"]
+    process.env["RAFIKICODE_API_KEY"] = "sk-test"
     const f = GatewayErrors.classify({ statusCode: 401, responseBody: body("auth_error", "token_not_found_in_db") })
+    if (before === undefined) delete process.env["RAFIKICODE_API_KEY"]
+    else process.env["RAFIKICODE_API_KEY"] = before
     expect(f?.code).toBe("key_revoked")
     expect(f?.exitCode).toBe(Contract.EXIT.usage)
     expect(f?.message).toBe("This key was revoked or has expired. Run rafikicode login.")
+  })
+
+  test("a 401 without any key says sign in first", () => {
+    const before = process.env["RAFIKICODE_API_KEY"]
+    delete process.env["RAFIKICODE_API_KEY"]
+    const f = GatewayErrors.classify({ statusCode: 401, responseBody: body("auth_error", "token_not_found_in_db") })
+    if (before !== undefined) process.env["RAFIKICODE_API_KEY"] = before
+    expect(f?.code).toBe("key_revoked")
+    expect(f?.message).toBe("Not signed in. Run rafikicode login, or set RAFIKICODE_API_KEY for servers and CI.")
   })
 
   test("a 403 key_model_access_denied names the tier", () => {
