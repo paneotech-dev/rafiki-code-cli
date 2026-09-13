@@ -40,29 +40,20 @@ const modelDenied = new Set(["headers", "provider"])
 // the model id sent to the gateway, request options and variants merged into
 // the body, and the output limit.
 const modelSpend = new Set(["id", "options", "variants", "limit"])
-// Request body fields an untrusted project may not set through agent or mode
-// options, compared without case, "_" or "-": they pick another model, raise
-// the token limit or the number of answers, or change gateway routing.
-const bodyDenied = new Set([
-  "model",
-  "models",
-  "maxtokens",
-  "maxcompletiontokens",
-  "maxoutputtokens",
-  "n",
-  "apibase",
-  "baseurl",
-  "apikey",
-  "apiversion",
-  "fallbacks",
-  "metadata",
-  "user",
-  "extrabody",
-  "extraheaders",
-  "headers",
-  "mockresponse",
-  "customllmprovider",
-  "litellmparams",
+// The only agent or mode options an untrusted project may set, compared without
+// case, "_" or "-": sampling, reasoning effort, verbosity and timeouts. Every
+// other option is merged into the request body, where it could pick another
+// model, raise the token limit or the number of answers, or change gateway
+// routing under a name no list of known fields can keep up with.
+const agentOptionsAllowed = new Set([
+  "temperature",
+  "topp",
+  "topk",
+  "reasoningeffort",
+  "textverbosity",
+  "timeout",
+  "chunktimeout",
+  "headertimeout",
 ])
 // Provider SDK packages an untrusted project may still name: the AI SDK's own
 // scope, which nobody but its maintainers can publish to. Anything else
@@ -183,13 +174,13 @@ function shellAllows(value: unknown, at: string, ignored: string[]): unknown {
   return value
 }
 
-// Removes request body fields from agent or mode options (bodyDenied).
+// Removes every agent or mode option not in agentOptionsAllowed.
 function agentOptions(agents: unknown, at: string, ignored: string[]) {
   if (!isRecord(agents)) return
   for (const [name, agent] of Object.entries(agents)) {
     if (!isRecord(agent) || !isRecord(agent.options)) continue
     for (const field of Object.keys(agent.options)) {
-      if (!bodyDenied.has(field.toLowerCase().replace(/[_-]/g, ""))) continue
+      if (agentOptionsAllowed.has(field.toLowerCase().replace(/[_-]/g, ""))) continue
       ignored.push(`${at}.${name}.options.${field}`)
       delete agent.options[field]
     }
@@ -260,10 +251,6 @@ export function projectConfig<T>(source: string, data: T, where = path.dirname(s
         }
       }
     }
-    if (!trustedWorkspace) {
-      agentOptions(data.agent, "agent", spend)
-      agentOptions(data.mode, "mode", spend)
-    }
     for (const [id, provider] of Object.entries(providers)) {
       if (!isRecord(provider)) continue
       // Another provider may not take its key from the Rafiki key variable.
@@ -286,6 +273,13 @@ export function projectConfig<T>(source: string, data: T, where = path.dirname(s
         }
       }
     }
+  }
+
+  // Agent and mode options reach the request body whether or not the file also
+  // configures a provider.
+  if (!trustedWorkspace) {
+    agentOptions(data.agent, "agent", spend)
+    agentOptions(data.mode, "mode", spend)
   }
 
   if (!codeAllowed && Array.isArray(data.plugin) && data.plugin.length) {

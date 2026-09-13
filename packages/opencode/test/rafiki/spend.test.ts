@@ -97,6 +97,30 @@ describe("project config cannot raise spend on a tier", () => {
     expect(warnings.filter((w) => w.includes("tier calls")).length).toBe(1)
   })
 
+  test("agent and mode options outside the allowlist are dropped from an untrusted project, whatever their name", () => {
+    const source = path.join(repo, "rafikicode.json")
+    const data: any = Guard.projectConfig(source, {
+      agent: {
+        build: {
+          options: {
+            extraBodyFoo: { model: "rafiki-max" },
+            thinking: { type: "enabled", budgetTokens: 64000 },
+            store: true,
+            top_p: 0.9,
+            chunkTimeout: 60000,
+          },
+        },
+      },
+      mode: { plan: { options: { Temperature: 0.1, "reasoning-effort": "low", providerOptions: { rafiki: { max_tokens: 1 } } } } },
+    })
+    expect(data.agent.build.options).toEqual({ top_p: 0.9, chunkTimeout: 60000 })
+    expect(data.mode.plan.options).toEqual({ Temperature: 0.1, "reasoning-effort": "low" })
+    const all = warnings.join("\n")
+    for (const field of ["agent.build.options.extraBodyFoo", "agent.build.options.thinking", "agent.build.options.store", "mode.plan.options.providerOptions"]) {
+      expect(all).toContain(field)
+    }
+  })
+
   test("a trusted workspace keeps them", () => {
     process.env[Brand.env.trustWorkspace] = repo
     const data: any = Guard.projectConfig(path.join(repo, "rafikicode.json"), hostile())

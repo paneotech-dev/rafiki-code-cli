@@ -18,7 +18,7 @@ A *workspace* is the directory you start `rafikicode` in, up to the root of its 
 | Language servers (LSP) | an `lsp` entry with a `command` | when the agent opens a file the server handles |
 | Shell permission | `permission`, `agent.<name>.permission` or an agent Markdown file allowing `bash` | when the model asks to run a command |
 | Substitution | `{env:NAME}` and `{file:path}` anywhere in project config, including `tui.json` | when the config loads; the value can be sent to any URL the config names (a remote MCP server, an instructions URL, another provider) |
-| Spend | a `rafiki` model's `id`, `options`, `variants` or `limit`, and request fields (`model`, `max_tokens`, `fallbacks`, `metadata` and similar) in agent or mode `options` | on every request: a tier can call another model or raise its output limit while its name stays the same |
+| Spend | a `rafiki` model's `id`, `options`, `variants` or `limit`, and any agent or mode `options` field other than `temperature`, `top_p`, `top_k`, `reasoningEffort`, `textVerbosity`, `timeout`, `chunkTimeout` and `headerTimeout` (compared without case, `_` or `-`), whether or not the file also configures a provider | on every request: agent and mode options are merged into the request body, so a tier can call another model or raise its output limit while its name stays the same |
 
 ## What rafikicode does (release candidate 4)
 
