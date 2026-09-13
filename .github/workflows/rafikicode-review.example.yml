@@ -1,0 +1,52 @@
+# Example workflow: review every pull request with rafikicode and post the
+# result as a comment. Not enabled by default: GitHub only runs workflows
+# named *.yml directly under .github/workflows, and this file's name ends in
+# .example.yml, so it is inert until copied.
+#
+# To enable in this repository or your own:
+#   1. Create a server key in Rafiki Console (console.rafikiai.io/keys) with a
+#      budget that fits one review per pull request, and store it as the
+#      repository secret RAFIKICODE_API_KEY.
+#   2. Copy this file to .github/workflows/rafikicode-review.yml.
+#   3. Change the `uses:` line to the published action reference when the
+#      action is used from another repository, for example
+#      paneotech-dev/rafiki-code-cli/.github/actions/rafikicode-review@v1.
+#
+# Secrets are not available to workflows triggered by pull requests from
+# forks, so the job is skipped for those; use the local recipe in
+# docs/review-recipe.md for fork contributions instead. Do not switch the
+# trigger to pull_request_target with a checkout of the pull request head.
+name: rafikicode review (example)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: rafikicode-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout the base branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 1
+
+      - name: Review the pull request
+        uses: ./.github/actions/rafikicode-review
+        with:
+          api-key: ${{ secrets.RAFIKICODE_API_KEY }}
+          model: rafiki/rafiki-fast
+          max-diff-lines: 4000
+          # version: 1.2.3
+          # installer-url: https://raw.githubusercontent.com/paneotech-dev/rafiki-code-cli/v1.2.3/install/install.sh
