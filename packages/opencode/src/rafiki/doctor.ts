@@ -20,6 +20,8 @@ export interface Line {
   detail: string
   // One sentence telling the person what to do; only on a failure.
   fix?: string
+  // True when the failure is the contract's network class (exit code 4).
+  network?: boolean
 }
 
 export interface Env {
@@ -47,6 +49,7 @@ export const DEFAULT_TIMEOUT_MS = 8000
 const ok = (name: string, detail: string): Line => ({ name, status: "ok", detail })
 const fail = (name: string, detail: string, fix: string): Line => ({ name, status: "fail", detail, fix })
 const skip = (name: string, detail: string): Line => ({ name, status: "skip", detail })
+const unreachable = (name: string, detail: string, fix: string): Line => ({ ...fail(name, detail, fix), network: true })
 
 // The gateway base URL the provider uses ends in /v1; the health and key
 // endpoints live at the root.
@@ -196,7 +199,7 @@ export async function checkGateway(root: string, f: typeof fetch, timeoutMs: num
     return fail("gateway", `${url} answered ${response.status}`, "The gateway is up but not healthy. Try again shortly.")
   } catch (cause) {
     const override = env[Brand.env.gatewayURL] ? `, and ${Brand.env.gatewayURL} which is set` : ""
-    return fail("gateway", `${root} unreachable (${detailOf(cause)})`, `Check the network${override}.`)
+    return unreachable("gateway", `${root} unreachable (${detailOf(cause)})`, `Check the network${override}.`)
   }
 }
 
@@ -224,7 +227,7 @@ export async function checkKey(root: string, key: string, consoleURL: string, f:
       timeoutMs,
     )
   } catch (cause) {
-    return { line: fail("key", `could not ask the gateway (${detailOf(cause)})`, "Check the network and run the command again.") }
+    return { line: unreachable("key", `could not ask the gateway (${detailOf(cause)})`, "Check the network and run the command again.") }
   }
   if (response.status === 401 || response.status === 403) {
     return {
@@ -283,7 +286,7 @@ export async function checkTiers(root: string, key: string, info: KeyInfo, conso
       const data = await body(response)
       listed = Array.isArray(data?.data) ? data.data.map((m: any) => m?.id).filter((id: unknown): id is string => typeof id === "string") : []
     } catch (cause) {
-      return fail("tiers", `could not list models (${detailOf(cause)})`, "Check the network and run the command again.")
+      return unreachable("tiers", `could not list models (${detailOf(cause)})`, "Check the network and run the command again.")
     }
   }
   const allowed = Brand.models.filter((m) => listed!.includes(m))
@@ -309,7 +312,7 @@ export async function checkConsole(consoleURL: string, key: string | undefined, 
     )
   } catch (cause) {
     const override = env[Brand.env.consoleURL] ? `, and ${Brand.env.consoleURL} which is set` : ""
-    return fail("console", `${consoleURL} unreachable (${detailOf(cause)})`, `Check the network${override}.`)
+    return unreachable("console", `${consoleURL} unreachable (${detailOf(cause)})`, `Check the network${override}.`)
   }
   if (response.status >= 300 && response.status < 400) {
     return ok("console", `${consoleURL} reachable, account route not available (${response.status})`)
@@ -345,6 +348,8 @@ export interface Report {
   lines: Line[]
   ok: boolean
   failed: number
+  // Contract exit code: 0 all ok, 4 when any failure is a network failure, else 1.
+  exitCode: number
 }
 
 // Every check in order. A failed credential skips the checks that need one;
@@ -381,7 +386,8 @@ export async function run(options: Options = {}): Promise<Report> {
   lines.push(checkVersion(options.version ?? InstallationVersion, options.channel ?? InstallationChannel, options.execPath ?? process.execPath))
 
   const failed = lines.filter((l) => l.status === "fail").length
-  return { lines, ok: failed === 0, failed }
+  const exitCode = failed === 0 ? Contract.EXIT.ok : lines.some((l) => l.network) ? Contract.EXIT.network : Contract.EXIT.failed
+  return { lines, ok: failed === 0, failed, exitCode }
 }
 
 // One terminal line per check; colors are the caller's business.

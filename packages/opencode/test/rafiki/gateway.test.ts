@@ -140,4 +140,22 @@ describe("rafikicode run through the gateway", () => {
     expect(server.stdout).toContain("rafiki/rafiki-fast")
     expect(server.stderr).not.toContain("CI is set")
   }, 120_000)
+
+  test("a gateway that cannot be reached exits 4 with a plain message", async () => {
+    // A port that was just free: nothing listens, so the connection is refused.
+    const probe = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("") })
+    const port = probe.port
+    probe.stop(true)
+    const started = Date.now()
+    const result = await run(["run", "hello"], {
+      RAFIKICODE_API_KEY: "sk-unreachable-stub",
+      RAFIKICODE_GATEWAY_URL: `http://127.0.0.1:${port}/v1`,
+    })
+    expect(result.exitCode).toBe(4)
+    expect(result.all).toContain(`Cannot reach the model gateway at http://127.0.0.1:${port}/v1`)
+    expect(result.all).toContain("RAFIKICODE_GATEWAY_URL which is set")
+    expect(result.all).not.toContain("sk-unreachable-stub")
+    expect(result.all).not.toContain("    at ")
+    console.log(`unreachable gateway run took ${Math.round((Date.now() - started) / 1000)} s (upstream network retries included)`)
+  }, 180_000)
 })

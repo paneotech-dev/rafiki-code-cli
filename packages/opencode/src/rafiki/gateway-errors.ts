@@ -13,6 +13,7 @@ export interface GatewayFailure {
 }
 
 export interface GatewayErrorInput {
+  message?: string
   statusCode?: number
   responseBody?: string
   responseHeaders?: Record<string, string>
@@ -58,9 +59,29 @@ function retryAfter(headers?: Record<string, string>) {
   return Number.isFinite(seconds) && seconds > 0 ? String(Math.ceil(seconds)) : "a few"
 }
 
+// The AI SDK reports a refused, reset or unresolvable connection as an API
+// call error with no status and this message prefix.
+const UNREACHABLE = /^Cannot connect to API\b/i
+// Session errors built from socket and stream failures, not HTTP answers.
+const NETWORK_CODES = new Set(["ECONNRESET", "ProviderHeaderTimeoutError", "ProviderResponseStreamError"])
+
+export function unreachableMessage(detail?: string) {
+  const override = process.env[Brand.env.gatewayURL] ? `, and ${Brand.env.gatewayURL} which is set` : ""
+  const cause = detail ? ` (${detail.replace(UNREACHABLE, "").replace(/^[:\s]+/, "")})` : ""
+  return `Cannot reach the model gateway at ${Brand.gatewayURL()}${cause}. Check the network${override}.`
+}
+
 // Undefined means "not a condition the contract names": upstream handling applies.
 export function classify(input: GatewayErrorInput): GatewayFailure | undefined {
   const status = input.statusCode
+  if (!status && UNREACHABLE.test(input.message ?? "")) {
+    return {
+      code: Contract.ERROR.gatewayUnavailable,
+      message: unreachableMessage(input.message),
+      exitCode: Contract.EXIT.network,
+      isRetryable: true,
+    }
+  }
   if (!status) return undefined
   const body = parse(input.responseBody)
 
@@ -138,6 +159,11 @@ export function exitCodeFor(error: unknown): number | undefined {
     if (code === Contract.ERROR.keyBudgetExhausted) return Contract.EXIT.wallet
     if (code === Contract.ERROR.keyRevoked || code === Contract.ERROR.tierNotAllowed) return Contract.EXIT.usage
     return Contract.EXIT.network
+  }
+  // Connection failures that never produced an HTTP answer are network class too.
+  if ((error as { name?: string }).name === "APIError" && data["statusCode"] === undefined) {
+    if (typeof metadata?.["code"] === "string" && NETWORK_CODES.has(metadata["code"])) return Contract.EXIT.network
+    if (typeof data["message"] === "string" && UNREACHABLE.test(data["message"])) return Contract.EXIT.network
   }
   return undefined
 }

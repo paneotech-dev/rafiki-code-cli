@@ -299,6 +299,6 @@ export const DoctorCommand = effectCmd({
       return
     }
     const noun = report.failed === 1 ? "1 check needs" : `${report.failed} checks need`
-    return yield* fail(`${noun} attention, see the lines marked FAIL.`, Contract.EXIT.failed)
+    return yield* fail(`${noun} attention, see the lines marked FAIL.`, report.exitCode)
   }),
 })

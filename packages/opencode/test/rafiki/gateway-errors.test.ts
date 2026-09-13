@@ -73,6 +73,21 @@ describe("gateway error mapping", () => {
     expect(GatewayErrors.exitCodeFor(undefined)).toBeUndefined()
   })
 
+  test("a gateway that cannot be reached is gateway_unavailable, exit 4, retryable", () => {
+    const f = GatewayErrors.classify({ message: "Cannot connect to API: Unable to connect. Is the computer able to access the url?" })
+    expect(f?.code).toBe("gateway_unavailable")
+    expect(f?.exitCode).toBe(Contract.EXIT.network)
+    expect(f?.isRetryable).toBe(true)
+    expect(f?.message).toStartWith("Cannot reach the model gateway at ")
+    expect(f?.message).toContain("Unable to connect")
+    expect(f?.message).not.toContain("Cannot connect to API")
+    // Socket failures that never became an HTTP answer are read back as network too.
+    expect(GatewayErrors.exitCodeFor({ name: "APIError", data: { message: "Connection reset by server", metadata: { code: "ECONNRESET" } } })).toBe(4)
+    expect(GatewayErrors.exitCodeFor({ name: "APIError", data: { message: "Cannot connect to API: refused" } })).toBe(4)
+    expect(GatewayErrors.exitCodeFor({ name: "APIError", data: { statusCode: 400, message: "Cannot connect to API: refused" } })).toBeUndefined()
+    expect(GatewayErrors.exitCodeFor({ name: "UnknownError", data: { message: "Cannot connect to API: refused" } })).toBeUndefined()
+  })
+
   test("the provider check is by id", () => {
     expect(GatewayErrors.isRafikiProvider("rafiki")).toBe(true)
     expect(GatewayErrors.isRafikiProvider("openai")).toBe(false)
