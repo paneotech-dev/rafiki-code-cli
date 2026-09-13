@@ -239,6 +239,22 @@ describe("doctor checks", () => {
     expect(line.detail).toBe(`${gateway.url}/health/liveliness answered 503`)
   })
 
+  test("a Console that redirects the account route is reachable, not an account", async () => {
+    const server = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      fetch: () => new Response("", { status: 307, headers: { location: "/login" } }),
+    })
+    try {
+      const url = `http://127.0.0.1:${server.port}`
+      const line = await Doctor.checkConsole(url, "sk-any", {}, fetch, 3000)
+      expect(line).toMatchObject({ status: "ok", detail: `${url} reachable, account route not available (307)` })
+      expect(JSON.stringify(line)).not.toContain("sk-any")
+    } finally {
+      server.stop(true)
+    }
+  })
+
   test("helpers: gateway root, money, install method, expired credential", () => {
     expect(Doctor.gatewayRoot("https://gateway.rafikiai.io/v1")).toBe("https://gateway.rafikiai.io")
     expect(Doctor.gatewayRoot("http://127.0.0.1:4180/v1/")).toBe("http://127.0.0.1:4180")

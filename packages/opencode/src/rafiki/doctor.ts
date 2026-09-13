@@ -283,15 +283,20 @@ export async function checkConsole(consoleURL: string, key: string | undefined, 
   const url = consoleURL + Contract.PATH.me
   let response: Response
   try {
+    // Redirects are not followed: a Console without the account route sends
+    // the browser login page, which must not pass for an account answer.
     response = await request(
       f,
       url,
-      { headers: { accept: "application/json", ...(key ? { authorization: `Bearer ${key}` } : {}) } },
+      { redirect: "manual", headers: { accept: "application/json", ...(key ? { authorization: `Bearer ${key}` } : {}) } },
       timeoutMs,
     )
   } catch (cause) {
     const override = env[Brand.env.consoleURL] ? `, and ${Brand.env.consoleURL} which is set` : ""
     return fail("console", `${consoleURL} unreachable (${detailOf(cause)})`, `Check the network${override}.`)
+  }
+  if (response.status >= 300 && response.status < 400) {
+    return ok("console", `${consoleURL} reachable, account route not available (${response.status})`)
   }
   if (response.ok) {
     const data = await body(response)
