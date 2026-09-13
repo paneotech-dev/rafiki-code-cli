@@ -37,6 +37,13 @@ SHA256SUMS only. Consequences and the plan:
 - Linux: no OS level signing. Plan: sign `SHA256SUMS` with a project key
   (minisign or cosign) and have the installer and updater verify the signature
   when a public key is embedded in the brand module.
+- Until then the installer's integrity rests on https: release overrides must
+  be https URLs with a plain host (no user info), every download pins https on
+  redirects too (`--proto =https --proto-redir =https`), and plain http is only
+  for the literal `127.0.0.1` or `[::1]` with the explicit
+  `--allow-http-loopback` test switch (`install/test-install-url.sh`). Anyone
+  who controls the release page or the installer host can still ship a
+  matching archive and checksum; only signing closes that.
 
 ## Later
 

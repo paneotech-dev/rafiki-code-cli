@@ -23,18 +23,33 @@ MUTED='\033[0;2m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-# Release overrides must be https, or http on a loopback host for local mock
-# release servers. Checked before anything is downloaded.
-for override in "RELEASE_API=${RAFIKICODE_RELEASE_API:-}" "RELEASE_BASE=${RAFIKICODE_RELEASE_BASE:-}"; do
-    value="${override#*=}"
-    case "$value" in
-        ""|https://*|http://127.0.0.1|http://127.0.0.1[:/]*|http://localhost|http://localhost[:/]*) ;;
-        *)
-            printf 'Error: RAFIKICODE_%s must be an https URL (http is accepted only for 127.0.0.1 or localhost).\n' "${override%%=*}" >&2
-            exit 1
-            ;;
-    esac
-done
+# Release overrides must be https URLs with a plain host name, no user info.
+# Plain http is accepted only for the literal loopback addresses 127.0.0.1 and
+# [::1], and only with the explicit test switch (--allow-http-loopback or
+# RAFIKICODE_INSTALL_ALLOW_HTTP_LOOPBACK=1) for local mock release servers.
+# Host names (localhost included), other spellings of loopback and IPv4 mapped
+# addresses are refused. Checked after the options are read, before anything
+# is downloaded. Every download is pinned to https, redirects included, unless
+# the loopback test switch is in use.
+allow_http_loopback="${RAFIKICODE_INSTALL_ALLOW_HTTP_LOOPBACK:-}"
+CURL_PROTO=(--proto '=https' --proto-redir '=https')
+URL_PATH_RE='(/[A-Za-z0-9._~%/+=-]*)?'
+HTTPS_RE="^https://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]{1,5})?${URL_PATH_RE}\$"
+LOOPBACK_RE="^http://(127\\.0\\.0\\.1|\\[::1\\])(:[0-9]{1,5})?${URL_PATH_RE}\$"
+
+check_override() {
+    local name=$1 value=$2
+    [ -z "$value" ] && return 0
+    if [[ "$value" =~ $HTTPS_RE ]]; then
+        return 0
+    fi
+    if [[ "$value" =~ $LOOPBACK_RE ]] && [ "$allow_http_loopback" = "1" ]; then
+        CURL_PROTO=()
+        return 0
+    fi
+    printf 'Error: %s must be an https URL (plain http is accepted only for 127.0.0.1 or [::1] with --allow-http-loopback, for local tests).\n' "$name" >&2
+    exit 1
+}
 
 # Scratch directory for downloads, removed on every exit path.
 TMP_DIR=""
@@ -53,6 +68,7 @@ Options:
     -b, --binary <path>      Install from a local binary instead of downloading
         --no-modify-path     Do not edit shell startup files, only print the PATH note
         --dry-run            Resolve the version and print what would happen, download nothing
+        --allow-http-loopback  Accept http release overrides on 127.0.0.1 or [::1] (local tests only)
 
 Environment:
     VERSION                  Same as --version
@@ -113,6 +129,10 @@ while [[ $# -gt 0 ]]; do
             dry_run=true
             shift
             ;;
+        --allow-http-loopback)
+            allow_http_loopback=1
+            shift
+            ;;
         *)
             echo -e "${RED}Error: unknown option '$1'${NC}" >&2
             usage >&2
@@ -120,6 +140,9 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+check_override RAFIKICODE_RELEASE_API "${RAFIKICODE_RELEASE_API:-}"
+check_override RAFIKICODE_RELEASE_BASE "${RAFIKICODE_RELEASE_BASE:-}"
 
 print_message() {
     local level=$1
@@ -213,7 +236,7 @@ detect_platform() {
 resolve_version() {
     need curl
     if [ -z "$requested_version" ]; then
-        specific_version=$(curl -fsSL -H "Accept: application/vnd.github+json" "${RELEASE_API}/releases/latest" \
+        specific_version=$(curl -fsSL ${CURL_PROTO[@]+"${CURL_PROTO[@]}"} -H "Accept: application/vnd.github+json" "${RELEASE_API}/releases/latest" \
             | sed -n 's/.*"tag_name": *"v\{0,1\}\([^"]*\)".*/\1/p' | head -n 1)
         if [[ -z "$specific_version" ]]; then
             fail "could not read the latest version from ${RELEASE_API}/releases/latest"
@@ -245,7 +268,7 @@ download_and_install() {
     mkdir -p "$TMP_DIR"
     local tmp_dir="$TMP_DIR"
 
-    if ! curl -fsSL -o "$tmp_dir/$CHECKSUMS" "$sums_url"; then
+    if ! curl -fsSL ${CURL_PROTO[@]+"${CURL_PROTO[@]}"} -o "$tmp_dir/$CHECKSUMS" "$sums_url"; then
         fail "could not download ${CHECKSUMS} for v${specific_version} from ${sums_url}. Is the version published?"
     fi
     local expected
@@ -255,9 +278,9 @@ download_and_install() {
     fi
 
     if [ -t 2 ]; then
-        curl -fL -# -o "$tmp_dir/$filename" "$url" || fail "download failed: $url"
+        curl -fL -# ${CURL_PROTO[@]+"${CURL_PROTO[@]}"} -o "$tmp_dir/$filename" "$url" || fail "download failed: $url"
     else
-        curl -fsSL -o "$tmp_dir/$filename" "$url" || fail "download failed: $url"
+        curl -fsSL ${CURL_PROTO[@]+"${CURL_PROTO[@]}"} -o "$tmp_dir/$filename" "$url" || fail "download failed: $url"
     fi
 
     local actual

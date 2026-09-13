@@ -9,8 +9,9 @@
 #   SHA256                   the archive's sha256: one hash, or sha256sum lines
 #                            naming each asset (required)
 #   INSTALL_DIR              default $HOME/.rafikicode/bin
-#   RAFIKICODE_RELEASE_BASE  download base, https only (http on a loopback host
-#                            is accepted for local tests)
+#   RAFIKICODE_RELEASE_BASE  download base, https only; plain http only for
+#                            127.0.0.1 or [::1] with
+#                            RAFIKICODE_INSTALL_ALLOW_HTTP_LOOPBACK=1 (local tests)
 set -euo pipefail
 
 APP=rafikicode
@@ -28,12 +29,19 @@ version="${version#v}"
 [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]] || fail "version '$version' is not a release number such as 0.1.0."
 [ -n "${SHA256:-}" ] || fail "the sha256 input is required: copy the archive's line from SHA256SUMS of release v${version}."
 
+# A plain host name, no user info; http only for the literal loopback
+# addresses and only with the explicit test switch.
 curl_proto=(--proto '=https' --proto-redir '=https')
-case "$RELEASE_BASE" in
-    https://*) ;;
-    http://127.0.0.1[:/]*|http://localhost[:/]*) curl_proto=() ;;
-    *) fail "RAFIKICODE_RELEASE_BASE must be an https URL." ;;
-esac
+url_path_re='(/[A-Za-z0-9._~%/+=-]*)?'
+https_re="^https://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]{1,5})?${url_path_re}\$"
+loopback_re="^http://(127\\.0\\.0\\.1|\\[::1\\])(:[0-9]{1,5})?${url_path_re}\$"
+if [[ "$RELEASE_BASE" =~ $https_re ]]; then
+    :
+elif [[ "$RELEASE_BASE" =~ $loopback_re ]] && [ "${RAFIKICODE_INSTALL_ALLOW_HTTP_LOOPBACK:-}" = "1" ]; then
+    curl_proto=()
+else
+    fail "RAFIKICODE_RELEASE_BASE must be an https URL (plain http only for 127.0.0.1 or [::1] with RAFIKICODE_INSTALL_ALLOW_HTTP_LOOPBACK=1, for local tests)."
+fi
 
 os="${RUNNER_OS:-$(uname -s)}"
 arch="${RUNNER_ARCH:-$(uname -m)}"

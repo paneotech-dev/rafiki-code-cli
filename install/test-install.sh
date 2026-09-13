@@ -64,6 +64,8 @@ done
 
 export RAFIKICODE_RELEASE_API="http://127.0.0.1:${PORT}/api"
 export RAFIKICODE_RELEASE_BASE="http://127.0.0.1:${PORT}/dl"
+# The mock release server is plain http on loopback: the explicit test switch.
+export RAFIKICODE_INSTALL_ALLOW_HTTP_LOOPBACK=1
 export RAFIKICODE_INSTALL_DIR="$WORK/prefix/bin"
 export HOME="$WORK/home"
 mkdir -p "$HOME"

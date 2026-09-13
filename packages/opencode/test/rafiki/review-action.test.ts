@@ -58,6 +58,7 @@ async function install(env: Record<string, string>) {
       RUNNER_ARCH: "X64",
       INSTALL_DIR: dir,
       RAFIKICODE_RELEASE_BASE: `http://127.0.0.1:${server.port}/dl`,
+      RAFIKICODE_INSTALL_ALLOW_HTTP_LOOPBACK: "1",
       ...env,
     },
     stdout: "pipe",
@@ -118,5 +119,28 @@ describe("review action install", () => {
     const r = await install({ VERSION, SHA256: digest, RAFIKICODE_RELEASE_BASE: "http://releases.example.com/dl" })
     expect(r.status).toBe(1)
     expect(r.stderr).toContain("must be an https URL")
+  })
+
+  test("plain http needs a literal loopback address and the test switch; bypass forms are refused before any download", async () => {
+    const port = server.port
+    const refused = [
+      { base: `http://127.0.0.1:${port}/dl`, allow: "" },
+      { base: `http://localhost:${port}/dl`, allow: "1" },
+      { base: `http://127.0.0.1:${port}@releases.example.com/dl`, allow: "1" },
+      { base: `http://127.0.0.1@releases.example.com/dl`, allow: "1" },
+      { base: `http://user@127.0.0.1:${port}/dl`, allow: "1" },
+      { base: `http://[::ffff:127.0.0.1]:${port}/dl`, allow: "1" },
+      { base: `http://127.1:${port}/dl`, allow: "1" },
+      { base: `http://2130706433:${port}/dl`, allow: "1" },
+      { base: `http://127.0.0.1.nip.io:${port}/dl`, allow: "1" },
+      { base: `https://github.com@releases.example.com/dl`, allow: "1" },
+    ]
+    for (const item of refused) {
+      const r = await install({ VERSION, SHA256: digest, RAFIKICODE_RELEASE_BASE: item.base, RAFIKICODE_INSTALL_ALLOW_HTTP_LOOPBACK: item.allow })
+      expect(r.status, item.base).toBe(1)
+      expect(r.stderr, item.base).toContain("must be an https URL")
+      expect(r.installed, item.base).toBe(false)
+    }
+    expect(requests).toEqual([])
   })
 })
