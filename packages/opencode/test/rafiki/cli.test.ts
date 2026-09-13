@@ -160,3 +160,21 @@ describe("rafikicode login, whoami, logout", () => {
     expect(whoami.all).not.toContain("sk-server-stub")
   }, 90_000)
 })
+
+describe("rafikicode models without a credential", () => {
+  test("prints one sign-in hint line and exits 2", async () => {
+    const result = await run(["models"])
+    expect(result.exitCode).toBe(2)
+    expect(result.stdout).not.toContain("/")
+    const hint = result.all.split("\n").filter((line) => line.includes("rafikicode login"))
+    expect(hint).toHaveLength(1)
+    expect(hint[0]).toContain("No models available: not signed in.")
+    expect(hint[0]).toContain("RAFIKICODE_API_KEY")
+
+    // With a key the provider is there and the hint is not.
+    const withKey = await run(["models"], { RAFIKICODE_API_KEY: "sk-models-stub" })
+    expect(withKey.exitCode).toBe(0)
+    expect(withKey.stdout).toContain("rafiki/rafiki-fast")
+    expect(withKey.all).not.toContain("No models available")
+  }, 120_000)
+})

@@ -4,6 +4,8 @@ import { ModelsDev } from "@opencode-ai/core/models-dev"
 import { effectCmd, fail } from "../effect-cmd"
 import { UI } from "../ui"
 import { ProviderV2 } from "@opencode-ai/core/provider"
+import { Brand } from "@opencode-ai/core/brand/brand"
+import { EXIT } from "@/rafiki/contract"
 
 export const ModelsCommand = effectCmd({
   command: "models [provider]",
@@ -32,6 +34,7 @@ export const ModelsCommand = effectCmd({
 
     const provider = yield* Provider.Service
     const providers = yield* provider.list()
+    if (Object.keys(providers).length === 0) return yield* fail(Brand.signInHint(), EXIT.usage)
 
     const print = (providerID: ProviderV2.ID, verbose?: boolean) => {
       const p = providers[providerID]

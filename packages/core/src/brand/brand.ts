@@ -246,6 +246,10 @@ export const Brand = {
     if (xdg) return path.join(xdg, Brand.dir)
     return path.join(home, Brand.configDirName)
   },
+  // One line for commands that find no model because no credential is usable.
+  signInHint() {
+    return `No models available: not signed in. Run ${Brand.name} login, or set ${Brand.env.apiKey} for servers and CI.`
+  },
   // True when a gateway credential is available to this process: the env
   // var, or a stored login.
   hasKey() {

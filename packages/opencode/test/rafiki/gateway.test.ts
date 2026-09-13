@@ -130,10 +130,12 @@ describe("rafikicode run through the gateway", () => {
     await login(10)
 
     const ci = await run(["models"], { CI: "1" })
-    expect(ci.exitCode).toBe(0)
+    // No usable credential means no model: the sign-in hint and the contract's exit 2.
+    expect(ci.exitCode).toBe(2)
     expect(ci.stdout).not.toContain("rafiki/")
     expect(ci.stderr).toContain("CI is set, so the stored browser sign-in is not used.")
     expect(ci.stderr).toContain("RAFIKICODE_API_KEY")
+    expect(ci.all).toContain("No models available: not signed in.")
 
     const server = await run(["models"], { CI: "1", RAFIKICODE_API_KEY: "sk-server-key-for-ci" })
     expect(server.exitCode).toBe(0)
