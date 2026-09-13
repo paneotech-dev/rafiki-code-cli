@@ -158,6 +158,10 @@ describe("rafikicode run through the gateway", () => {
     expect(result.all).toContain("RAFIKICODE_GATEWAY_URL which is set")
     expect(result.all).not.toContain("sk-unreachable-stub")
     expect(result.all).not.toContain("    at ")
-    console.log(`unreachable gateway run took ${Math.round((Date.now() - started) / 1000)} s (upstream network retries included)`)
+    const seconds = (Date.now() - started) / 1000
+    console.log(`unreachable gateway run took ${Math.round(seconds)} s (one connection retry)`)
+    // rc3 waited about 70 s on upstream retries; the rafiki provider retries a
+    // connection failure once. The bound leaves room for a cold bun start.
+    expect(seconds).toBeLessThan(20)
   }, 180_000)
 })

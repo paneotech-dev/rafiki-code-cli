@@ -175,6 +175,17 @@ export function neverRetry(error: unknown): boolean {
   return code === Contract.EXIT.wallet || code === Contract.EXIT.usage
 }
 
+// Retries after a connection failure to the Rafiki gateway. The upstream
+// backoff (5 retries, 2 s doubling to 30 s) made an unreachable gateway take
+// about 70 s to report; one retry reports it in a few seconds. Other failures
+// and other providers keep the upstream limit.
+export const CONNECTION_RETRIES = 1
+
+export function retryLimit(providerID: string, error: unknown, upstream: number) {
+  if (!isRafikiProvider(providerID)) return upstream
+  return exitCodeFor(error) === Contract.EXIT.network ? CONNECTION_RETRIES : upstream
+}
+
 export function annotate(failure: GatewayFailure, metadata?: Record<string, string>): Record<string, string> {
   return { ...(metadata ?? {}), rafiki_code: failure.code }
 }

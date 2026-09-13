@@ -227,6 +227,33 @@ describe("doctor checks", () => {
     expect(byName(report, "gateway").fix).toBe("Check the network, and RAFIKICODE_GATEWAY_URL which is set.")
     expect(byName(report, "console").fix).toBe("Check the network, and RAFIKICODE_CONSOLE_URL which is set.")
     expect(report.failed).toBe(3)
+    expect(report.exitCode).toBe(4)
+  })
+
+  test("with a key, an unreachable gateway skips the key and tier checks instead of waiting on them", async () => {
+    // A routable address nobody answers on would wait the whole timeout per
+    // check; a counting fetch that never resolves stands in for it.
+    let calls = 0
+    const hang: typeof fetch = ((url: string, init?: RequestInit) => {
+      calls++
+      return new Promise((_, reject) => init?.signal?.addEventListener("abort", () => reject(new Error("timed out"))))
+    }) as typeof fetch
+    const started = Date.now()
+    const report = await Doctor.run({
+      env: { RAFIKICODE_API_KEY: "sk-doctor-hang-stub" },
+      configDir: dir,
+      gatewayURL: "http://10.255.255.1:4197/v1",
+      consoleURL: "http://127.0.0.1:1",
+      fetch: hang,
+      timeoutMs: 700,
+    })
+    expect(byName(report, "gateway")).toMatchObject({ status: "fail", network: true })
+    expect(byName(report, "key")).toMatchObject({ status: "skip", detail: "gateway unreachable" })
+    expect(byName(report, "tiers")).toMatchObject({ status: "skip", detail: "gateway unreachable" })
+    expect(report.exitCode).toBe(4)
+    // gateway and console only: two timeouts, not three.
+    expect(calls).toBe(2)
+    expect(Date.now() - started).toBeLessThan(2000)
   })
 
   test("an unhealthy gateway and a Console outage fail without blaming the key", async () => {

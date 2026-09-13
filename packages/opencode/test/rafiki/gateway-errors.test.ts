@@ -88,6 +88,16 @@ describe("gateway error mapping", () => {
     expect(GatewayErrors.exitCodeFor({ name: "UnknownError", data: { message: "Cannot connect to API: refused" } })).toBeUndefined()
   })
 
+  test("a connection failure to the rafiki provider is retried once; other failures and providers keep the upstream limit", () => {
+    const unreachable = { name: "APIError", data: { message: "Cannot connect to API: refused" } }
+    const down = { name: "APIError", data: { statusCode: 503, message: "Service Unavailable" } }
+    expect(GatewayErrors.CONNECTION_RETRIES).toBe(1)
+    expect(GatewayErrors.retryLimit("rafiki", unreachable, 5)).toBe(1)
+    expect(GatewayErrors.retryLimit("rafiki", { name: "APIError", data: { metadata: { rafiki_code: "gateway_unavailable" } } }, 5)).toBe(1)
+    expect(GatewayErrors.retryLimit("rafiki", down, 5)).toBe(5)
+    expect(GatewayErrors.retryLimit("openai", unreachable, 5)).toBe(5)
+  })
+
   test("the provider check is by id", () => {
     expect(GatewayErrors.isRafikiProvider("rafiki")).toBe(true)
     expect(GatewayErrors.isRafikiProvider("openai")).toBe(false)

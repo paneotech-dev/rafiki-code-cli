@@ -368,10 +368,15 @@ export async function run(options: Options = {}): Promise<Report> {
   lines.push(checkConfig(dir))
   const credential = checkCredential(env, dir, consoleURL, now())
   lines.push(credential.line)
-  lines.push(await checkGateway(root, f, timeoutMs, env, now))
+  const gateway = await checkGateway(root, f, timeoutMs, env, now)
+  lines.push(gateway)
 
   let info: KeyInfo | undefined
-  if (credential.key) {
+  // An unreachable gateway cannot answer the key check either; asking again
+  // would only double the wait.
+  if (credential.key && gateway.network) {
+    lines.push(skip("key", "gateway unreachable"))
+  } else if (credential.key) {
     const key = await checkKey(root, credential.key, consoleURL, f, timeoutMs, now())
     lines.push(key.line)
     info = key.line.status === "ok" ? key.info : undefined
@@ -380,7 +385,7 @@ export async function run(options: Options = {}): Promise<Report> {
   }
 
   if (credential.key && info) lines.push(await checkTiers(root, credential.key, info, consoleURL, f, timeoutMs))
-  else lines.push(skip("tiers", credential.key ? "key check failed" : "no credential to check"))
+  else lines.push(skip("tiers", !credential.key ? "no credential to check" : gateway.network ? "gateway unreachable" : "key check failed"))
 
   lines.push(await checkConsole(consoleURL, credential.key, env, f, timeoutMs))
   lines.push(checkVersion(options.version ?? InstallationVersion, options.channel ?? InstallationChannel, options.execPath ?? process.execPath))
