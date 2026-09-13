@@ -140,8 +140,9 @@ runs:
       env:
         CI: "1"
         RAFIKICODE_API_KEY: ${{ inputs.api-key }}
-        # The reviewer reads; it never edits files or runs commands in the checkout.
-        OPENCODE_PERMISSION: '{"edit":"deny","bash":"deny","webfetch":"deny"}'
+        # The reviewer reads; it never edits files or runs commands in the checkout,
+        # and it does not read .git, where a checkout can keep the job token.
+        OPENCODE_PERMISSION: '{"edit":"deny","bash":"deny","webfetch":"deny","read":{".git":"deny",".git/*":"deny","*/.git/*":"deny"}}'
         MODEL: ${{ inputs.model }}
         PROMPT: ${{ inputs.prompt }}
         DIR: ${{ steps.diff.outputs.dir }}

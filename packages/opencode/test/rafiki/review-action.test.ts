@@ -144,3 +144,20 @@ describe("review action install", () => {
     expect(requests).toEqual([])
   })
 })
+
+describe("the job token stays out of the review", () => {
+  test("the example workflow checks out without persisting credentials", () => {
+    const yml = fs.readFileSync(path.join(repo, ".github/workflows/rafikicode-review.example.yml"), "utf8")
+    expect(yml).toMatch(/uses: actions\/checkout@v4\n\s+with:\n(\s+.+\n)*?\s+persist-credentials: false/)
+  })
+
+  test("the review step denies reads of .git besides edits, shell and web fetches", () => {
+    const yml = fs.readFileSync(path.join(actionDir, "action.yml"), "utf8")
+    const line = yml.split("\n").find((l) => l.trim().startsWith("OPENCODE_PERMISSION:"))!
+    const permission = JSON.parse(line.slice(line.indexOf("'") + 1, line.lastIndexOf("'")))
+    expect(permission).toMatchObject({ edit: "deny", bash: "deny", webfetch: "deny" })
+    expect(permission.read).toEqual({ ".git": "deny", ".git/*": "deny", "*/.git/*": "deny" })
+    // No "*" rule: the built in ask rules for .env files stay in force.
+    expect(permission.read["*"]).toBeUndefined()
+  })
+})

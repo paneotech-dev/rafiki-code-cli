@@ -44,6 +44,8 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.base.sha }}
           fetch-depth: 1
+          # Keep the job token out of .git/config, where the reviewer could read it.
+          persist-credentials: false
 
       - name: Review the pull request
         uses: ./.github/actions/rafikicode-review
