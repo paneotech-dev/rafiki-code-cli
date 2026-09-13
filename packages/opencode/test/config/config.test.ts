@@ -316,7 +316,7 @@ it.effect("creates global config.json with schema when no global configs exist",
       yield* Config.use.get().pipe(provideInstanceEffect(dir))
 
       const content = yield* FSUtil.use.readFileString(path.join(dir, "config.json"))
-      expect(content).toContain('"$schema": "https://opencode.ai/config.json"')
+      expect(content).toContain('"$schema": "https://raw.githubusercontent.com/paneotech-dev/rafiki-code-cli/main/schema/config.json"')
     }).pipe(Effect.provide(testInstanceStoreLayer), Effect.provide(LayerNode.compile(CrossSpawnSpawner.node))),
   ),
 )

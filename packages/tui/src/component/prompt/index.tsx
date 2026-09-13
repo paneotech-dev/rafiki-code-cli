@@ -1,3 +1,4 @@
+import { Brand } from "@opencode-ai/core/brand/brand"
 import {
   BoxRenderable,
   RGBA,
@@ -216,7 +217,7 @@ export function Prompt(props: PromptProps) {
   function promptModelWarning() {
     toast.show({
       variant: "warning",
-      message: "Connect a provider to send prompts",
+      message: `Run ${Brand.name} login to use your Rafiki Console credits, or connect a provider`,
       duration: 3000,
     })
     if (sync.data.provider.length === 0) {

@@ -99,6 +99,7 @@ const providerConfig = (input: {
   readonly options: Record<string, unknown>
 }): Partial<ConfigV1.Info> => ({
   enabled_providers: [input.providerID],
+  disabled_providers: [],
   provider: {
     [input.providerID]: {
       name: input.name,

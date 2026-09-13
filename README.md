@@ -61,7 +61,7 @@ Pick one with `--model rafiki/rafiki-pro`, from the model dialog in the terminal
 
 ## Configuration
 
-Global configuration lives at `~/.rafikicode/config.json`. Project configuration in `opencode.json` or a `.opencode/` directory at the repository root (file names kept from upstream so existing project configurations keep working) overrides the global file.
+Global configuration lives at `~/.rafikicode/config.json`. Project configuration in `rafikicode.json` or a `.rafikicode/` directory at the repository root overrides the global file.
 
 ```json
 {
@@ -79,7 +79,7 @@ Environment variables:
 | `RAFIKICODE_CONSOLE_URL` | override the Console base URL used by login, logout and whoami |
 | `RAFIKICODE_INSTALL_DIR` | installer target directory (default `~/.rafikicode/bin`) |
 | `RAFIKICODE_RELEASE_API`, `RAFIKICODE_RELEASE_BASE` | point the installer and updater at another release server (tests, mirrors) |
-| `OPENCODE_CONFIG_DIR` | add another config directory, read as `opencode.json` there |
+| `OPENCODE_CONFIG_DIR` | add another config directory, read as `config.json` or `rafikicode.json` there |
 | `OPENCODE_*` | advanced upstream switches keep their upstream names so upstream documentation and plugins keep working |
 
 Every key the CLI honors is listed in [docs/configuration.md](./docs/configuration.md).

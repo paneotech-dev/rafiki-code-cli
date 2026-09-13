@@ -6,15 +6,16 @@ import { Global } from "@opencode-ai/core/global"
 import { unique } from "remeda"
 import * as Effect from "effect/Effect"
 import { FSUtil } from "@opencode-ai/core/fs-util"
+import { Brand } from "@opencode-ai/core/brand/brand"
 
 export const files = Effect.fn("ConfigPaths.projectFiles")(function* (
-  name: string,
+  name: string | readonly string[],
   directory: string,
   worktree?: string,
 ) {
   const afs = yield* FSUtil.Service
   return (yield* afs.up({
-    targets: [`${name}.jsonc`, `${name}.json`],
+    targets: [name].flat().flatMap((base) => [`${base}.jsonc`, `${base}.json`]),
     start: directory,
     stop: worktree,
   })).toReversed()
@@ -26,13 +27,13 @@ export const directories = Effect.fn("ConfigPaths.directories")(function* (direc
     Global.Path.config,
     ...(!Flag.OPENCODE_DISABLE_PROJECT_CONFIG
       ? yield* afs.up({
-          targets: [".opencode"],
+          targets: [...Brand.project.dirs],
           start: directory,
           stop: worktree,
         })
       : []),
     ...(yield* afs.up({
-      targets: [".opencode"],
+      targets: [...Brand.project.dirs],
       start: Global.Path.home,
       stop: Global.Path.home,
     })),

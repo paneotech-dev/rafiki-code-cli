@@ -4,6 +4,7 @@
 // gateway details, so upstream merges stay cheap.
 import os from "os"
 import path from "path"
+import { existsSync } from "fs"
 import { logo, plain } from "./wordmark"
 import { houseStyle } from "./house-style"
 import * as Credentials from "./credentials"
@@ -38,7 +39,49 @@ export const Brand = {
   configDirName: ".rafikicode",
   // File seeded and read first inside the config directory.
   configFile: "config.json",
+  // Every file read from the global config directory, preferred first; the
+  // upstream names are read silently for compatibility.
+  globalFiles: ["config.json", "opencode.json", "opencode.jsonc"],
   homepage: "https://code.rafikiai.io",
+  // Public README and issue tracker, opened from the TUI ("Open docs", crash screen).
+  docs: "https://github.com/paneotech-dev/rafiki-code-cli",
+  issues: "https://github.com/paneotech-dev/rafiki-code-cli/issues/new",
+  // Short form of the global config path, used in hints and error messages.
+  configHint: "~/.rafikicode/config.json",
+  // Name of the built in default TUI theme (theme/assets/opencode.json upstream).
+  theme: "rafikicode",
+  // Project level configuration: the directory and file base name the fork
+  // prefers and documents, plus the upstream names it keeps reading silently.
+  project: {
+    dir: ".rafikicode",
+    file: "rafikicode",
+    // Preferred first, so a search finds ours before an upstream leftover.
+    dirs: [".rafikicode", ".opencode"],
+    fileNames: ["rafikicode", "opencode"],
+    files: ["rafikicode.json", "rafikicode.jsonc", "opencode.json", "opencode.jsonc"],
+    isDir(dir: string) {
+      return Brand.project.dirs.includes(path.basename(dir))
+    },
+    // Directory to write project files into: an existing one under root,
+    // ours first, else ours.
+    dirIn(root: string) {
+      for (const name of Brand.project.dirs) {
+        const dir = path.join(root, name)
+        if (existsSync(dir)) return dir
+      }
+      return path.join(root, Brand.project.dir)
+    },
+  },
+  // JSON schemas written as $schema into generated config files. Regenerate
+  // with: bun run packages/opencode/script/schema.ts schema/config.json schema/tui.json
+  schema: {
+    config: "https://raw.githubusercontent.com/paneotech-dev/rafiki-code-cli/main/schema/config.json",
+    tui: "https://raw.githubusercontent.com/paneotech-dev/rafiki-code-cli/main/schema/tui.json",
+  },
+  // Upstream hosted providers are never offered: without them an install
+  // without a key shows no upstream model names, and every model goes
+  // through the gateway.
+  disabledProviders: ["opencode", "opencode-go"],
   env: {
     // Headless and CI key. Takes precedence over the stored credential.
     apiKey: "RAFIKICODE_API_KEY",
@@ -93,6 +136,18 @@ export const Brand = {
   logo,
   wordmark: plain,
   houseStyle,
+  // Rewrites the upstream product name and links inside a system prompt so the
+  // agent introduces itself as this product and points feedback at our repo.
+  // Applied once where the per-provider prompt is selected (session/system.ts).
+  prompt(text: string) {
+    return text
+      .replaceAll("https://github.com/anomalyco/opencode/issues", `${Brand.docs}/issues`)
+      .replaceAll("https://github.com/anomalyco/opencode", Brand.docs)
+      .replace(/https:\/\/opencode\.ai\/docs[\w#./-]*/g, Brand.docs)
+      .replaceAll("https://opencode.ai", Brand.docs)
+      .replaceAll("OpenCode", Brand.product)
+      .replace(/(?<![\w./-])opencode(?![\w-]|\.jsonc?)/g, Brand.name)
+  },
   // Gateway base URL: the override env var, else the URL the Console handed
   // out at login, else the default.
   gatewayURL() {
@@ -129,17 +184,19 @@ export const Brand = {
   },
   // Built in defaults seeded under the user's global config. Anything the user
   // writes to ~/.rafikicode/config.json or a project config overrides these.
-  // The gateway provider is only registered once a credential exists, so an
-  // unauthenticated install behaves like upstream until rafikicode login runs.
+  // The gateway provider is registered once a credential exists; upstream
+  // hosted providers are disabled either way, so an install without a key
+  // offers no model and the interface points at rafikicode login.
   config() {
     if (Brand.sessionKeyRefusedInCI()) {
       warnOnce(
         `${Brand.product}: CI is set, so the stored browser sign-in is not used. Create a server key at ${Brand.consoleURL()}/keys and set ${Brand.env.apiKey}.`,
       )
-      return { autoupdate: false as const }
+      return { autoupdate: false as const, disabled_providers: [...Brand.disabledProviders] }
     }
     return {
       autoupdate: false as const,
+      disabled_providers: [...Brand.disabledProviders],
       ...(Brand.hasKey() ? { provider: Brand.provider.config() } : {}),
     }
   },

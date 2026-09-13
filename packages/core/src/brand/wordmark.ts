@@ -15,7 +15,7 @@ const letters: Record<string, string[]> = {
   e: ["    ", "█▀▀█", "█^^^", "▀▀▀▀"],
 }
 
-function word(text: string) {
+export function word(text: string) {
   return [0, 1, 2, 3].map((row) => Array.from(text, (char) => letters[char][row]).join(" "))
 }
 

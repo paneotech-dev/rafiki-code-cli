@@ -2066,9 +2066,9 @@ it.instance(
 
 it.effect("opencode loader keeps paid models when config apiKey is present", () =>
   Effect.gen(function* () {
-    const noneDir = yield* tmpdirScoped()
+    const noneDir = yield* tmpdirScoped({ config: { disabled_providers: [] } })
     const keyedDir = yield* tmpdirScoped({
-      config: { provider: { opencode: { options: { apiKey: "test-key" } } } },
+      config: { disabled_providers: [], provider: { opencode: { options: { apiKey: "test-key" } } } },
     })
 
     const listIn = (directory: string) =>
@@ -2087,8 +2087,8 @@ it.effect("opencode loader keeps paid models when config apiKey is present", () 
 
 it.effect("opencode loader keeps paid models when auth exists", () =>
   Effect.gen(function* () {
-    const noneDir = yield* tmpdirScoped()
-    const keyedDir = yield* tmpdirScoped()
+    const noneDir = yield* tmpdirScoped({ config: { disabled_providers: [] } })
+    const keyedDir = yield* tmpdirScoped({ config: { disabled_providers: [] } })
 
     const listIn = (directory: string) =>
       Provider.use
