@@ -5,6 +5,7 @@ import type { Plugin as PromisePlugin } from "@opencode-ai/plugin/v2/promise"
 import { Effect, Schema } from "effect"
 import path from "path"
 import { fileURLToPath, pathToFileURL } from "url"
+import * as BrandTrust from "../../brand/trust"
 import { Config } from "../../config"
 import { FSUtil } from "../../fs-util"
 import { Location } from "../../location"
@@ -42,7 +43,7 @@ export const Plugin = define({
       for (const entry of yield* config.entries()) {
         if (entry.type === "document") {
           const directory = entry.path ? path.dirname(entry.path) : location.directory
-          for (const item of entry.info.plugins ?? []) {
+          for (const item of BrandTrust.plugins(directory, entry.info.plugins ?? []) ?? []) {
             const ref = typeof item === "string" ? { package: item } : item
             const packageName = (() => {
               if (ref.package.startsWith("file://")) return fileURLToPath(ref.package)
@@ -66,7 +67,7 @@ export const Plugin = define({
             })
             .pipe(Effect.orElseSucceed(() => []))
           files.sort()
-          for (const file of files) configured.push({ package: file })
+          for (const file of BrandTrust.plugins(entry.path, files) ?? []) configured.push({ package: file })
         }
       }
 
