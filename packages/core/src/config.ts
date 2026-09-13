@@ -8,6 +8,7 @@ import { Permission } from "@opencode-ai/schema/permission"
 import { FSUtil } from "./fs-util"
 import { Global } from "./global"
 import { Brand } from "./brand/brand"
+import { Flag } from "./flag/flag"
 import { Location } from "./location"
 import { Policy } from "./policy"
 import { AbsolutePath } from "./schema"
@@ -175,7 +176,7 @@ const layer = Layer.effect(
     const locationIsGlobal = path.resolve(location.directory) === path.resolve(global.config)
     // Read configuration once when this location opens. Later calls reuse these
     // values until the location is reopened.
-    const discovered = locationIsGlobal
+    const discovered = locationIsGlobal || Flag.OPENCODE_DISABLE_PROJECT_CONFIG
       ? []
       : yield* fs
           .up({

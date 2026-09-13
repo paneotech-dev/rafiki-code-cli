@@ -75,6 +75,7 @@ The structure of the nested keys (`permissions`, `agents`, `mcp`, and so on) is 
 | `RAFIKICODE_RELEASE_API`, `RAFIKICODE_RELEASE_BASE` | point the installer and `rafikicode update` at another release server (mirrors, tests). Must be https; plain http is accepted only for `127.0.0.1` or `localhost` |
 | `RAFIKICODE_REASONING_EFFORT` | reasoning effort sent on every tier: `none`, `low`, `medium`, `high`, or `default` for no parameter. See [Reasoning and output limits](#reasoning-and-output-limits) |
 | `RAFIKICODE_MAX_OUTPUT_TOKENS` | output token limit for every tier, 1024 to 128000 |
+| `RAFIKICODE_DISABLE_PROJECT_CONFIG` | set to `1` or `true` to load nothing from the working tree: no project config files, plugins, tools, skills, MCP servers, formatters or language servers. Alias of `OPENCODE_DISABLE_PROJECT_CONFIG`. See [workspace trust](security/workspace-trust.md) |
 | `OPENCODE_CONFIG_DIR` | add another configuration directory, read as `config.json`, `rafikicode.json`, or `rafikicode.jsonc` there |
 | `OPENCODE_SERVER_PASSWORD`, `OPENCODE_SERVER_USERNAME` | basic authentication for `rafikicode serve` and `attach` |
 | `OPENCODE_*` | other advanced switches keep their upstream names so upstream documentation and plugins keep working |

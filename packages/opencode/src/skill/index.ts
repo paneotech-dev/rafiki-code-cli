@@ -194,9 +194,11 @@ const discoverSkills = Effect.fnUntraced(function* (
       yield* scan(state, root, EXTERNAL_SKILL_PATTERN, { dot: true, scope: "global" })
     }
 
-    const upDirs = yield* fsys
-      .up({ targets: externalDirs, start: directory, stop: worktree })
-      .pipe(Effect.catch(() => Effect.succeed([] as string[])))
+    const upDirs = Brand.project.configDisabled()
+      ? []
+      : yield* fsys
+          .up({ targets: externalDirs, start: directory, stop: worktree })
+          .pipe(Effect.catch(() => Effect.succeed([] as string[])))
 
     for (const root of upDirs) {
       yield* scan(state, root, EXTERNAL_SKILL_PATTERN, { dot: true, scope: "project" })

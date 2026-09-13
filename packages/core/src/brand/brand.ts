@@ -102,6 +102,14 @@ export const Brand = {
     isDir(dir: string) {
       return Brand.project.dirs.includes(path.basename(dir))
     },
+    // True when project configuration must not load from the working tree:
+    // OPENCODE_DISABLE_PROJECT_CONFIG or RAFIKICODE_DISABLE_PROJECT_CONFIG set
+    // to 1 or true. Read on every call, like the upstream flag.
+    configDisabled() {
+      return [Brand.env.disableProjectConfig, "OPENCODE_DISABLE_PROJECT_CONFIG"].some((name) =>
+        ["1", "true"].includes(process.env[name]?.toLowerCase() ?? ""),
+      )
+    },
     // Directory to write project files into: an existing one under root,
     // ours first, else ours.
     dirIn(root: string) {
@@ -133,6 +141,9 @@ export const Brand = {
     releaseBase: "RAFIKICODE_RELEASE_BASE",
     // Overrides the Console base URL for the device flow, used for local mocks and staging.
     consoleURL: "RAFIKICODE_CONSOLE_URL",
+    // Alias of OPENCODE_DISABLE_PROJECT_CONFIG: nothing is loaded from the working
+    // tree (docs/security/workspace-trust.md).
+    disableProjectConfig: "RAFIKICODE_DISABLE_PROJECT_CONFIG",
     // Output token limit for every rafiki-* model (1024 to 128000). The rafiki
     // provider is not held to the upstream 32000 runtime cap; an explicit
     // OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX still lowers it.

@@ -21,12 +21,12 @@ What Rafiki Code already does: project configuration cannot move the `rafiki` pr
 
 ## How the upstream project handles it
 
-Upstream has no trust prompt and no per workspace approval. Project configuration and project plugin directories load whenever you start in the directory. The only switch is the environment variable `OPENCODE_DISABLE_PROJECT_CONFIG`: when it is set to `1` or `true`, the project config files and the project `.opencode/` style directories are not loaded at all (plugins, tools, MCP servers, formatters, language servers, agents, commands and project instructions from the workspace). Your user configuration in `~/.rafikicode/` still loads. The same variable works in `rafikicode`.
+Upstream has no trust prompt and no per workspace approval. Project configuration and project plugin directories load whenever you start in the directory. The only switch is the environment variable `OPENCODE_DISABLE_PROJECT_CONFIG`: when it is set to `1` or `true`, the project config files and the project `.opencode/` style directories are not loaded at all (plugins, tools, MCP servers, formatters, language servers, agents, commands and project instructions from the workspace). Your user configuration in `~/.rafikicode/` still loads. The same variable works in `rafikicode`, and `RAFIKICODE_DISABLE_PROJECT_CONFIG` is an alias for it. In `rafikicode` the switch also covers the project plugin and tool directories (`.rafikicode/` and `.opencode/` `plugin(s)/` and `tool(s)/`) and project skill directories, which release candidate 2 still loaded.
 
 ## What to do today
 
 - Run `rafikicode` only in repositories whose contents you trust as much as a script you would run yourself.
-- For a repository you do not trust, set `OPENCODE_DISABLE_PROJECT_CONFIG=1` before starting `rafikicode`, and read its `rafikicode.json`, `opencode.json`, `.rafikicode/` and `.opencode/` before turning it back on.
+- For a repository you do not trust, set `RAFIKICODE_DISABLE_PROJECT_CONFIG=1` (or `OPENCODE_DISABLE_PROJECT_CONFIG=1`) before starting `rafikicode`, and read its `rafikicode.json`, `opencode.json`, `.rafikicode/` and `.opencode/` before turning it back on.
 - In CI, run `rafikicode` on code that has already been reviewed, such as the base branch of a pull request. The review action in [the review recipe](../review-recipe.md) checks out the base commit for this reason. Never run it on the head of a pull request from a fork with a key available.
 - Use a server key with a small budget for CI, so a leaked key has a small reach.
 

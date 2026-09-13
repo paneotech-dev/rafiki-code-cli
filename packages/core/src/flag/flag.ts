@@ -1,4 +1,5 @@
 import { Config } from "effect"
+import { Brand } from "../brand/brand"
 
 export function truthy(key: string) {
   const value = process.env[key]?.toLowerCase()
@@ -52,7 +53,7 @@ export const Flag = {
   // Evaluated at access time (not module load) because tests, the CLI, and
   // external tooling set these env vars at runtime.
   get OPENCODE_DISABLE_PROJECT_CONFIG() {
-    return truthy("OPENCODE_DISABLE_PROJECT_CONFIG")
+    return Brand.project.configDisabled()
   },
   get OPENCODE_EXPERIMENTAL_REFERENCES() {
     return enabledByExperimental("OPENCODE_EXPERIMENTAL_REFERENCES")
