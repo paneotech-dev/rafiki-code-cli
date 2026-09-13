@@ -8,9 +8,12 @@
 #      budget that fits one review per pull request, and store it as the
 #      repository secret RAFIKICODE_API_KEY.
 #   2. Copy this file to .github/workflows/rafikicode-review.yml.
-#   3. Change the `uses:` line to the published action reference when the
-#      action is used from another repository, for example
-#      paneotech-dev/rafiki-code-cli/.github/actions/rafikicode-review@v1.
+#   3. Set the repository variables RAFIKICODE_VERSION and RAFIKICODE_SHA256
+#      (see the `with:` block below).
+#   4. Change the `uses:` line to the published action reference when the
+#      action is used from another repository, pinned by full commit SHA, for
+#      example paneotech-dev/rafiki-code-cli/.github/actions/rafikicode-review@<40 character commit sha>.
+#      A tag such as @v1 can be moved; a commit SHA cannot.
 #
 # Secrets are not available to workflows triggered by pull requests from
 # forks, so the job is skipped for those; use the local recipe in
@@ -48,5 +51,8 @@ jobs:
           api-key: ${{ secrets.RAFIKICODE_API_KEY }}
           model: rafiki/rafiki-fast
           max-diff-lines: 4000
-          # version: 1.2.3
-          # installer-url: https://raw.githubusercontent.com/paneotech-dev/rafiki-code-cli/v1.2.3/install/install.sh
+          # Pinned release: set the repository variables RAFIKICODE_VERSION (for
+          # example 0.1.0) and RAFIKICODE_SHA256 (the rafikicode-linux-x64.tar.gz
+          # line from that release's SHA256SUMS). The job fails while they are unset.
+          version: ${{ vars.RAFIKICODE_VERSION }}
+          sha256: ${{ vars.RAFIKICODE_SHA256 }}

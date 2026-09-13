@@ -42,25 +42,26 @@ Setup, once per repository:
 
 1. In Rafiki Console, create a server key at [console.rafikiai.io/keys](https://console.rafikiai.io/keys). Name it after the repository, choose the tiers the review may use, and give it a budget you are comfortable spending on reviews per month. A key never spends more than its budget or the wallet holds.
 2. Store the key as the repository secret `RAFIKICODE_API_KEY`.
-3. Copy `.github/workflows/rafikicode-review.example.yml` to `.github/workflows/rafikicode-review.yml` and commit it. When you use the action from another repository, change `uses:` to the published reference, for example `paneotech-dev/rafiki-code-cli/.github/actions/rafikicode-review@v1`.
+3. Pick the `rafikicode` release to run and store two repository variables: `RAFIKICODE_VERSION` (for example `0.1.0`) and `RAFIKICODE_SHA256`, the `rafikicode-linux-x64.tar.gz` line from that release's `SHA256SUMS` (paste several lines if your runners differ). The action refuses to run without both.
+4. Copy `.github/workflows/rafikicode-review.example.yml` to `.github/workflows/rafikicode-review.yml` and commit it. When you use the action from another repository, change `uses:` to the published reference pinned by full commit SHA, for example `paneotech-dev/rafiki-code-cli/.github/actions/rafikicode-review@<commit sha>`. A tag can be moved to other code later; a commit SHA cannot, and it also pins the install script the action runs.
 
 What the action does on each pull request:
 
-1. Installs `rafikicode` with the one line installer (pin a release with the `version` input; point `installer-url` at a raw `install/install.sh` URL from a release tag if the runner cannot reach `get.rafikiai.io`).
+1. Downloads the `rafikicode` archive of the pinned `version` from the GitHub release and checks it against the pinned `sha256` before unpacking it. No remote install script is run, and a changed archive stops the job.
 2. Runs `rafikicode doctor` with the key. A revoked key, an empty budget, or an unreachable gateway stops the job here, before any model call.
 3. Reads the diff with `gh pr diff` and cuts it at `max-diff-lines` (default 4000).
 4. Runs `rafikicode run` headless on the chosen tier with the review prompt and the diff. The reviewer can read the checkout but is denied file edits, shell commands and web fetches through `OPENCODE_PERMISSION`.
 5. Posts the review with `gh pr comment` under the `comment-header` line, with a footer naming the tier. Set `post-comment: false` to keep the review as a file only (the `review-file` output).
 
-Inputs, all optional except `api-key`:
+Inputs, all optional except `api-key`, `version` and `sha256`:
 
 | input | default | meaning |
 |---|---|---|
 | `api-key` | required | the server key, from a secret |
 | `model` | `rafiki/rafiki-fast` | tier for the review |
 | `pr-number` | the triggering pull request | which pull request to review |
-| `version` | latest release | `rafikicode` release to install |
-| `installer-url` | `https://get.rafikiai.io` | installer script location |
+| `version` | required | `rafikicode` release to install, for example `0.1.0` |
+| `sha256` | required | the archive hash, or `SHA256SUMS` lines, for that release |
 | `prompt` | built in review prompt | your own instructions; the diff is appended |
 | `max-diff-lines` | `4000` | cut the diff here and say so in the comment |
 | `post-comment` | `true` | post to the pull request |

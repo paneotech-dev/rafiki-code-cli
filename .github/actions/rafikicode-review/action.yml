@@ -1,6 +1,7 @@
 name: "Rafiki Code pull request review"
 description: "Review a pull request with rafikicode headless and post the result as a pull request comment"
-# Composite action: installs rafikicode, checks the setup with rafikicode
+# Composite action: installs a pinned rafikicode release (version and sha256
+# inputs, checked by install.sh next to this file), checks the setup with rafikicode
 # doctor, reads the pull request diff with gh, runs the review on the chosen
 # tier, and posts the result with gh pr comment. Every model call is metered
 # against the key's budget in Rafiki Console. Documented in
@@ -33,13 +34,13 @@ inputs:
     required: false
     default: "rafiki/rafiki-fast"
   version:
-    description: "rafikicode release to install, for example 1.2.3. Empty means the latest release."
-    required: false
+    description: "rafikicode release to install, for example 0.1.0. Required: the action never installs an unpinned latest release."
+    required: true
     default: ""
-  installer-url:
-    description: "Installer script URL. Override with a pinned raw URL of install/install.sh from a release tag when the short domain is not available to the runner."
-    required: false
-    default: "https://get.rafikiai.io"
+  sha256:
+    description: "SHA256 of the release archive for the runner, from SHA256SUMS of that release: one hash, or the SHA256SUMS lines for several runners. Required."
+    required: true
+    default: ""
   prompt:
     description: "Review instructions. The diff is appended after them. Empty means the built in review prompt."
     required: false
@@ -77,13 +78,13 @@ runs:
     - name: Install rafikicode
       shell: bash
       env:
-        INSTALLER_URL: ${{ inputs.installer-url }}
-        REQUESTED_VERSION: ${{ inputs.version }}
+        VERSION: ${{ inputs.version }}
+        SHA256: ${{ inputs.sha256 }}
       run: |
         set -euo pipefail
-        args=(--no-modify-path)
-        if [ -n "${REQUESTED_VERSION}" ]; then args+=(--version "${REQUESTED_VERSION}"); fi
-        curl -fsSL "${INSTALLER_URL}" | bash -s -- "${args[@]}"
+        # Downloads the pinned release archive and checks it against the pinned
+        # sha256 before unpacking; no remote script is run.
+        bash "${GITHUB_ACTION_PATH}/install.sh"
         echo "${HOME}/.rafikicode/bin" >> "${GITHUB_PATH}"
         "${HOME}/.rafikicode/bin/rafikicode" --version
 
