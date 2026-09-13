@@ -46,7 +46,7 @@ describe("credentials store", () => {
     Credentials.write(dir, sample)
     expect(fs.statSync(dir).mode & 0o777).toBe(0o700)
     expect(fs.statSync(Credentials.file(dir)).mode & 0o777).toBe(0o600)
-    expect(fs.existsSync(Credentials.file(dir) + ".tmp")).toBe(false)
+    expect(fs.readdirSync(dir).filter((f) => f.endsWith(".tmp"))).toEqual([])
   })
 
   test("tightens an existing directory to 0700", () => {
@@ -204,4 +204,50 @@ describe("an unsafe credential file at the command line", () => {
     expect(out.stdout + out.stderr).toContain("without revoking its key")
     expect(fs.existsSync(Credentials.file(dir))).toBe(false)
   }, 120_000)
+})
+
+describe("credential write (B4)", () => {
+  test.skipIf(process.platform === "win32")("does not follow a planted credentials.tmp link and leaves no temp file", () => {
+    const dir = Brand.configDir()
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 })
+    const victim = path.join(home, "victim.txt")
+    fs.writeFileSync(victim, "untouched\n")
+    fs.symlinkSync(victim, Credentials.file(dir) + ".tmp")
+    Credentials.write(dir, sample)
+    expect(fs.readFileSync(victim, "utf8")).toBe("untouched\n")
+    expect(Credentials.read(dir)?.key).toBe(sample.key)
+    expect(fs.lstatSync(Credentials.file(dir)).isFile()).toBe(true)
+    expect(fs.statSync(Credentials.file(dir)).mode & 0o777).toBe(0o600)
+    // The planted link is left alone; no temp file of ours remains.
+    expect(fs.readdirSync(dir).sort()).toEqual(["credentials", "credentials.tmp"])
+  })
+
+  test.skipIf(process.platform === "win32")("refuses a config directory that is a symbolic link", () => {
+    const elsewhere = path.join(home, "elsewhere")
+    fs.mkdirSync(elsewhere, { mode: 0o755 })
+    const dir = Brand.configDir()
+    fs.symlinkSync(elsewhere, dir)
+    expect(() => Credentials.write(dir, sample)).toThrow(Credentials.UnsafeCredentialError)
+    expect(() => Credentials.write(dir, sample)).toThrow(/is a symbolic link/)
+    expect(fs.readdirSync(elsewhere)).toEqual([])
+    expect(fs.statSync(elsewhere).mode & 0o777).toBe(0o755)
+  })
+
+  test.skipIf(process.platform === "win32")("refuses a config directory owned by another user", () => {
+    const dir = Brand.configDir()
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 })
+    const other = (process.getuid?.() ?? 0) + 1
+    expect(Credentials.checkDir(dir, other)?.message).toContain(`belongs to another user`)
+    expect(() => Credentials.write(dir, sample, other)).toThrow(Credentials.UnsafeCredentialError)
+    expect(fs.readdirSync(dir)).toEqual([])
+    expect(Credentials.checkDir(dir)).toBeUndefined()
+  })
+
+  test("each write uses a fresh temp name, so a leftover temp file does not block it", () => {
+    const dir = Brand.configDir()
+    Credentials.write(dir, sample)
+    fs.writeFileSync(Credentials.file(dir) + ".0000000000000000.tmp", "stale", { mode: 0o600 })
+    Credentials.write(dir, { ...sample, key_alias: "second" })
+    expect(Credentials.read(dir)?.key_alias).toBe("second")
+  })
 })

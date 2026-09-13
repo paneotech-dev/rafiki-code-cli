@@ -6,6 +6,7 @@
 // machine and never leaves it.
 import fs from "fs"
 import path from "path"
+import { randomBytes } from "crypto"
 
 export interface StoredOwner {
   id: string
@@ -141,15 +142,50 @@ export function read(dir: string, uid: number | undefined = currentUid()): Store
   }
 }
 
-export function write(dir: string, credential: StoredCredential) {
+// The directory the credential lives in must be a real directory owned by the
+// current user. A symbolic link or a foreign owner could redirect the write.
+export function checkDir(dir: string, uid: number | undefined = currentUid()): UnsafeCredentialError | undefined {
+  if (process.platform === "win32") return undefined
+  let stat: fs.Stats
+  try {
+    stat = fs.lstatSync(dir)
+  } catch {
+    return undefined
+  }
+  if (stat.isSymbolicLink()) {
+    return new UnsafeCredentialError(dir, "is a symbolic link", `rm ${dir}, then sign in again`)
+  }
+  if (!stat.isDirectory()) return new UnsafeCredentialError(dir, "is not a directory", `rm ${dir}, then sign in again`)
+  if (uid !== undefined && stat.uid !== uid) {
+    return new UnsafeCredentialError(dir, `belongs to another user (uid ${stat.uid})`, `chown ${uid} ${dir} && chmod ${DIR_MODE.toString(8)} ${dir}`)
+  }
+  return undefined
+}
+
+// Writes through a new temp file with a random name, created exclusively
+// (O_EXCL does not follow a planted link) and then renamed over the target.
+export function write(dir: string, credential: StoredCredential, uid: number | undefined = currentUid()) {
   fs.mkdirSync(dir, { recursive: true, mode: DIR_MODE })
+  const problem = checkDir(dir, uid)
+  if (problem) throw problem
   // mkdirSync leaves an existing directory's mode alone; the contract wants 0700.
   fs.chmodSync(dir, DIR_MODE)
   const target = file(dir)
-  const tmp = target + ".tmp"
-  fs.writeFileSync(tmp, JSON.stringify(credential, null, 2) + "\n", { mode: FILE_MODE })
-  fs.chmodSync(tmp, FILE_MODE)
-  fs.renameSync(tmp, target)
+  const tmp = `${target}.${randomBytes(8).toString("hex")}.tmp`
+  const fd = fs.openSync(tmp, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | (fs.constants.O_NOFOLLOW ?? 0), FILE_MODE)
+  try {
+    try {
+      if (process.platform !== "win32") fs.fchmodSync(fd, FILE_MODE)
+      fs.writeFileSync(fd, JSON.stringify(credential, null, 2) + "\n")
+      fs.fsyncSync(fd)
+    } finally {
+      fs.closeSync(fd)
+    }
+    fs.renameSync(tmp, target)
+  } catch (cause) {
+    fs.rmSync(tmp, { force: true })
+    throw cause
+  }
 }
 
 export function remove(dir: string) {
