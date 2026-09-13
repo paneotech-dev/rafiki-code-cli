@@ -1,14 +1,23 @@
-// Keeps the Rafiki key on the Rafiki gateway. The key spends a prepaid wallet,
-// and rafikicode is meant to be run inside any repository, so configuration
-// found in a project (rafikicode.json, opencode.json, .rafikicode/, .opencode/)
-// is not trusted with it:
+// Keeps the Rafiki key on the Rafiki gateway, and keeps untrusted workspaces
+// from running code or reading secrets through configuration. The key spends
+// a prepaid wallet, and rafikicode is meant to be run inside any repository,
+// so configuration found in a project (rafikicode.json, opencode.json,
+// .rafikicode/, .opencode/) is not trusted with it:
 //
-// 1. projectConfig() removes, with a one line warning naming the file, every
-//    project setting that could move the rafiki provider (base URL, headers,
-//    key source, SDK package) or hand the key to another provider or server.
-// 2. trust() records the gateway origins that trusted sources chose: the
+// 1. projectConfig() removes, with a one line warning naming the file:
+//    - unless the workspace is trusted (brand/trust.ts), every setting that
+//      could move the rafiki provider (base URL, headers, key source, SDK
+//      package); even in a trusted workspace request() below keeps the key on
+//      the gateway;
+//    - always, any value holding the key and any env list lending it;
+//    - when project code may not load, plugin entries and provider packages
+//      outside the bundled @ai-sdk scope;
+//    - in a headless run of an untrusted workspace, local MCP, formatter and
+//      language server commands and any permission that allows the shell.
+// 2. substitution() limits {env:} and {file:} in untrusted project files.
+// 3. trust() records the gateway origins that trusted sources chose: the
 //    user's ~/.rafikicode/config.json, explicit config env vars, managed config.
-// 3. request() runs where provider requests are sent and refuses any request
+// 4. request() runs where provider requests are sent and refuses any request
 //    that carries the key to an origin other than the gateway, whatever put
 //    the key there.
 //
@@ -18,6 +27,7 @@ import fs from "fs"
 import path from "path"
 import { Brand } from "./brand"
 import * as Credentials from "./credentials"
+import * as Trust from "./trust"
 
 type Json = Record<string, unknown>
 
@@ -26,22 +36,24 @@ type Json = Record<string, unknown>
 const providerAllowed = new Set(["name", "whitelist", "blacklist", "models", "options"])
 const optionsAllowed = new Set(["timeout", "chunkTimeout", "headerTimeout"])
 const modelDenied = new Set(["headers", "provider"])
+// Provider SDK packages an untrusted project may still name: the AI SDK's own
+// scope, which nobody but its maintainers can publish to. Anything else
+// (another package, a file:// path) is code chosen by the repository.
+const bundledPackage = /^@ai-sdk\/[a-z0-9][a-z0-9._-]*$/
+// Environment variable names an untrusted project may not read.
+const secretName = /KEY|TOKEN|SECRET|PASSW(OR)?D|CREDENTIAL|PRIVATE/i
 
 function isRecord(value: unknown): value is Json {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
 // Set by tests to capture the warning instead of writing to stderr.
-let warn: (message: string) => void = (message) => process.stderr.write(message + "\n")
 export function setWarn(fn: (message: string) => void) {
-  const previous = warn
-  warn = fn
-  return previous
+  return Trust.setWarn(fn)
 }
 
-const warnedSources = new Set<string>()
 export function resetWarnings() {
-  warnedSources.clear()
+  Trust.resetWarnings()
 }
 
 // Every Rafiki key value this process could send: the env var and the stored
@@ -104,28 +116,70 @@ export function resetTrust() {
 }
 
 // A project directory is any .rafikicode/ or .opencode/ found from the working
-// directory upwards, except the user's own ones: the global config directory,
-// the ones directly under the home directory, and OPENCODE_CONFIG_DIR.
-export function isProjectDir(dir: string, input: { config: string; home: string; configDir?: string }) {
-  if (path.resolve(dir) === path.resolve(input.config)) return false
-  if (input.configDir && path.resolve(dir) === path.resolve(input.configDir)) return false
-  if (path.resolve(path.dirname(dir)) === path.resolve(input.home)) return false
-  return true
+// directory upwards (including ~/.opencode), except the user's own config
+// directory (config, normally ~/.rafikicode) and OPENCODE_CONFIG_DIR. The home
+// based config directory counts as a project one when it sits inside a git
+// checkout (HOME set to the checkout), since its content came with the code.
+export function isProjectDir(dir: string, input: { config: string; configDir?: string; home?: string }) {
+  const target = Trust.real(dir)
+  if (input.configDir && target === Trust.real(input.configDir)) return false
+  if (target !== Trust.real(input.config)) return true
+  return target === Trust.real(Brand.configDir()) && Trust.homeConfigInCheckout()
 }
 
 const envReference = new RegExp(`\\$\\{\\s*${Brand.env.apiKey}\\s*\\}|\\{env:\\s*${Brand.env.apiKey}\\s*\\}`)
 
+// Removes the entries of a permission config that allow the shell: a bare
+// "allow" for every tool, and allow rules under bash or "*".
+function shellAllows(value: unknown, at: string, ignored: string[]): unknown {
+  if (value === "allow") {
+    ignored.push(at)
+    return undefined
+  }
+  if (!isRecord(value)) return value
+  for (const key of ["bash", "*"]) {
+    const rule = value[key]
+    if (rule === "allow") {
+      ignored.push(`${at}.${key}`)
+      delete value[key]
+    } else if (isRecord(rule)) {
+      for (const [pattern, action] of Object.entries(rule)) {
+        if (action !== "allow") continue
+        ignored.push(`${at}.${key}.${pattern}`)
+        delete rule[pattern]
+      }
+    }
+  }
+  return value
+}
+
+function agentPermissions(agents: unknown, at: string, ignored: string[]) {
+  if (!isRecord(agents)) return
+  for (const [name, agent] of Object.entries(agents)) {
+    if (!isRecord(agent) || agent.permission === undefined) continue
+    const next = shellAllows(agent.permission, `${at}.${name}.permission`, ignored)
+    if (next === undefined) delete agent.permission
+    else agent.permission = next
+  }
+}
+
 // Removes the unsafe settings from one project config file and warns once per
-// file. Returns the same object, changed in place.
-export function projectConfig<T>(source: string, data: T): T {
+// file. Returns the same object, changed in place. where is the directory whose
+// trust decides (default: the file's directory).
+export function projectConfig<T>(source: string, data: T, where = path.dirname(source)): T {
   if (!isRecord(data)) return data
+  const trustedWorkspace = Trust.isTrusted(where)
+  const headless = Trust.headless()
+  const codeAllowed = Trust.allowsCode({ trusted: trustedWorkspace, headless })
   const ignored: string[] = []
+  const code: string[] = []
+  const programs: string[] = []
   const secrets = keys()
 
   const providers = data.provider
   if (isRecord(providers)) {
     const rafiki = providers[Brand.provider.id]
-    if (isRecord(rafiki)) {
+    if (isRecord(rafiki) && !trustedWorkspace) {
       for (const field of Object.keys(rafiki)) {
         if (providerAllowed.has(field)) continue
         ignored.push(`provider.${Brand.provider.id}.${field}`)
@@ -153,13 +207,62 @@ export function projectConfig<T>(source: string, data: T): T {
         }
       }
     }
-    // Another provider may not take its key from the Rafiki key variable.
     for (const [id, provider] of Object.entries(providers)) {
-      if (!isRecord(provider) || !Array.isArray(provider.env)) continue
-      if (!provider.env.includes(Brand.env.apiKey)) continue
-      ignored.push(`provider.${id}.env`)
-      delete provider.env
+      if (!isRecord(provider)) continue
+      // Another provider may not take its key from the Rafiki key variable.
+      if (Array.isArray(provider.env) && provider.env.includes(Brand.env.apiKey)) {
+        ignored.push(`provider.${id}.env`)
+        delete provider.env
+      }
+      if (codeAllowed) continue
+      // A provider package is imported into this process: code from the repository.
+      if (typeof provider.npm === "string" && !bundledPackage.test(provider.npm)) {
+        code.push(`provider.${id}.npm`)
+        delete provider.npm
+      }
+      if (isRecord(provider.models)) {
+        for (const [modelID, model] of Object.entries(provider.models)) {
+          if (!isRecord(model) || !isRecord(model.provider)) continue
+          if (typeof model.provider.npm !== "string" || bundledPackage.test(model.provider.npm)) continue
+          code.push(`provider.${id}.models.${modelID}.provider.npm`)
+          delete model.provider.npm
+        }
+      }
     }
+  }
+
+  if (!codeAllowed && Array.isArray(data.plugin) && data.plugin.length) {
+    code.push("plugin")
+    delete data.plugin
+  }
+
+  // Nobody can review what a headless run starts, so an untrusted workspace
+  // declares no programs and cannot open the shell.
+  if (headless && !trustedWorkspace) {
+    if (isRecord(data.mcp)) {
+      for (const [name, entry] of Object.entries(data.mcp)) {
+        if (!isRecord(entry) || entry.type !== "local") continue
+        programs.push(`mcp.${name}`)
+        delete data.mcp[name]
+      }
+    }
+    for (const kind of ["formatter", "lsp"] as const) {
+      const entries = data[kind]
+      if (!isRecord(entries)) continue
+      for (const [name, entry] of Object.entries(entries)) {
+        if (!isRecord(entry) || entry.command === undefined) continue
+        programs.push(`${kind}.${name}`)
+        delete entries[name]
+      }
+    }
+    const record: Json = data
+    if (record.permission !== undefined) {
+      const next = shellAllows(record.permission, "permission", programs)
+      if (next === undefined) delete record.permission
+      else record.permission = next
+    }
+    agentPermissions(data.agent, "agent", programs)
+    agentPermissions(data.mode, "mode", programs)
   }
 
   // Anywhere else (another provider's options, MCP headers, environments):
@@ -188,13 +291,95 @@ export function projectConfig<T>(source: string, data: T): T {
     typeof value === "string" && (envReference.test(value) || secrets.some((secret) => value.includes(secret)))
   scrub(data, "")
 
-  if (ignored.length && !warnedSources.has(source)) {
-    warnedSources.add(source)
-    warn(
+  if (ignored.length) {
+    Trust.warnOnce(
+      `key:${source}`,
       `Warning: ignored ${ignored.join(", ")} in ${source}: project config cannot change the ${Brand.product} gateway, its headers or its key. Set ${Brand.env.gatewayURL} or edit ${Brand.configHint} instead.`,
     )
   }
+  if (code.length) {
+    Trust.warnOnce(`code:${source}`, `Warning: ignored ${code.join(", ")} in ${source}: project config cannot load code because ${Trust.untrustedHint(where)}.`)
+  }
+  if (programs.length) {
+    Trust.warnOnce(
+      `headless:${source}`,
+      `Warning: ignored ${programs.join(", ")} in ${source}: a headless run starts no programs and allows no shell commands from an untrusted workspace; ${Trust.untrustedHint(where)}.`,
+    )
+  }
   return data
+}
+
+// The merged global config when the home config directory sits inside a git
+// checkout: its files came with the repository, so they are treated like
+// project config, while the built in gateway provider defaults (merged into
+// the same object) are put back afterwards.
+export function checkoutHomeConfig<T>(source: string, data: T): T {
+  const defaults = (Brand.config() as Json).provider
+  const brand = isRecord(defaults) && isRecord(defaults[Brand.provider.id]) ? (defaults[Brand.provider.id] as Json) : undefined
+  // Drop the values that are exactly the built in defaults first, so the
+  // warning names only what the checkout changed.
+  const current = isRecord(data) && isRecord(data.provider) ? data.provider[Brand.provider.id] : undefined
+  if (brand && isRecord(current)) {
+    const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
+    for (const field of ["npm", "env"]) if (same(current[field], brand[field])) delete current[field]
+    if (isRecord(current.options) && isRecord(brand.options)) {
+      for (const field of Object.keys(brand.options)) if (same(current.options[field], brand.options[field])) delete current.options[field]
+    }
+  }
+  projectConfig(source, data, path.dirname(source))
+  if (!isRecord(data) || !brand) return data
+  const providers: Json = isRecord(data.provider) ? data.provider : {}
+  const rafiki: Json = isRecord(providers[Brand.provider.id]) ? (providers[Brand.provider.id] as Json) : {}
+  for (const field of ["name", "npm", "env"]) if (brand[field] !== undefined) rafiki[field] = brand[field]
+  rafiki.options = { ...(isRecord(rafiki.options) ? rafiki.options : {}), ...(isRecord(brand.options) ? brand.options : {}) }
+  if (!isRecord(rafiki.models)) rafiki.models = brand.models
+  providers[Brand.provider.id] = rafiki
+  ;(data as Json).provider = providers
+  return data
+}
+
+// Agents and modes loaded from Markdown files in a project directory: in a
+// headless run of an untrusted workspace they cannot allow the shell.
+export function projectAgents<T>(dir: string, project: boolean, agents: T): T {
+  if (!project || !Trust.headless() || Trust.isTrusted(dir)) return agents
+  const ignored: string[] = []
+  agentPermissions(agents, "agent", ignored)
+  if (ignored.length) {
+    Trust.warnOnce(
+      `agents:${dir}`,
+      `Warning: ignored ${ignored.join(", ")} from ${dir}: a headless run allows no shell commands from an untrusted workspace; ${Trust.untrustedHint(dir)}.`,
+    )
+  }
+  return agents
+}
+
+export function secretEnvName(name: string) {
+  const trimmed = name.trim()
+  return trimmed === Brand.env.apiKey || secretName.test(trimmed)
+}
+
+export interface Substitution {
+  env(name: string): boolean
+  file(resolved: string): boolean
+  refused(token: string): void
+}
+
+// The limits on {env:} and {file:} for one project config file, or undefined
+// when its workspace is trusted. The project root is the git worktree, else
+// the working directory. Refused references become empty strings.
+export function substitution(source: string, ctx: { directory: string; worktree: string }): Substitution | undefined {
+  const where = path.dirname(source)
+  if (Trust.isTrusted(where)) return undefined
+  const root = Trust.real(ctx.worktree && ctx.worktree !== path.parse(ctx.worktree).root ? ctx.worktree : ctx.directory)
+  return {
+    env: (name) => !secretEnvName(name),
+    file: (resolved) => Trust.inside(root, Trust.real(resolved)),
+    refused: (token) =>
+      Trust.warnOnce(
+        `substitution:${source}:${token}`,
+        `Warning: ignored ${token} in ${source}: project config cannot read secret environment variables or files outside ${root}; ${Trust.untrustedHint(where)}.`,
+      ),
+  }
 }
 
 export class KeyLeakError extends Error {

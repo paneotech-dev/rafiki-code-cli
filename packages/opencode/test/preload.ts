@@ -38,6 +38,10 @@ process.env["XDG_STATE_HOME"] = path.join(dir, "state")
 process.env["OPENCODE_MODELS_PATH"] = path.join(import.meta.dir, "tool", "fixtures", "models-api.json")
 process.env["OPENCODE_EXPERIMENTAL_EVENT_SYSTEM"] = "true"
 process.env["OPENCODE_EXPERIMENTAL_WORKSPACES"] = "true"
+// Upstream suites load project plugins and settings from temporary directories:
+// trust them, so those suites keep testing upstream loading. The workspace
+// trust tests (test/rafiki) remove this to test untrusted workspaces.
+process.env["RAFIKICODE_TRUST_WORKSPACE"] = "1"
 
 // Set test home directory to isolate tests from user's actual home directory
 // This prevents tests from picking up real user configs/skills from ~/.claude/skills

@@ -8,6 +8,7 @@ import { mergeDeep } from "remeda"
 import { Global } from "@opencode-ai/core/global"
 import { Brand } from "@opencode-ai/core/brand/brand"
 import * as BrandGuard from "@opencode-ai/core/brand/guard"
+import * as BrandTrust from "@opencode-ai/core/brand/trust"
 import fsNode from "fs/promises"
 import { Flag } from "@opencode-ai/core/flag/flag"
 import { Auth } from "../auth"
@@ -230,12 +231,13 @@ const layer = Layer.effect(
       text: string,
       options: { path: string } | { dir: string; source: string },
       env?: Record<string, string>,
+      restrict?: BrandGuard.Substitution,
     ) {
       const source = "path" in options ? options.path : options.source
       const expanded = yield* Effect.promise(() =>
         ConfigVariable.substitute(
           "path" in options
-            ? { text, type: "path", path: options.path, env }
+            ? { text, type: "path", path: options.path, env, restrict }
             : { text, type: "virtual", ...options, env },
         ),
       )
@@ -252,11 +254,11 @@ const layer = Layer.effect(
       return data
     })
 
-    const loadFile = Effect.fnUntraced(function* (filepath: string, env?: Record<string, string>) {
+    const loadFile = Effect.fnUntraced(function* (filepath: string, env?: Record<string, string>, restrict?: BrandGuard.Substitution) {
       yield* Effect.logInfo("loading", { path: filepath })
       const text = yield* readConfigFile(filepath)
       if (!text) return {} as Info
-      return yield* loadConfig(text, { path: filepath }, env)
+      return yield* loadConfig(text, { path: filepath }, env, restrict)
     })
 
     const loadGlobal = Effect.fnUntraced(function* (env?: Record<string, string>) {
@@ -364,8 +366,8 @@ const layer = Layer.effect(
           result.plugin_origins = plugins
         })
 
-        const merge = (source: string, next: Info, kind?: ConfigPlugin.Scope, project = false) => {
-          next = project ? BrandGuard.projectConfig(source, next) : BrandGuard.trust(next)
+        const merge = (source: string, next: Info, kind?: ConfigPlugin.Scope, project = false, where?: string) => {
+          next = project ? BrandGuard.projectConfig(source, next, where) : BrandGuard.trust(next)
           result = mergeConfigConcatArrays(result, next)
           return mergePluginOrigins(source, next.plugin, kind)
         }
@@ -413,7 +415,7 @@ const layer = Layer.effect(
         }
 
         const global = Object.keys(authEnv).length ? yield* loadGlobal(authEnv) : yield* getGlobal()
-        yield* merge(Global.Path.config, global, "global")
+        yield* merge(Global.Path.config, BrandTrust.homeConfigInCheckout() ? BrandGuard.checkoutHomeConfig(Global.Path.config, global) : global, "global")
 
         if (Flag.OPENCODE_CONFIG) {
           yield* merge(Flag.OPENCODE_CONFIG, yield* loadFile(Flag.OPENCODE_CONFIG, authEnv))
@@ -422,7 +424,7 @@ const layer = Layer.effect(
 
         if (!Flag.OPENCODE_DISABLE_PROJECT_CONFIG) {
           for (const file of yield* ConfigPaths.files(Brand.project.fileNames, ctx.directory, ctx.worktree).pipe(Effect.orDie)) {
-            yield* merge(file, yield* loadFile(file, authEnv), "local", true)
+            yield* merge(file, yield* loadFile(file, authEnv, BrandGuard.substitution(file, ctx)), "local", true)
           }
         }
 
@@ -439,13 +441,13 @@ const layer = Layer.effect(
         const deps: Fiber.Fiber<void>[] = []
 
         for (const dir of directories) {
+          const project = BrandGuard.isProjectDir(dir, { config: Global.Path.config, configDir: Flag.OPENCODE_CONFIG_DIR })
           if (Brand.project.isDir(dir) || dir === Flag.OPENCODE_CONFIG_DIR) {
             const files = dir === Flag.OPENCODE_CONFIG_DIR ? [Brand.configFile, ...Brand.project.files] : Brand.project.files
             for (const file of files) {
               const source = path.join(dir, file)
               yield* Effect.logDebug(`loading config from ${source}`)
-              const project = BrandGuard.isProjectDir(dir, { config: Global.Path.config, home: Global.Path.home, configDir: Flag.OPENCODE_CONFIG_DIR })
-              yield* merge(source, yield* loadFile(source, authEnv), undefined, project)
+              yield* merge(source, yield* loadFile(source, authEnv, project ? BrandGuard.substitution(source, ctx) : undefined), undefined, project)
               result.agent ??= {}
               result.mode ??= {}
               result.plugin ??= []
@@ -476,11 +478,11 @@ const layer = Layer.effect(
           deps.push(dep)
 
           result.command = mergeDeep(result.command ?? {}, yield* Effect.promise(() => ConfigCommand.load(dir)))
-          result.agent = mergeDeep(result.agent ?? {}, yield* Effect.promise(() => ConfigAgent.load(dir)))
-          result.agent = mergeDeep(result.agent ?? {}, yield* Effect.promise(() => ConfigAgent.loadMode(dir)))
+          result.agent = mergeDeep(result.agent ?? {}, BrandGuard.projectAgents(dir, project, yield* Effect.promise(() => ConfigAgent.load(dir))))
+          result.agent = mergeDeep(result.agent ?? {}, BrandGuard.projectAgents(dir, project, yield* Effect.promise(() => ConfigAgent.loadMode(dir))))
           // Auto-discovered plugins under `.opencode/plugin(s)` are already local files, so ConfigPlugin.load
           // returns normalized Specs and we only need to attach origin metadata here.
-          const list = yield* Effect.promise(() => ConfigPlugin.load(dir))
+          const list = BrandTrust.plugins(dir, yield* Effect.promise(() => ConfigPlugin.load(dir)))
           yield* mergePluginOrigins(dir, list)
         }
 

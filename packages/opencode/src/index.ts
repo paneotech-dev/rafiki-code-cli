@@ -29,7 +29,7 @@ import { errorMessage } from "./util/error"
 import { PluginCommand } from "./cli/cmd/plug"
 import { Heap } from "./cli/heap"
 import { Brand } from "@opencode-ai/core/brand/brand"
-import { DoctorCommand, LoginCommand, LogoutCommand, WhoamiCommand, refuseUnsafeCredential } from "./rafiki/cmd"
+import { DoctorCommand, LoginCommand, LogoutCommand, TrustCommand, WhoamiCommand, markHeadless, refuseUnsafeCredential } from "./rafiki/cmd"
 
 const args = hideBin(process.argv)
 
@@ -77,6 +77,7 @@ const cli = yargs(args)
     process.env.OPENCODE = "1"
     process.env.OPENCODE_PID = String(process.pid)
     refuseUnsafeCredential(opts._[0])
+    markHeadless(opts._[0])
   })
   .usage("")
   .completion("completion", "generate shell completion script")
@@ -92,6 +93,7 @@ const cli = yargs(args)
   .command(LogoutCommand)
   .command(WhoamiCommand)
   .command(DoctorCommand)
+  .command(TrustCommand)
   .command(ProvidersCommand)
   .command(AgentCommand)
   .command(UpgradeCommand)

@@ -4,6 +4,7 @@ import type { Argv } from "yargs"
 import { Effect } from "effect"
 import { Brand } from "@opencode-ai/core/brand/brand"
 import * as Credentials from "@opencode-ai/core/brand/credentials"
+import * as Trust from "@opencode-ai/core/brand/trust"
 import { InstallationVersion } from "@opencode-ai/core/installation/version"
 import { effectCmd, fail } from "@/cli/effect-cmd"
 import { UI } from "@/cli/ui"
@@ -270,6 +271,47 @@ export const WhoamiCommand = effectCmd({
     }
     UI.println(`Account: ${describeOwner(stored!.owner)}`)
     UI.println(`Key: ${stored!.key_alias ?? "(no alias)"} (${expiry(stored!)})`)
+  }),
+})
+
+export { markHeadless } from "@opencode-ai/core/brand/trust"
+
+// rafikicode trust: the workspace trust store (docs/security/workspace-trust.md).
+export const TrustCommand = effectCmd({
+  command: "trust [dir]",
+  describe: "trust a workspace so its project plugins, tools and settings load",
+  instance: false,
+  builder: (yargs: Argv) =>
+    yargs
+      .positional("dir", {
+        type: "string",
+        describe: "workspace directory (default: the git root of the current directory, else the current directory)",
+      })
+      .option("list", { type: "boolean", default: false, describe: "list the trusted workspaces" })
+      .option("remove", { type: "boolean", default: false, describe: "stop trusting the workspace" }),
+  handler: Effect.fn("Cli.rafiki.trust")(function* (args) {
+    if (args.list) {
+      const list = Trust.stored()
+      if (!list.length) UI.println(`No trusted workspaces in ${Trust.storeFile()}.`)
+      for (const dir of list) UI.println(dir)
+      if (process.env[Brand.env.trustWorkspace]) UI.println(`${Brand.env.trustWorkspace} is set: ${process.env[Brand.env.trustWorkspace]}`)
+      return
+    }
+    const cwd = process.cwd()
+    const dir = args.dir ? String(args.dir) : (Trust.gitRoot(cwd) ?? cwd)
+    try {
+      if (args.remove) {
+        const removed = Trust.remove(dir)
+        UI.println(removed ? `No longer trusted: ${Trust.real(dir)}` : `${Trust.real(dir)} was not trusted.`)
+        return
+      }
+      const stored = Trust.add(dir)
+      UI.println(`Trusted: ${stored}`)
+      UI.println(`Project plugins, custom tools, provider packages and settings from this directory and below now load. Stored in ${Trust.storeFile()}.`)
+    } catch (cause) {
+      if (cause instanceof Trust.TrustError) return yield* fail(cause.message, Contract.EXIT.usage)
+      throw cause
+    }
   }),
 })
 

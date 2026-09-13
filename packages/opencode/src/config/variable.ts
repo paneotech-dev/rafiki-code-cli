@@ -20,6 +20,8 @@ type SubstituteInput = ParseSource & {
   text: string
   missing?: "error" | "empty"
   env?: Record<string, string>
+  // Limits for an untrusted project file (brand/guard.ts substitution()).
+  restrict?: { env(name: string): boolean; file(resolved: string): boolean; refused(token: string): void }
 }
 
 function source(input: ParseSource) {
@@ -33,7 +35,8 @@ function dir(input: ParseSource) {
 /** Apply {env:VAR} and {file:path} substitutions to config text. */
 export async function substitute(input: SubstituteInput) {
   const missing = input.missing ?? "error"
-  let text = input.text.replace(/\{env:([^}]+)\}/g, (_, varName) => {
+  let text = input.text.replace(/\{env:([^}]+)\}/g, (token, varName) => {
+    if (input.restrict && !input.restrict.env(varName)) return (input.restrict.refused(token), "")
     return (input.env?.[varName] ?? process.env[varName]) || ""
   })
 
@@ -64,6 +67,11 @@ export async function substitute(input: SubstituteInput) {
     }
 
     const resolvedPath = path.isAbsolute(filePath) ? filePath : path.resolve(configDir, filePath)
+    if (input.restrict && !input.restrict.file(resolvedPath)) {
+      input.restrict.refused(token)
+      cursor = index + token.length
+      continue
+    }
     const fileContent = (
       await Filesystem.readText(resolvedPath).catch((error: NodeJS.ErrnoException) => {
         if (missing === "empty") return ""

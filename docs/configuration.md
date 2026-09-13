@@ -72,7 +72,8 @@ The structure of the nested keys (`permissions`, `agents`, `mcp`, and so on) is 
 | `RAFIKICODE_GATEWAY_URL` | override the gateway base URL (local mocks, staging). Default `https://gateway.rafikiai.io/v1` |
 | `RAFIKICODE_CONSOLE_URL` | override the Console base URL used by `login`, `logout` and `whoami`. Default `https://console.rafikiai.io` |
 | `RAFIKICODE_INSTALL_DIR` | installer target directory. Default `~/.rafikicode/bin` |
-| `RAFIKICODE_RELEASE_API`, `RAFIKICODE_RELEASE_BASE` | point the installer and `rafikicode update` at another release server (mirrors, tests). Must be https; plain http is accepted only for `127.0.0.1` or `localhost` |
+| `RAFIKICODE_RELEASE_API`, `RAFIKICODE_RELEASE_BASE` | point the installer and `rafikicode update` at another release server (mirrors, tests). Must be https. The installer accepts plain http only for `127.0.0.1` or `[::1]` together with `--allow-http-loopback` or `RAFIKICODE_INSTALL_ALLOW_HTTP_LOOPBACK=1` (local tests); `rafikicode update` accepts it for `127.0.0.1` or `localhost` |
+| `RAFIKICODE_TRUST_WORKSPACE` | `1` or `true` trusts the workspace of this run, or a list of directories separated by `:`: its project plugins, custom tools, provider packages and settings load. `rafikicode trust` stores the same decision. See [workspace trust](security/workspace-trust.md) |
 | `RAFIKICODE_REASONING_EFFORT` | reasoning effort sent on every tier: `none`, `low`, `medium`, `high`, or `default` for no parameter. See [Reasoning and output limits](#reasoning-and-output-limits) |
 | `RAFIKICODE_MAX_OUTPUT_TOKENS` | output token limit for every tier, 1024 to 128000 |
 | `RAFIKICODE_DISABLE_PROJECT_CONFIG` | set to `1` or `true` to load nothing from the working tree: no project config files, plugins, tools, skills, MCP servers, formatters or language servers. Alias of `OPENCODE_DISABLE_PROJECT_CONFIG`. See [workspace trust](security/workspace-trust.md) |

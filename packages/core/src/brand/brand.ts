@@ -144,6 +144,12 @@ export const Brand = {
     // Alias of OPENCODE_DISABLE_PROJECT_CONFIG: nothing is loaded from the working
     // tree (docs/security/workspace-trust.md).
     disableProjectConfig: "RAFIKICODE_DISABLE_PROJECT_CONFIG",
+    // Trusts the workspace of this run (1 or true), or the listed directories,
+    // for project code and settings (brand/trust.ts, docs/security/workspace-trust.md).
+    trustWorkspace: "RAFIKICODE_TRUST_WORKSPACE",
+    // Set to 1 by rafikicode run without a terminal; CI and GitHub Actions count
+    // as headless too. Only ever makes a run stricter.
+    headless: "RAFIKICODE_HEADLESS",
     // Output token limit for every rafiki-* model (1024 to 128000). The rafiki
     // provider is not held to the upstream 32000 runtime cap; an explicit
     // OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX still lowers it.

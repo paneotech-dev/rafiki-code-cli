@@ -1,4 +1,5 @@
 import { Brand } from "@opencode-ai/core/brand/brand"
+import * as BrandTrust from "@opencode-ai/core/brand/trust"
 export * as TuiConfig from "./tui"
 
 import path from "path"
@@ -149,7 +150,8 @@ const loadState = Effect.fn("TuiConfig.loadState")(function* (ctx: { directory: 
 
   const mergeFile = (acc: Acc, file: string) =>
     Effect.gen(function* () {
-      const data = yield* loadFile(file)
+      const loaded = yield* loadFile(file)
+      const data = file === Flag.OPENCODE_TUI_CONFIG || !loaded.plugin?.length ? loaded : { ...loaded, plugin: BrandTrust.plugins(path.dirname(file), loaded.plugin) }
       if (Object.keys(data).length) {
         appliedOrder += 1
         yield* Effect.logInfo("applying tui config", { path: file, order: appliedOrder })

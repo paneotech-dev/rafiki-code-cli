@@ -37,6 +37,9 @@ export function createMockGateway(options = {}) {
     cost: options.cost ?? 0.001,
     fail: options.fail,
     emptyLength: options.emptyLength ?? process.env.MOCK_GATEWAY_EMPTY_LENGTH === "1",
+    // { name, arguments }: the first turn of a conversation asks for this tool
+    // call; once a tool result is in the messages the canned reply follows.
+    toolCall: options.toolCall,
   }
   // token -> { alias, models, max_budget, budget_duration, rpm_limit, tpm_limit, spend, metadata, deleted }
   const keys = new Map()
@@ -214,6 +217,29 @@ export function createMockGateway(options = {}) {
       if (check.key) {
         check.key.spend = Math.round((check.key.spend + opts.cost) * 1e6) / 1e6
         headers["x-litellm-response-cost"] = String(opts.cost)
+      }
+      if (opts.toolCall && !messages.some((m) => m && m.role === "tool")) {
+        const call = { id: "call_mock_1", type: "function", function: { name: opts.toolCall.name, arguments: JSON.stringify(opts.toolCall.arguments ?? {}) } }
+        if (body.stream !== true) {
+          return json(res, 200, {
+            id: "chatcmpl-mock-" + Date.now(),
+            object: "chat.completion",
+            created: Math.floor(Date.now() / 1000),
+            model,
+            choices: [{ index: 0, message: { role: "assistant", content: null, tool_calls: [call] }, finish_reason: "tool_calls" }],
+            usage: { prompt_tokens: 12, completion_tokens: 8, total_tokens: 20 },
+          }, headers)
+        }
+        res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive", ...headers })
+        const id = "chatcmpl-mock-" + Date.now()
+        const created = Math.floor(Date.now() / 1000)
+        const send = (delta, finish) =>
+          res.write("data: " + JSON.stringify({ id, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta, finish_reason: finish }] }) + "\n\n")
+        send({ role: "assistant", content: null, tool_calls: [{ index: 0, ...call }] }, null)
+        send({}, "tool_calls")
+        res.write("data: " + JSON.stringify({ id, object: "chat.completion.chunk", created, model, choices: [], usage: { prompt_tokens: 12, completion_tokens: 8, total_tokens: 20 } }) + "\n\n")
+        res.write("data: [DONE]\n\n")
+        return res.end()
       }
       if (body.stream === true) return stream(res, model, opts.reply, headers)
       return json(res, 200, completion(model, opts.reply), headers)

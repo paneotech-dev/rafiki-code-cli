@@ -1,4 +1,5 @@
 import { Brand } from "@opencode-ai/core/brand/brand"
+import * as BrandTrust from "@opencode-ai/core/brand/trust"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { PermissionV1 } from "@opencode-ai/core/v1/permission"
 import { Config } from "@/config/config"
@@ -119,6 +120,7 @@ const layer = Layer.effect(
 
         const defaults = Permission.fromConfig({
           "*": "allow",
+          ...BrandTrust.headlessPermission(),
           doom_loop: "ask",
           external_directory: {
             "*": "ask",
@@ -204,6 +206,7 @@ const layer = Layer.effect(
                 glob: "allow",
                 list: "allow",
                 bash: "allow",
+                ...BrandTrust.headlessPermission(),
                 webfetch: "allow",
                 websearch: "allow",
                 read: "allow",
