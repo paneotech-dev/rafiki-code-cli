@@ -1,0 +1,216 @@
+name: "Rafiki Code pull request review"
+description: "Review a pull request with rafikicode headless and post the result as a pull request comment"
+# Composite action: installs rafikicode, checks the setup with rafikicode
+# doctor, reads the pull request diff with gh, runs the review on the chosen
+# tier, and posts the result with gh pr comment. Every model call is metered
+# against the key's budget in Rafiki Console. Documented in
+# docs/review-recipe.md; the example workflow is
+# .github/workflows/rafikicode-review.example.yml.
+#
+# Exit codes of the review step, from the CLI's table (docs/headless-and-ci.md):
+#   0  review completed and posted
+#   1  the review run failed (model error, unusable diff)
+#   2  the key was refused: revoked, expired, or not allowed on the tier
+#   3  the key's budget or the wallet is spent, nothing was charged
+#   4  the gateway or the Console could not be reached
+#   5  internal error in the CLI
+# On 2, 3 and 4 the action posts a short comment naming the cause when
+# comments are enabled, then fails the job.
+inputs:
+  api-key:
+    description: "A Rafiki Console server key, from a repository secret. Never a session key from rafikicode login."
+    required: true
+  github-token:
+    description: "Token for gh: reading the diff and posting the comment. Needs pull-requests: write."
+    required: false
+    default: ${{ github.token }}
+  pr-number:
+    description: "Pull request number. Defaults to the pull request that triggered the workflow."
+    required: false
+    default: ${{ github.event.pull_request.number }}
+  model:
+    description: "Tier for the review, in provider/model form."
+    required: false
+    default: "rafiki/rafiki-fast"
+  version:
+    description: "rafikicode release to install, for example 1.2.3. Empty means the latest release."
+    required: false
+    default: ""
+  installer-url:
+    description: "Installer script URL. Override with a pinned raw URL of install/install.sh from a release tag when the short domain is not available to the runner."
+    required: false
+    default: "https://get.rafikiai.io"
+  prompt:
+    description: "Review instructions. The diff is appended after them. Empty means the built in review prompt."
+    required: false
+    default: ""
+  max-diff-lines:
+    description: "Longest diff sent to the model, in lines. Longer diffs are cut and the comment says so. Keeps one review inside a predictable budget."
+    required: false
+    default: "4000"
+  post-comment:
+    description: "Post the review as a pull request comment. Set to false to only write the review file."
+    required: false
+    default: "true"
+  comment-header:
+    description: "First line of the posted comment."
+    required: false
+    default: "## Rafiki Code review"
+  working-directory:
+    description: "Directory the review runs in, normally the checkout of the base branch."
+    required: false
+    default: ${{ github.workspace }}
+  check-setup:
+    description: "Run rafikicode doctor before the review and stop on a failed check. Set to false to skip it."
+    required: false
+    default: "true"
+outputs:
+  review-file:
+    description: "Path of the file holding the review text."
+    value: ${{ steps.review.outputs.review-file }}
+  exit-code:
+    description: "Exit code of the review run, see the table at the top of this file."
+    value: ${{ steps.review.outputs.exit-code }}
+runs:
+  using: "composite"
+  steps:
+    - name: Install rafikicode
+      shell: bash
+      env:
+        INSTALLER_URL: ${{ inputs.installer-url }}
+        REQUESTED_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        args=(--no-modify-path)
+        if [ -n "${REQUESTED_VERSION}" ]; then args+=(--version "${REQUESTED_VERSION}"); fi
+        curl -fsSL "${INSTALLER_URL}" | bash -s -- "${args[@]}"
+        echo "${HOME}/.rafikicode/bin" >> "${GITHUB_PATH}"
+        "${HOME}/.rafikicode/bin/rafikicode" --version
+
+    - name: Check the setup
+      if: inputs.check-setup == 'true'
+      shell: bash
+      env:
+        CI: "1"
+        RAFIKICODE_API_KEY: ${{ inputs.api-key }}
+      run: |
+        set -euo pipefail
+        # One line per check; a bad key or an unreachable gateway stops here
+        # before any model call is made.
+        rafikicode doctor
+
+    - name: Read the pull request diff
+      id: diff
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        GH_REPO: ${{ github.repository }}
+        PR_NUMBER: ${{ inputs.pr-number }}
+        MAX_LINES: ${{ inputs.max-diff-lines }}
+      run: |
+        set -euo pipefail
+        if [ -z "${PR_NUMBER}" ]; then
+          echo "No pull request number: pass pr-number or run on a pull_request event." >&2
+          exit 1
+        fi
+        dir="${RUNNER_TEMP}/rafikicode-review"
+        mkdir -p "${dir}"
+        gh pr diff "${PR_NUMBER}" > "${dir}/pr.diff"
+        total=$(wc -l < "${dir}/pr.diff")
+        truncated=false
+        if [ "${total}" -gt "${MAX_LINES}" ]; then
+          head -n "${MAX_LINES}" "${dir}/pr.diff" > "${dir}/pr.trimmed"
+          mv "${dir}/pr.trimmed" "${dir}/pr.diff"
+          truncated=true
+        fi
+        if [ ! -s "${dir}/pr.diff" ]; then
+          echo "The pull request diff is empty; nothing to review." >&2
+          exit 1
+        fi
+        echo "dir=${dir}" >> "${GITHUB_OUTPUT}"
+        echo "lines=${total}" >> "${GITHUB_OUTPUT}"
+        echo "truncated=${truncated}" >> "${GITHUB_OUTPUT}"
+
+    - name: Review the change
+      id: review
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        CI: "1"
+        RAFIKICODE_API_KEY: ${{ inputs.api-key }}
+        # The reviewer reads; it never edits files or runs commands in the checkout.
+        OPENCODE_PERMISSION: '{"edit":"deny","bash":"deny","webfetch":"deny"}'
+        MODEL: ${{ inputs.model }}
+        PROMPT: ${{ inputs.prompt }}
+        DIR: ${{ steps.diff.outputs.dir }}
+        TRUNCATED: ${{ steps.diff.outputs.truncated }}
+        MAX_LINES: ${{ inputs.max-diff-lines }}
+      run: |
+        set -uo pipefail
+        prompt="${PROMPT}"
+        if [ -z "${prompt}" ]; then
+          prompt="You are reviewing a pull request. Read the unified diff that follows and write a review in Markdown with these sections: Summary (two or three sentences), Bugs and risks (each item with file and line, most serious first, or 'none found'), Suggestions (optional, short), Questions for the author (optional). Judge only what the diff shows; say so when you would need more context. Do not restate the diff. Do not edit files or run commands."
+        fi
+        if [ "${TRUNCATED}" = "true" ]; then
+          prompt="${prompt} Note: the diff was cut at ${MAX_LINES} lines; say in the summary that the review covers only the first part."
+        fi
+        set +e
+        rafikicode run --model "${MODEL}" --title "pull request review" "${prompt}" < "${DIR}/pr.diff" > "${DIR}/review.md" 2> "${DIR}/review.err"
+        code=$?
+        set -e
+        echo "exit-code=${code}" >> "${GITHUB_OUTPUT}"
+        echo "review-file=${DIR}/review.md" >> "${GITHUB_OUTPUT}"
+        if [ "${code}" -ne 0 ]; then
+          echo "rafikicode run exited ${code}" >&2
+          cat "${DIR}/review.err" >&2 || true
+        fi
+        exit 0
+
+    - name: Post the comment
+      if: inputs.post-comment == 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        GH_REPO: ${{ github.repository }}
+        PR_NUMBER: ${{ inputs.pr-number }}
+        CODE: ${{ steps.review.outputs.exit-code }}
+        DIR: ${{ steps.diff.outputs.dir }}
+        HEADER: ${{ inputs.comment-header }}
+        MODEL: ${{ inputs.model }}
+        TRUNCATED: ${{ steps.diff.outputs.truncated }}
+        LINES: ${{ steps.diff.outputs.lines }}
+        MAX_LINES: ${{ inputs.max-diff-lines }}
+      run: |
+        set -euo pipefail
+        body="${DIR}/comment.md"
+        {
+          echo "${HEADER}"
+          echo
+          case "${CODE}" in
+            0)
+              cat "${DIR}/review.md"
+              if [ "${TRUNCATED}" = "true" ]; then
+                echo
+                echo "The diff has ${LINES} lines; only the first ${MAX_LINES} were reviewed."
+              fi
+              ;;
+            2) echo "The review did not run: the Rafiki key was refused (revoked, expired, or not allowed on ${MODEL}). Check the key in Rafiki Console." ;;
+            3) echo "The review did not run: the Rafiki key's budget or the wallet is spent. Nothing was charged. Top up or raise the key's budget in Rafiki Console." ;;
+            4) echo "The review did not run: the Rafiki gateway or Console could not be reached from the runner." ;;
+            *) echo "The review did not complete (exit code ${CODE}). See the workflow log." ;;
+          esac
+          echo
+          echo "_Reviewed on ${MODEL}. Spend is visible on the key's page in Rafiki Console._"
+        } > "${body}"
+        gh pr comment "${PR_NUMBER}" --body-file "${body}"
+
+    - name: Fail the job when the review did not complete
+      if: steps.review.outputs.exit-code != '0'
+      shell: bash
+      env:
+        CODE: ${{ steps.review.outputs.exit-code }}
+      run: |
+        echo "The review exited ${CODE}; see the table at the top of the action for the meaning." >&2
+        exit "${CODE}"

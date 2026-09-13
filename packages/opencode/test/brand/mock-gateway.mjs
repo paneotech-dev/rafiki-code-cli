@@ -3,7 +3,8 @@
 //
 // The OpenAI compatible half serves GET /v1/models and POST /v1/chat/completions
 // (streaming and not) with a canned reply and logs every request to stderr, so
-// a run can prove the CLI reached it. No real provider is contacted.
+// a run can prove the CLI reached it, plus GET /health/liveliness for doctor.
+// No real provider is contacted.
 //
 // The admin half mimics the LiteLLM endpoints the Console uses to mint and
 // manage virtual keys: POST /key/generate, GET /key/info, GET /key/list,
@@ -156,6 +157,13 @@ export function createMockGateway(options = {}) {
     const u = new URL(req.url ?? "/", `http://${req.headers.host}`)
     const auth = req.headers.authorization ? "present" : "missing"
     const surface = req.headers["x-rafiki-surface"]
+
+    // LiteLLM's liveness probe: a bare string body, no auth. rafikicode doctor reads it.
+    if (req.method === "GET" && u.pathname === "/health/liveliness") {
+      record({ method: req.method, path: u.pathname, status: opts.fail === "down" ? 503 : 200 })
+      if (opts.fail === "down") return json(res, 503, { error: { message: "Service Unavailable" } })
+      return json(res, 200, "I'm alive!")
+    }
 
     if (req.method === "GET" && u.pathname === "/v1/models") {
       record({ method: req.method, path: u.pathname, authorization: auth, surface })

@@ -296,6 +296,20 @@ describe("help output", () => {
     expect(result.stderr).not.toMatch(upstreamWord)
   }, 60_000)
 
+  test("doctor is listed and its help names the product", async () => {
+    const top = await help(["--help"])
+    expect(top.exitCode).toBe(0)
+    expect(top.stderr).toContain("rafikicode doctor")
+    expect(top.stderr).toContain("rafikicode login")
+    expect(top.stderr).toContain("rafikicode whoami")
+    const result = await help(["doctor", "--help"])
+    expect(result.exitCode).toBe(0)
+    expect(result.stderr).toContain("rafikicode doctor")
+    expect(result.stderr).toContain("check this terminal's Rafiki Code setup")
+    expect(result.stderr).toContain("--timeout")
+    expect(result.stderr).not.toMatch(upstreamWord)
+  }, 60_000)
+
   test("run help names rafikicode", async () => {
     const result = await help(["run", "--help"])
     expect(result.exitCode).toBe(0)

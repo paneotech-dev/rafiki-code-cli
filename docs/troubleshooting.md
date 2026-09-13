@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Each entry gives the message or symptom, the cause, and what to do. Add `--print-logs --log-level DEBUG` to any command to see what it did.
+Each entry gives the message or symptom, the cause, and what to do. Start with `rafikicode doctor`: it checks the configuration file, the credential, the gateway, the key's budget, the tiers, the Console and the installed version, one line each with a fix hint (details in [Headless and CI](./headless-and-ci.md#checking-a-machine-with-doctor)). Add `--print-logs --log-level DEBUG` to any command to see what it did.
 
 ## Installation
 
@@ -60,4 +60,4 @@ Open a new terminal after adding it to your shell configuration file.
 
 ## Still stuck
 
-Run the failing command with `--print-logs --log-level DEBUG` and include the output when you ask for help. Log files never contain your key.
+Run `rafikicode doctor`, then the failing command with `--print-logs --log-level DEBUG`, and include both outputs when you ask for help. Neither contains your key.
