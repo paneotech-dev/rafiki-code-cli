@@ -236,13 +236,8 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
           return data.version
         }
 
-        const response = yield* httpOk.execute(
-          HttpClientRequest.get(`${Brand.release.api()}/releases/latest`).pipe(
-            HttpClientRequest.acceptJson,
-          ),
-        )
-        const data = yield* HttpClientResponse.schemaBodyJson(GitHubRelease)(response)
-        return data.tag_name.replace(/^v/, "")
+        // Every redirect hop is checked against the release URL rule (https only).
+        return yield* Effect.promise(() => RafikiUpdate.latest())
       }, Effect.orDie),
       upgrade: Effect.fn("Installation.upgrade")(function* (m: Method, target: string) {
         let upgradeResult: { code: number; stdout: string; stderr: string } | undefined

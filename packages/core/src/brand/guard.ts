@@ -383,6 +383,13 @@ export function checkoutHomeConfig<T>(source: string, data: T): T {
     if (isRecord(current.options) && isRecord(brand.options)) {
       for (const field of Object.keys(brand.options)) if (same(current.options[field], brand.options[field])) delete current.options[field]
     }
+    if (isRecord(current.models) && isRecord(brand.models)) {
+      for (const [id, model] of Object.entries(brand.models)) {
+        const mine = current.models[id]
+        if (!isRecord(model) || !isRecord(mine)) continue
+        for (const field of Object.keys(model)) if (same(mine[field], model[field])) delete mine[field]
+      }
+    }
   }
   projectConfig(source, data, path.dirname(source))
   if (!isRecord(data) || !brand) return data
@@ -390,7 +397,15 @@ export function checkoutHomeConfig<T>(source: string, data: T): T {
   const rafiki: Json = isRecord(providers[Brand.provider.id]) ? (providers[Brand.provider.id] as Json) : {}
   for (const field of ["name", "npm", "env"]) if (brand[field] !== undefined) rafiki[field] = brand[field]
   rafiki.options = { ...(isRecord(rafiki.options) ? rafiki.options : {}), ...(isRecord(brand.options) ? brand.options : {}) }
-  if (!isRecord(rafiki.models)) rafiki.models = brand.models
+  // The built in tier defaults (limits, variants) come back under whatever
+  // the checkout was still allowed to set.
+  if (isRecord(brand.models)) {
+    const models: Json = isRecord(rafiki.models) ? rafiki.models : {}
+    for (const [id, model] of Object.entries(brand.models)) {
+      if (isRecord(model)) models[id] = { ...model, ...(isRecord(models[id]) ? models[id] : {}) }
+    }
+    rafiki.models = models
+  } else if (!isRecord(rafiki.models)) rafiki.models = brand.models
   providers[Brand.provider.id] = rafiki
   ;(data as Json).provider = providers
   return data

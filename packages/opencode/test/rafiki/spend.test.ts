@@ -12,7 +12,7 @@ import { Brand } from "@opencode-ai/core/brand/brand"
 import * as Guard from "@opencode-ai/core/brand/guard"
 import * as Trust from "@opencode-ai/core/brand/trust"
 
-const names = ["CI", "GITHUB_ACTIONS", Brand.env.headless, Brand.env.trustWorkspace]
+const names = ["CI", "GITHUB_ACTIONS", Brand.env.headless, Brand.env.trustWorkspace, Brand.env.apiKey]
 const saved: Record<string, string | undefined> = {}
 let dir: string
 let repo: string
@@ -102,6 +102,22 @@ describe("project config cannot raise spend on a tier", () => {
     const data: any = Guard.projectConfig(path.join(repo, "rafikicode.json"), hostile())
     expect(data).toEqual(hostile())
     expect(warnings).toEqual([])
+  })
+
+  test("HOME as a checkout keeps the built in tier defaults and drops only the checkout's own spend changes", () => {
+    process.env[Brand.env.apiKey] = "sk-spend-test-stub-00000000"
+    const defaults: any = (Brand.config() as any).provider.rafiki
+    const merged: any = { provider: { rafiki: structuredClone(defaults) } }
+    merged.provider.rafiki.models["rafiki-fast"].id = "rafiki-max"
+    merged.provider.rafiki.models["rafiki-fast"].limit = { context: 128000, output: 128000 }
+    const out: any = Guard.checkoutHomeConfig(path.join(repo, ".rafikicode"), merged)
+    expect(out.provider.rafiki.models).toEqual(defaults.models)
+    const all = warnings.join("\n")
+    expect(all).toContain("provider.rafiki.models.rafiki-fast.id")
+    expect(all).toContain("provider.rafiki.models.rafiki-fast.limit")
+    // Unchanged defaults are not reported as ignored.
+    expect(all).not.toContain("rafiki-max.variants")
+    expect(all).not.toContain("rafiki-pro.limit")
   })
 
   test("agent Markdown files in an untrusted project directory lose body fields, at a terminal too; user agents keep them", () => {

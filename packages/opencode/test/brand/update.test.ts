@@ -211,7 +211,7 @@ describe("RafikiUpdate", () => {
 describe("rafikicode update, the command", () => {
   const root = path.resolve(import.meta.dir, "../..")
 
-  async function update(extra: Record<string, string>) {
+  async function update(extra: Record<string, string>, args: string[] = []) {
     const home = await fs.mkdtemp(path.join(os.tmpdir(), "rafikicode-update-cmd-"))
     const env: Record<string, string | undefined> = {
       ...process.env,
@@ -231,7 +231,7 @@ describe("rafikicode update, the command", () => {
     delete env["CI"]
     delete env["GITHUB_ACTIONS"]
     try {
-      const proc = Bun.spawn(["bun", "run", path.join(root, "src/index.ts"), "update"], {
+      const proc = Bun.spawn(["bun", "run", path.join(root, "src/index.ts"), "update", ...args], {
         cwd: home,
         stdin: "ignore",
         stdout: "pipe",
@@ -258,6 +258,21 @@ describe("rafikicode update, the command", () => {
     expect(result.all).not.toContain("Using method")
     expect(result.all).not.toContain("api.github.com")
     expect(requests.length).toBe(before)
+  }, 60_000)
+
+  test("the command's latest version lookup refuses a redirect to plain http and makes one request", async () => {
+    const before = requests.length
+    const result = await update(
+      {
+        [Brand.env.releaseAPI]: `http://127.0.0.1:${server.port}/to-http`,
+        [Brand.env.releaseBase]: `http://127.0.0.1:${server.port}/dl`,
+      },
+      ["--method", "curl"],
+    )
+    expect(result.exitCode).not.toBe(0)
+    expect(result.all).toContain("Refused the redirect")
+    expect(result.all).toContain("releases are downloaded over https only")
+    expect(requests.slice(before)).toEqual(["/to-http/releases/latest"])
   }, 60_000)
 
   test("an http release base is refused the same way", async () => {
