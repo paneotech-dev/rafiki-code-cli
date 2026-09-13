@@ -1,4 +1,4 @@
-// rafikicode login, logout and whoami: the Rafiki Console device flow from
+// rafikicode login, logout, whoami and doctor: the Rafiki Console device flow from
 // the terminal. Registered in src/index.ts; everything else lives here.
 import type { Argv } from "yargs"
 import { Effect } from "effect"
@@ -9,6 +9,7 @@ import { effectCmd, fail } from "@/cli/effect-cmd"
 import { UI } from "@/cli/ui"
 import * as Contract from "./contract"
 import * as DeviceFlow from "./device-flow"
+import * as Doctor from "./doctor"
 
 function tryFlow<A>(what: Promise<A>) {
   return Effect.tryPromise({
@@ -235,5 +236,35 @@ export const WhoamiCommand = effectCmd({
     }
     UI.println(`Account: ${describeOwner(stored!.owner)}`)
     UI.println(`Key: ${stored!.key_alias ?? "(no alias)"} (${expiry(stored!)})`)
+  }),
+})
+
+// One line per check, ok or a plain fix hint; exit 0 only when every line is ok.
+export const DoctorCommand = effectCmd({
+  command: "doctor",
+  describe: `check this terminal's ${Brand.product} setup: config, key, gateway, tiers, Console, version`,
+  instance: false,
+  builder: (yargs: Argv) =>
+    yargs.option("timeout", {
+      type: "number",
+      default: Doctor.DEFAULT_TIMEOUT_MS / 1000,
+      describe: "seconds to wait for each network check",
+    }),
+  handler: Effect.fn("Cli.rafiki.doctor")(function* (args) {
+    const report = yield* Effect.promise(() => Doctor.run({ timeoutMs: Math.max(1, Number(args.timeout) || 1) * 1000 }))
+    for (const line of report.lines) {
+      const color =
+        line.status === "ok" ? UI.Style.TEXT_SUCCESS_BOLD : line.status === "fail" ? UI.Style.TEXT_DANGER_BOLD : UI.Style.TEXT_DIM_BOLD
+      const text = Doctor.format(line)
+      const status = text.slice(0, 4)
+      UI.println(`${color}${status}${UI.Style.TEXT_NORMAL}${text.slice(4)}`)
+    }
+    UI.empty()
+    if (report.ok) {
+      UI.println(`${UI.Style.TEXT_SUCCESS_BOLD}All checks passed.${UI.Style.TEXT_NORMAL}`)
+      return
+    }
+    const noun = report.failed === 1 ? "1 check needs" : `${report.failed} checks need`
+    return yield* fail(`${noun} attention, see the lines marked FAIL.`, Contract.EXIT.failed)
   }),
 })
