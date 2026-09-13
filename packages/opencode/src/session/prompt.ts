@@ -56,6 +56,7 @@ import { SessionTable } from "@opencode-ai/core/session/sql"
 import { SessionReminders } from "./reminders"
 import { SessionTools } from "./tools"
 import { LLMEvent } from "@opencode-ai/llm"
+import * as RafikiReasoning from "@/rafiki/reasoning"
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -1124,6 +1125,12 @@ const layer = Layer.effect(
                 tool: orphan.tool,
                 callID: orphan.callID,
               })
+            }
+            const emptyLength = RafikiReasoning.emptyLengthError(lastAssistant, lastAssistantMsg?.parts)
+            if (emptyLength) {
+              lastAssistant.error = emptyLength
+              yield* sessions.updateMessage(lastAssistant)
+              yield* events.publish(Session.Event.Error, { sessionID, error: emptyLength })
             }
             yield* Effect.logInfo("exiting loop", { "session.id": sessionID })
             break
