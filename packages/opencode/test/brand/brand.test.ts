@@ -6,6 +6,8 @@ import path from "path"
 import os from "os"
 import fs from "fs/promises"
 import { Brand } from "@opencode-ai/core/brand/brand"
+import { word } from "@opencode-ai/core/brand/wordmark"
+import { sessionEpilogue } from "../../../tui/src/util/presentation"
 import { Global } from "@opencode-ai/core/global"
 import pkg from "../../package.json"
 
@@ -95,7 +97,7 @@ describe("brand constants", () => {
     const config = JSON.parse(result.stdout)
     expect(config.username).toBe("from-config-json")
     expect(config.model).toBe("configdir/model")
-  })
+  }, 60_000)
 
   test("config directory defaults to ~/.rafikicode and honors XDG_CONFIG_HOME", () => {
     const xdg = process.env["XDG_CONFIG_HOME"]
@@ -111,7 +113,25 @@ describe("brand constants", () => {
     expect(path.basename(Global.Path.data)).toBe("rafikicode")
     expect(path.basename(Global.Path.cache)).toBe("rafikicode")
     expect(path.basename(Global.Path.state)).toBe("rafikicode")
+    expect(path.basename(Global.Path.tmp)).toBe("rafikicode")
     expect(Global.Path.config).toBe(Brand.configDir())
+    // Sessions, logs, the binary cache, and snapshots never share a directory
+    // with an upstream install, so its sessions cannot show up in ours.
+    for (const key of ["data", "cache", "state", "tmp", "log", "bin", "repos"] as const) {
+      const segments = Global.Path[key].split(path.sep)
+      expect(segments).toContain("rafikicode")
+      expect(segments).not.toContain("opencode")
+    }
+  })
+
+  test("docs link, config hint, and default theme name are branded", () => {
+    expect(Brand.docs).toBe("https://github.com/paneotech-dev/rafiki-code-cli")
+    expect(Brand.issues.startsWith(Brand.docs)).toBe(true)
+    expect(Brand.configHint).toBe(`~/${Brand.configDirName}/${Brand.configFile}`)
+    expect(Brand.theme).toBe("rafikicode")
+    for (const value of [Brand.docs, Brand.issues, Brand.configHint, Brand.theme, Brand.homepage]) {
+      expect(value).not.toMatch(upstreamWord)
+    }
   })
 
   test("default config registers the gateway provider only when a key is present", () => {
@@ -155,7 +175,34 @@ describe("brand constants", () => {
     expect(Brand.wordmark).toHaveLength(4)
     expect(Brand.logo.left).toHaveLength(4)
     expect(Brand.logo.right).toHaveLength(4)
+    expect(Brand.logo.left).toEqual(word("rafiki"))
+    expect(Brand.logo.right).toEqual(word("code"))
     expect(Brand.wordmark.join("\n")).not.toMatch(upstreamWord)
+  })
+
+  test("system prompts introduce the agent as the product and link to our repo", async () => {
+    const dir = path.join(root, "src/session/prompt")
+    const files = (await fs.readdir(dir)).filter((file) => file.endsWith(".txt"))
+    expect(files.length).toBeGreaterThan(5)
+    for (const file of files) {
+      const text = Brand.prompt(await fs.readFile(path.join(dir, file), "utf8"))
+      expect(text).not.toMatch(upstreamWord)
+      expect(text).not.toContain("anomalyco")
+      expect(text).not.toContain("opencode.ai")
+    }
+    const rewritten = Brand.prompt("You are opencode. Report issues at https://github.com/anomalyco/opencode/issues")
+    expect(rewritten).toBe(`You are ${Brand.name}. Report issues at ${Brand.docs}/issues`)
+    // Config file names and project directories are left alone.
+    expect(Brand.prompt("see opencode.json and .opencode/agents")).toBe("see opencode.json and .opencode/agents")
+  })
+
+  test("session epilogue shows the brand wordmark and the rafikicode continue hint", () => {
+    const epilogue = sessionEpilogue({ title: "A session", sessionID: "ses_123" })
+    const plain = epilogue.replace(/\x1b\[[0-9;]*m/g, "")
+    expect(plain).toContain("rafikicode -s ses_123")
+    expect(plain).toContain(Brand.wordmark[1])
+    expect(plain).toContain(Brand.wordmark[2])
+    expect(plain).not.toMatch(upstreamWord)
   })
 })
 

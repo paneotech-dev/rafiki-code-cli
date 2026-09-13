@@ -39,6 +39,13 @@ export const Brand = {
   // File seeded and read first inside the config directory.
   configFile: "config.json",
   homepage: "https://code.rafikiai.io",
+  // Public README and issue tracker, opened from the TUI ("Open docs", crash screen).
+  docs: "https://github.com/paneotech-dev/rafiki-code-cli",
+  issues: "https://github.com/paneotech-dev/rafiki-code-cli/issues/new",
+  // Short form of the global config path, used in hints and error messages.
+  configHint: "~/.rafikicode/config.json",
+  // Name of the built in default TUI theme (theme/assets/opencode.json upstream).
+  theme: "rafikicode",
   env: {
     // Headless and CI key. Takes precedence over the stored credential.
     apiKey: "RAFIKICODE_API_KEY",
@@ -93,6 +100,18 @@ export const Brand = {
   logo,
   wordmark: plain,
   houseStyle,
+  // Rewrites the upstream product name and links inside a system prompt so the
+  // agent introduces itself as this product and points feedback at our repo.
+  // Applied once where the per-provider prompt is selected (session/system.ts).
+  prompt(text: string) {
+    return text
+      .replaceAll("https://github.com/anomalyco/opencode/issues", `${Brand.docs}/issues`)
+      .replaceAll("https://github.com/anomalyco/opencode", Brand.docs)
+      .replaceAll("https://opencode.ai/docs", Brand.docs)
+      .replaceAll("https://opencode.ai", Brand.docs)
+      .replaceAll("OpenCode", Brand.product)
+      .replace(/(?<![\w./-])opencode(?![\w-]|\.jsonc?)/g, Brand.name)
+  },
   // Gateway base URL: the override env var, else the URL the Console handed
   // out at login, else the default.
   gatewayURL() {

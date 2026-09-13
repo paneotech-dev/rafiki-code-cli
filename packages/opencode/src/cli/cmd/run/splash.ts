@@ -1,3 +1,4 @@
+import { Brand } from "@opencode-ai/core/brand/brand"
 // Entry and exit splash banners for direct interactive mode scrollback.
 //
 // Renders the full opencode entry logo and a compact [O] exit badge, plus
@@ -194,7 +195,7 @@ function build(input: SplashWriterInput, kind: "entry" | "exit", ctx: Scrollback
       })
     }
 
-    push(lines, body_left, top, "OpenCode", right, undefined, TextAttributes.BOLD)
+    push(lines, body_left, top, Brand.product, right, undefined, TextAttributes.BOLD)
     if (input.detail) {
       push(
         lines,
@@ -234,7 +235,7 @@ function build(input: SplashWriterInput, kind: "entry" | "exit", ctx: Scrollback
       lines,
       body_left + label.length,
       top + 1,
-      `opencode --mini -s ${meta.session_id}`,
+      `${Brand.name} --mini -s ${meta.session_id}`,
       right,
       undefined,
       TextAttributes.BOLD,

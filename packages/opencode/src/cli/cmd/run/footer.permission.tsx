@@ -1,3 +1,4 @@
+import { Brand } from "@opencode-ai/core/brand/brand"
 // Permission UI body for the direct-mode footer.
 //
 // Renders inside the footer when the reducer pushes a FooterView of type
@@ -100,7 +101,7 @@ export function RejectField(props: {
       minHeight={1}
       maxHeight={3}
       wrapMode="word"
-      placeholder="Tell OpenCode what to do differently"
+      placeholder={`Tell ${Brand.product} what to do differently`}
       placeholderColor={props.theme.muted}
       textColor={props.theme.text}
       focusedTextColor={props.theme.text}
@@ -284,7 +285,7 @@ export function RunPermissionBody(props: {
           </Match>
           <Match when={state().stage === "reject"}>
             <box paddingLeft={1}>
-              <text fg={props.theme.muted}>Tell OpenCode what to do differently</text>
+              <text fg={props.theme.muted}>Tell {Brand.product} what to do differently</text>
             </box>
           </Match>
         </Switch>
