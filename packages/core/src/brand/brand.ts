@@ -19,6 +19,24 @@ const labels: Record<(typeof models)[number], string> = {
   "rafiki-max": "Rafiki Max",
 }
 
+// Request defaults for the gateway tiers. rafiki-fast is a reasoning model
+// (its completion tokens include reasoning), so a small output cap can end a
+// turn with no answer at all: every tier gets the fork's full 32000 token
+// output limit, and fast asks for low reasoning effort, which the gateway
+// accepted and which left room for a whole page scaffold (2026-09-13).
+// rafiki-pro sends no effort and offers no effort variants: a call carrying
+// one was answered by the max fallback instead of pro. The two env names let
+// the orchestrator set a per turn budget for the engine in a sandbox.
+const reasoningEfforts = ["none", "low", "medium", "high"] as const
+type ReasoningEffort = (typeof reasoningEfforts)[number]
+const requestDefaults: Record<(typeof models)[number], { output: number; effort?: ReasoningEffort; variants: boolean }> = {
+  "rafiki-fast": { output: 32_000, effort: "low", variants: true },
+  "rafiki-pro": { output: 32_000, variants: false },
+  "rafiki-max": { output: 32_000, variants: true },
+}
+const outputFloor = 1_024
+const outputCeiling = 128_000
+
 let warned = false
 function warnOnce(message: string) {
   if (warned) return
@@ -93,6 +111,12 @@ export const Brand = {
     releaseBase: "RAFIKICODE_RELEASE_BASE",
     // Overrides the Console base URL for the device flow, used for local mocks and staging.
     consoleURL: "RAFIKICODE_CONSOLE_URL",
+    // Output token limit for every rafiki-* model (1024 to 128000). Above 32000
+    // the fork's runtime cap OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX must be raised too.
+    maxOutputTokens: "RAFIKICODE_MAX_OUTPUT_TOKENS",
+    // Reasoning effort for every rafiki-* model: none, low, medium, high, or
+    // default to send none.
+    reasoningEffort: "RAFIKICODE_REASONING_EFFORT",
   },
   // Where builds are published. The installer script and the self updater read
   // these; the release workflow tags v<version> and uploads the archives plus
@@ -203,6 +227,22 @@ export const Brand = {
   provider: {
     id: providerID,
     name: "Rafiki",
+    reasoningEfforts,
+    // The request defaults for one model after the env overrides; invalid values fall back to the defaults.
+    request(id: (typeof models)[number]) {
+      const base = requestDefaults[id]
+      const rawOutput = process.env[Brand.env.maxOutputTokens]
+      const parsed = rawOutput && /^\d+$/.test(rawOutput) ? Number(rawOutput) : NaN
+      const output = parsed >= outputFloor && parsed <= outputCeiling ? parsed : base.output
+      const rawEffort = process.env[Brand.env.reasoningEffort]
+      const effort =
+        rawEffort === "default"
+          ? undefined
+          : reasoningEfforts.includes(rawEffort as ReasoningEffort)
+            ? (rawEffort as ReasoningEffort)
+            : base.effort
+      return { output, effort, variants: base.variants }
+    },
     config() {
       // The env var wins over the stored credential. When only the stored
       // credential exists its key is passed as a provider option, which is
@@ -220,18 +260,25 @@ export const Brand = {
             ...(stored ? { apiKey: stored.key } : {}),
           },
           models: Object.fromEntries(
-            models.map((id) => [
-              id,
-              {
-                name: labels[id],
-                tool_call: true,
-                reasoning: false,
-                attachment: false,
-                temperature: true,
-                limit: { context: 128_000, output: 16_384 },
-                cost: { input: 0, output: 0 },
-              },
-            ]),
+            models.map((id) => {
+              const request = Brand.provider.request(id)
+              return [
+                id,
+                {
+                  name: labels[id],
+                  tool_call: true,
+                  reasoning: false,
+                  attachment: false,
+                  temperature: true,
+                  limit: { context: 128_000, output: request.output },
+                  cost: { input: 0, output: 0 },
+                  ...(request.effort ? { options: { reasoningEffort: request.effort } } : {}),
+                  ...(request.variants
+                    ? { variants: Object.fromEntries(reasoningEfforts.map((effort) => [effort, { reasoningEffort: effort }])) }
+                    : {}),
+                },
+              ]
+            }),
           ),
         },
       }
