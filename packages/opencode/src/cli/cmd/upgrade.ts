@@ -4,6 +4,7 @@ import { UI } from "../ui"
 import * as prompts from "@clack/prompts"
 import { Installation } from "../../installation"
 import { InstallationVersion } from "@opencode-ai/core/installation/version"
+import { RafikiUpdate } from "@/rafiki/update"
 
 export const UpgradeCommand = {
   command: "upgrade [target]",
@@ -27,6 +28,7 @@ export const UpgradeCommand = {
     UI.println(UI.logo("  "))
     UI.empty()
     prompts.intro("Upgrade")
+    if (RafikiUpdate.refusedOverride((line) => prompts.log.error(line))) return prompts.outro("Done")
     const detectedMethod = await Installation.method()
     const method = (args.method as Installation.Method) ?? detectedMethod
     if (method === "unknown") {

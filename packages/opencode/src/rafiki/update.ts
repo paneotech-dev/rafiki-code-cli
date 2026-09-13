@@ -9,6 +9,7 @@ import os from "os"
 import { createHash } from "crypto"
 import { spawn } from "child_process"
 import { Brand } from "@opencode-ai/core/brand/brand"
+import * as Contract from "./contract"
 
 export namespace RafikiUpdate {
   export interface Options {
@@ -150,6 +151,17 @@ export namespace RafikiUpdate {
       await fs.rename(target, old).catch(() => {})
     }
     await fs.rename(staged, target)
+  }
+
+  // Called first by the update command, before the install method is detected
+  // or any release is looked up: a refused override stops the command with the
+  // contract's usage exit code. True when it refused.
+  export function refusedOverride(log: (line: string) => void = (line) => process.stderr.write(line + "\n")) {
+    const problem = Brand.release.overrideProblem()
+    if (!problem) return false
+    log(`${problem} Nothing was installed.`)
+    process.exitCode = Contract.EXIT.usage
+    return true
   }
 
   // Full update: resolve the version, download, verify, extract, replace.

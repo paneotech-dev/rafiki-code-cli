@@ -20,6 +20,8 @@ let work: string
 let archive: Uint8Array
 let goodSums: string
 let tampered = false
+// Paths the mock release server was asked for, to prove a refusal fetched nothing.
+const requests: string[] = []
 
 beforeAll(async () => {
   work = await fs.mkdtemp(path.join(os.tmpdir(), "rafikicode-update-test-"))
@@ -35,6 +37,7 @@ beforeAll(async () => {
     port: PORT,
     fetch(req) {
       const url = new URL(req.url)
+      requests.push(url.pathname)
       if (url.pathname === "/api/releases/latest") {
         return Response.json({ tag_name: `v${VERSION}` })
       }
@@ -187,5 +190,92 @@ describe("RafikiUpdate", () => {
 
   test("automatic updates stay off by default", () => {
     expect(Brand.config().autoupdate).toBe(false)
+  })
+})
+
+// The command users run, as a subprocess: the https rule must hold on the path
+// "rafikicode update" really takes, not only inside RafikiUpdate.apply().
+describe("rafikicode update, the command", () => {
+  const root = path.resolve(import.meta.dir, "../..")
+
+  async function update(extra: Record<string, string>) {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "rafikicode-update-cmd-"))
+    const env: Record<string, string | undefined> = {
+      ...process.env,
+      COLUMNS: "120",
+      HOME: home,
+      OPENCODE_TEST_HOME: home,
+      XDG_DATA_HOME: path.join(home, ".local/share"),
+      XDG_STATE_HOME: path.join(home, ".local/state"),
+      XDG_CACHE_HOME: path.join(home, ".cache"),
+      OPENCODE_DISABLE_PROJECT_CONFIG: "1",
+      OPENCODE_PURE: "1",
+      OPENCODE_DISABLE_AUTOUPDATE: "1",
+      OPENCODE_DISABLE_MODELS_FETCH: "1",
+      ...extra,
+    }
+    delete env["XDG_CONFIG_HOME"]
+    delete env["CI"]
+    delete env["GITHUB_ACTIONS"]
+    try {
+      const proc = Bun.spawn(["bun", "run", path.join(root, "src/index.ts"), "update"], {
+        cwd: home,
+        stdin: "ignore",
+        stdout: "pipe",
+        stderr: "pipe",
+        env: env as Record<string, string>,
+      })
+      const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])
+      const exitCode = await proc.exited
+      return { exitCode, all: (stdout + stderr).replace(/\x1b\[[0-9;]*m/g, "") }
+    } finally {
+      await fs.rm(home, { recursive: true, force: true })
+    }
+  }
+
+  test("an http release API is refused before any lookup, exit 2, nothing downloaded", async () => {
+    const before = requests.length
+    const result = await update({
+      [Brand.env.releaseAPI]: "http://api.example.com",
+      [Brand.env.releaseBase]: `http://127.0.0.1:${server.port}/dl`,
+    })
+    expect(result.exitCode).toBe(2)
+    expect(result.all).toContain(`${Brand.env.releaseAPI} must be an https URL`)
+    expect(result.all).toContain("Nothing was installed.")
+    expect(result.all).not.toContain("Using method")
+    expect(result.all).not.toContain("api.github.com")
+    expect(requests.length).toBe(before)
+  }, 60_000)
+
+  test("an http release base is refused the same way", async () => {
+    const before = requests.length
+    const result = await update({
+      [Brand.env.releaseAPI]: `http://127.0.0.1:${server.port}/api`,
+      [Brand.env.releaseBase]: "http://releases.example.com/dl",
+    })
+    expect(result.exitCode).toBe(2)
+    expect(result.all).toContain(`${Brand.env.releaseBase} must be an https URL`)
+    expect(result.all).toContain("Nothing was installed.")
+    expect(requests.length).toBe(before)
+  }, 60_000)
+
+  test("loopback and https overrides pass the check the command runs first", () => {
+    const saved = { api: process.env[Brand.env.releaseAPI], base: process.env[Brand.env.releaseBase], code: process.exitCode }
+    const lines: string[] = []
+    try {
+      for (const value of [`http://127.0.0.1:${server.port}/api`, "http://localhost:4100/api", "http://[::1]:4100/api", "https://mirror.example.com/api"]) {
+        process.env[Brand.env.releaseAPI] = value
+        expect(RafikiUpdate.refusedOverride((line) => lines.push(line))).toBe(false)
+      }
+      expect(lines).toEqual([])
+      process.env[Brand.env.releaseAPI] = "http://127.0.0.2/api"
+      expect(RafikiUpdate.refusedOverride((line) => lines.push(line))).toBe(true)
+      expect(lines[0]).toContain("Nothing was installed.")
+      expect(process.exitCode).toBe(2)
+    } finally {
+      process.env[Brand.env.releaseAPI] = saved.api
+      process.env[Brand.env.releaseBase] = saved.base
+      process.exitCode = saved.code
+    }
   })
 })
