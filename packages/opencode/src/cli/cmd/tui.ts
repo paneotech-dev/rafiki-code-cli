@@ -8,6 +8,7 @@ import { UI } from "@/cli/ui"
 import { errorMessage } from "@opencode-ai/tui/util/error"
 import { withTimeout } from "@/util/timeout"
 import { withNetworkOptions, resolveNetworkOptionsNoConfig, hasArg } from "@/cli/network"
+import * as BrandServe from "@opencode-ai/core/brand/serve"
 import { Filesystem } from "@/util/filesystem"
 import type { GlobalEvent } from "@opencode-ai/sdk/v2"
 import type { EventSource } from "@opencode-ai/tui/context/sdk"
@@ -233,6 +234,7 @@ export const TuiThreadCommand = cmd({
 
       const network = resolveNetworkOptionsNoConfig(args)
       const external = hasArg("--port") || hasArg("--hostname") || network.mdns === true
+      if (external && BrandServe.refused(network)) return await stop()
 
       const headers = external ? ServerAuth.headers() : undefined
 
