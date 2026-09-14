@@ -9,6 +9,7 @@ import { Global } from "@opencode-ai/core/global"
 import { Brand } from "@opencode-ai/core/brand/brand"
 import * as BrandGuard from "@opencode-ai/core/brand/guard"
 import * as BrandTrust from "@opencode-ai/core/brand/trust"
+import * as BrandServe from "@opencode-ai/core/brand/serve"
 import fsNode from "fs/promises"
 import { Flag } from "@opencode-ai/core/flag/flag"
 import { Auth } from "../auth"
@@ -644,7 +645,9 @@ const layer = Layer.effect(
       )
     })
 
-    const update = Effect.fn("Config.update")(function* (config: Info) {
+    const update = Effect.fn("Config.update")(function* (input: Info) {
+      // A client saving back a redacted answer keeps the stored secrets.
+      const config = BrandServe.withoutRedacted(input)
       const dir = yield* InstanceState.directory
       const file = path.join(dir, "config.json")
       const existing = yield* loadFile(file)
@@ -665,7 +668,7 @@ const layer = Layer.effect(
     const updateGlobal = Effect.fn("Config.updateGlobal")(function* (config: Info) {
       const file = globalConfigFile()
       const before = (yield* readConfigFile(file)) ?? "{}"
-      const patch = writableGlobal(config)
+      const patch = writableGlobal(BrandServe.withoutRedacted(config))
 
       let next: Info
       let changed: boolean

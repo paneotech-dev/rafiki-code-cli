@@ -68,6 +68,7 @@ import { SessionExecution } from "@opencode-ai/core/session/execution"
 import * as SessionExecutionLocal from "@opencode-ai/core/session/execution/local"
 import { lazy } from "@/util/lazy"
 import { CorsConfig, isAllowedCorsOrigin, type CorsOptions } from "@opencode-ai/server/cors"
+import * as BrandServe from "@opencode-ai/core/brand/serve"
 import { serveUIEffect } from "@/server/shared/ui"
 import { ServerAuth } from "@/server/auth"
 import { InstanceHttpApi, RootHttpApi } from "./api"
@@ -120,10 +121,13 @@ export const context = Context.makeUnsafe<unknown>(new Map())
 
 const cors = (corsOptions?: CorsOptions) =>
   HttpRouter.middleware(
-    HttpMiddleware.cors({
-      allowedOrigins: (origin) => isAllowedCorsOrigin(origin, corsOptions),
-      maxAge: 86_400,
-    }),
+    BrandServe.listenerGuard(
+      corsOptions,
+      HttpMiddleware.cors({
+        allowedOrigins: (origin) => isAllowedCorsOrigin(origin, corsOptions),
+        maxAge: 86_400,
+      }),
+    ),
     { global: true },
   )
 
