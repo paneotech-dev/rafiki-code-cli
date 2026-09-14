@@ -35,7 +35,17 @@ function parse(body?: string): { type?: string; message?: string } {
 }
 
 function keysPage() {
-  return Brand.consoleURL() + Contract.PATH.keysPage
+  // The key page of the Console that issued the stored login, when this
+  // process uses one; a server key from the environment names no Console.
+  let stored: string | undefined
+  if (!process.env[Brand.env.apiKey]) {
+    try {
+      stored = Brand.credential()?.console_url
+    } catch {
+      stored = undefined
+    }
+  }
+  return Brand.consoleFor(stored) + Contract.PATH.keysPage
 }
 
 function withConsole(message: string) {

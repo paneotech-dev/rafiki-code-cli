@@ -7,6 +7,7 @@ import { Brand } from "@opencode-ai/core/brand/brand"
 import * as Credentials from "@opencode-ai/core/brand/credentials"
 import * as Guard from "@opencode-ai/core/brand/guard"
 import { toCredential } from "../../src/rafiki/device-flow"
+import { classify } from "../../src/rafiki/gateway-errors"
 
 const names = [Brand.env.gatewayURL, Brand.env.apiKey]
 const saved: Record<string, string | undefined> = {}
@@ -70,6 +71,62 @@ describe("gateway URL scheme", () => {
     expect(() => Guard.request("http://gateway.example.com/v1/chat/completions", { headers: auth })).toThrow(Guard.KeyLeakError)
     Guard.trust({ provider: { rafiki: { options: { baseURL: "https://mirror.example.com/v1" } } } })
     expect(() => Guard.request("https://mirror.example.com/v1/chat/completions", { headers: auth })).not.toThrow()
+  })
+})
+
+describe("Console URL scheme", () => {
+  const consoleDefault = "https://console.rafikiai.io"
+  const refusedConsoleURLs = [
+    "http://console.example.com",
+    "http://172.17.0.1:4108",
+    "ftp://console.example.com",
+    "https://user:pass@console.example.com",
+    "http://127.0.0.1.nip.io",
+    "not a url",
+  ]
+  const allowedConsoleURLs = ["https://console.example.com", "http://127.0.0.1:4181", "http://localhost:4181", "http://[::1]:4181"]
+  const saveConsole = { value: undefined as string | undefined }
+  beforeEach(() => {
+    saveConsole.value = process.env[Brand.env.consoleURL]
+    delete process.env[Brand.env.consoleURL]
+  })
+  afterEach(() => {
+    if (saveConsole.value === undefined) delete process.env[Brand.env.consoleURL]
+    else process.env[Brand.env.consoleURL] = saveConsole.value
+  })
+
+  test("RAFIKICODE_CONSOLE_URL is used only when https or on this machine", () => {
+    for (const url of allowedConsoleURLs) {
+      process.env[Brand.env.consoleURL] = url + "/"
+      expect(Brand.consoleURL(), url).toBe(url)
+      expect(Brand.consoleProblem(), url).toBeUndefined()
+    }
+    for (const url of refusedConsoleURLs) {
+      process.env[Brand.env.consoleURL] = url
+      expect(Brand.consoleURL(), url).toBe(consoleDefault)
+      expect(Brand.consoleProblem(), url).toContain(`${Brand.env.consoleURL} must be an https URL`)
+    }
+  })
+
+  test("the Console URL from a login is stored and used only when https or on this machine", () => {
+    const token = (console_url: string) => ({ access_token: stubKey, console_url }) as any
+    expect(toCredential(token("http://console.example.com")).console_url).toBe(consoleDefault)
+    expect(toCredential(token("https://console.example.com")).console_url).toBe("https://console.example.com")
+    expect(toCredential(token("http://127.0.0.1:4181")).console_url).toBe("http://127.0.0.1:4181")
+    // A credential file written by an older version with an http URL elsewhere.
+    expect(Brand.consoleFor("http://console.example.com")).toBe(consoleDefault)
+    expect(Brand.consoleFor("https://console.example.com/")).toBe("https://console.example.com")
+    expect(Brand.consoleFor(undefined)).toBe(consoleDefault)
+  })
+
+  test("the budget message links to the key page of the Console that issued the stored login", () => {
+    Credentials.write(Brand.configDir(), { ...toCredential({ access_token: stubKey, console_url: "https://console.staging.example" } as any) })
+    const failure = classify({ statusCode: 429, responseBody: JSON.stringify({ error: { type: "budget_exceeded", message: "Budget has been exceeded" } }) })
+    expect(failure?.message).toContain("console.staging.example/keys")
+    expect(failure?.message).not.toContain("console.rafikiai.io/keys")
+    process.env[Brand.env.apiKey] = stubKey
+    const serverKey = classify({ statusCode: 429, responseBody: JSON.stringify({ error: { type: "budget_exceeded", message: "Budget has been exceeded" } }) })
+    expect(serverKey?.message).toContain("console.rafikiai.io/keys")
   })
 })
 

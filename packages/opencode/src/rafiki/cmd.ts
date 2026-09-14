@@ -100,7 +100,7 @@ export const LoginCommand = effectCmd({
         UI.println("The key was rotated less than an hour ago. Nothing to do.")
         return
       }
-      const c = DeviceFlow.client({ consoleURL: existing.console_url || Brand.consoleURL() })
+      const c = DeviceFlow.client({ consoleURL: Brand.consoleFor(existing.console_url) })
       const token = yield* tryFlow(DeviceFlow.refresh(c, existing.key))
       const credential = store(token, existing)
       UI.println(`Rotated the key for ${describeOwner(credential.owner)} (${expiry(credential)}).`)
@@ -111,7 +111,7 @@ export const LoginCommand = effectCmd({
     if (reason) return yield* fail(DeviceFlow.headlessMessage(reason), Contract.EXIT.usage)
 
     if (existing && DeviceFlow.shouldRefresh(existing)) {
-      const c = DeviceFlow.client({ consoleURL: existing.console_url || Brand.consoleURL() })
+      const c = DeviceFlow.client({ consoleURL: Brand.consoleFor(existing.console_url) })
       const rotated = yield* Effect.tryPromise(() => DeviceFlow.refresh(c, existing.key)).pipe(
         Effect.map((token) => store(token, existing)),
         Effect.catch(() => Effect.succeed(undefined)),
@@ -151,7 +151,7 @@ export const LoginCommand = effectCmd({
     // The previous sign-in's key would otherwise stay live at the gateway
     // until it expires. Best effort: a failure here never undoes the login.
     if (existing?.key_id && existing.key !== token.access_token) {
-      const previous = DeviceFlow.client({ consoleURL: existing.console_url || Brand.consoleURL() })
+      const previous = DeviceFlow.client({ consoleURL: Brand.consoleFor(existing.console_url) })
       const revoked = yield* Effect.tryPromise(() => DeviceFlow.revoke(previous, existing.key, existing.key_id!)).pipe(
         Effect.map(() => true),
         Effect.catch(() => Effect.succeed(false)),
@@ -159,7 +159,7 @@ export const LoginCommand = effectCmd({
       if (revoked) UI.println(`${UI.Style.TEXT_DIM}Revoked the previous key ${existing.key_alias ?? existing.key_id}.${UI.Style.TEXT_NORMAL}`)
       else
         UI.println(
-          `${UI.Style.TEXT_WARNING}Could not revoke the previous key ${existing.key_alias ?? existing.key_id}. Revoke it at ${existing.console_url || Brand.consoleURL()}${Contract.PATH.keysPage}.${UI.Style.TEXT_NORMAL}`,
+          `${UI.Style.TEXT_WARNING}Could not revoke the previous key ${existing.key_alias ?? existing.key_id}. Revoke it at ${Brand.consoleFor(existing.console_url)}${Contract.PATH.keysPage}.${UI.Style.TEXT_NORMAL}`,
         )
     }
     UI.println(`Key ${credential.key_alias ?? "(no alias)"} stored at ${Credentials.file(dir)} (${expiry(credential)}).`)
@@ -192,13 +192,13 @@ export const LogoutCommand = effectCmd({
       return
     }
     if (existing.key_id) {
-      const c = DeviceFlow.client({ consoleURL: existing.console_url || Brand.consoleURL() })
+      const c = DeviceFlow.client({ consoleURL: Brand.consoleFor(existing.console_url) })
       const revoked = yield* Effect.tryPromise(() => DeviceFlow.revoke(c, existing.key, existing.key_id!)).pipe(
         Effect.map(() => true),
         Effect.catch((cause) => {
           const message = cause instanceof Error ? cause.message : String(cause)
           UI.println(
-            `${UI.Style.TEXT_WARNING}Could not revoke the key at the Console (${message}). Revoke it at ${existing.console_url || Brand.consoleURL()}${Contract.PATH.keysPage}.${UI.Style.TEXT_NORMAL}`,
+            `${UI.Style.TEXT_WARNING}Could not revoke the key at the Console (${message}). Revoke it at ${Brand.consoleFor(existing.console_url)}${Contract.PATH.keysPage}.${UI.Style.TEXT_NORMAL}`,
           )
           return Effect.succeed(false)
         }),
@@ -229,7 +229,7 @@ export const WhoamiCommand = effectCmd({
     const key = envKey || stored?.key
     if (!key) return yield* fail(Contract.MESSAGE[Contract.ERROR.unauthenticated], Contract.EXIT.usage)
 
-    const consoleURL = (envKey ? undefined : stored?.console_url) || Brand.consoleURL()
+    const consoleURL = Brand.consoleFor(envKey ? undefined : stored?.console_url)
     UI.println(`Console: ${consoleURL}`)
     UI.println(`Gateway: ${Brand.gatewayURL()}`)
     UI.println(`Credential: ${envKey ? `${Brand.env.apiKey} (environment)` : Credentials.file(Brand.configDir())}`)

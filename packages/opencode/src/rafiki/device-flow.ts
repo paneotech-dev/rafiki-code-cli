@@ -211,7 +211,8 @@ export function toCredential(token: Contract.TokenResponse, now: number = Date.n
     kind: "session",
     // The key goes to this URL, so only https (or http on this machine) is kept.
     gateway_url: token.gateway_url && Brand.gatewayAllowed(token.gateway_url) ? token.gateway_url : Brand.gateway.url,
-    console_url: token.console_url || Brand.consoleURL(),
+    // The key goes here too (whoami, refresh, logout): the same rule as the gateway.
+    console_url: token.console_url && Brand.consoleAllowed(token.console_url) ? token.console_url : Brand.consoleURL(),
     scope: token.scope,
     owner: token.owner,
     expires_at: token.expires_in ? new Date(now + token.expires_in * 1000).toISOString() : undefined,

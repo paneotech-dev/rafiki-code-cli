@@ -91,6 +91,12 @@ function gatewayAllowed(value: string | undefined) {
   return safeURL(value, (url) => isLoopback(url.hostname))
 }
 
+// The Console receives the key as well (whoami, refresh, logout, doctor), so
+// the same rule applies: https, or plain http on this machine.
+function consoleAllowed(value: string | undefined) {
+  return safeURL(value, (url) => isLoopback(url.hostname))
+}
+
 export const Brand = {
   // Binary and script name, also the npm package name.
   name: "rafikicode",
@@ -286,9 +292,30 @@ export const Brand = {
     if (!override || gatewayAllowed(override)) return undefined
     return `${Brand.env.gatewayURL} must be an https URL (http is accepted only for 127.0.0.1, [::1] or localhost), so it is not used and the key is not sent there.`
   },
-  // Console base URL for the device flow and the account routes.
+  // Console base URL for the device flow and the account routes: the override
+  // env var when it is https or http on this machine, else the default
+  // (consoleProblem() names a refused value, with a one time warning).
   consoleURL() {
-    return (process.env[Brand.env.consoleURL] || consoleDefault).replace(/\/+$/, "")
+    const override = process.env[Brand.env.consoleURL]
+    if (override && consoleAllowed(override)) return override.replace(/\/+$/, "")
+    if (override) warnOnce(`${Brand.product}: ${Brand.consoleProblem()}`)
+    return consoleDefault
+  },
+  // The Console a stored login came from, while it is still an allowed URL,
+  // else consoleURL(). Refresh, revoke and whoami send the key there.
+  consoleFor(stored: string | undefined) {
+    return stored && consoleAllowed(stored) ? stored.replace(/\/+$/, "") : Brand.consoleURL()
+  },
+  // True when the key may be sent to this Console URL: https, or http to
+  // 127.0.0.1, [::1] or localhost.
+  consoleAllowed(url: string | undefined) {
+    return consoleAllowed(url)
+  },
+  // A message naming a refused Console override, or undefined.
+  consoleProblem() {
+    const override = process.env[Brand.env.consoleURL]
+    if (!override || consoleAllowed(override)) return undefined
+    return `${Brand.env.consoleURL} must be an https URL (http is accepted only for 127.0.0.1, [::1] or localhost), so it is not used and the key is not sent there.`
   },
   // The stored login credential, if any. Read fresh on every call; it is one small file.
   // An unsafe file (Credentials.check) throws UnsafeCredentialError, unless

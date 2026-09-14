@@ -76,7 +76,7 @@ Environment variables:
 |---|---|
 | `RAFIKICODE_API_KEY` | server key for headless and CI use, takes precedence over the stored login |
 | `RAFIKICODE_GATEWAY_URL` | override the gateway base URL (local mocks, staging) |
-| `RAFIKICODE_CONSOLE_URL` | override the Console base URL used by login, logout and whoami |
+| `RAFIKICODE_CONSOLE_URL` | override the Console base URL used by login, logout and whoami; https only (plain http only for 127.0.0.1, [::1] or localhost), otherwise ignored with a warning |
 | `RAFIKICODE_INSTALL_DIR` | installer target directory (default `~/.rafikicode/bin`) |
 | `RAFIKICODE_RELEASE_API`, `RAFIKICODE_RELEASE_BASE` | point the installer and updater at another release server (tests, mirrors) |
 | `OPENCODE_CONFIG_DIR` | add another config directory, read as `config.json` or `rafikicode.json` there |
