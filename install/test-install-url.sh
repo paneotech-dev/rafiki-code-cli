@@ -4,10 +4,16 @@
 # override must exit 1 before curl runs; an accepted one must reach curl with
 # https pinned (--proto =https --proto-redir =https) unless the loopback test
 # switch is used.
+#
+# The shim also records the directory of every download target and its mode,
+# so the temporary directory rules are checked for install/install.sh and for
+# the review action's installer: a new mktemp directory with mode 700 on every
+# run, removed afterwards, also when the installer is stopped by a signal.
 set -euo pipefail
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 INSTALLER="$HERE/install.sh"
+ACTION_INSTALLER="$HERE/../.github/actions/rafikicode-review/install.sh"
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/rafikicode-install-url.XXXXXX")
 trap 'rm -rf "$WORK"' EXIT
 
@@ -15,6 +21,18 @@ mkdir -p "$WORK/bin" "$WORK/home"
 cat > "$WORK/bin/curl" <<EOF
 #!/bin/sh
 printf '%s\n' "\$*" >> "$WORK/curl.log"
+out=""
+prev=""
+for arg in "\$@"; do
+    if [ "\$prev" = "-o" ]; then out="\$arg"; fi
+    prev="\$arg"
+done
+if [ -n "\$out" ]; then
+    dir=\$(dirname "\$out")
+    mode=\$(stat -c %a "\$dir" 2>/dev/null || stat -f %Lp "\$dir")
+    printf '%s %s\n' "\$dir" "\$mode" >> "$WORK/tmpdirs.log"
+    if [ -n "\${CURL_SIGNAL:-}" ]; then kill -"\$CURL_SIGNAL" "\$PPID"; fi
+fi
 exit 22
 EOF
 chmod 755 "$WORK/bin/curl"
@@ -30,8 +48,8 @@ check() {
 run() {
     local api=$1 base=$2
     shift 2
-    rm -f "$WORK/curl.log"
-    out=$(env -i PATH="$WORK/bin:/usr/bin:/bin" HOME="$WORK/home" TMPDIR="$WORK" \
+    rm -f "$WORK/curl.log" "$WORK/tmpdirs.log"
+    out=$(env -i PATH="$WORK/bin:/usr/bin:/bin" HOME="$WORK/home" TMPDIR="$WORK" CURL_SIGNAL="${SIGNAL:-}" \
         RAFIKICODE_RELEASE_API="$api" RAFIKICODE_RELEASE_BASE="$base" \
         RAFIKICODE_INSTALL_ALLOW_HTTP_LOOPBACK="${ALLOW:-}" RAFIKICODE_INSTALL_DIR="$WORK/prefix" \
         bash "$INSTALLER" --no-modify-path "$@" 2>&1)
@@ -39,6 +57,20 @@ run() {
     calls=0
     [ -f "$WORK/curl.log" ] && calls=$(wc -l < "$WORK/curl.log")
 }
+
+# run_action: the review action's installer with a pinned version and hash.
+run_action() {
+    rm -f "$WORK/curl.log" "$WORK/tmpdirs.log"
+    out=$(env -i PATH="$WORK/bin:/usr/bin:/bin" HOME="$WORK/home" TMPDIR="$WORK" CURL_SIGNAL="${SIGNAL:-}" \
+        VERSION=1.2.3 SHA256=0000000000000000000000000000000000000000000000000000000000000000 \
+        RAFIKICODE_RELEASE_BASE="https://releases.example.com/dl" INSTALL_DIR="$WORK/action-prefix" \
+        bash "$ACTION_INSTALLER" 2>&1)
+    rc=$?
+}
+
+# The directory and mode of the first download target of the last run.
+tmpdir_of() { head -n 1 "$WORK/tmpdirs.log" 2>/dev/null | cut -d' ' -f1; }
+mode_of() { head -n 1 "$WORK/tmpdirs.log" 2>/dev/null | cut -d' ' -f2; }
 
 refused=(
     "http://127.0.0.1:4150/dl"
@@ -93,6 +125,41 @@ proto=$(grep -c -- "--proto =https --proto-redir =https" "$WORK/curl.log" 2>/dev
 ALLOW="" run "https://api.example.com/repos/x/y" ""
 proto=$(grep -c -- "--proto =https --proto-redir =https" "$WORK/curl.log" 2>/dev/null)
 [ "$rc" != "0" ] && [ "$calls" -ge 1 ] && [ "$proto" = "$calls" ]; check $? "latest version lookup pins https"
+
+# Temporary directory of install/install.sh: never a name derived from the
+# process id, which another user could create first.
+! grep -q '_install_\$\$' "$INSTALLER"; check $? "installer: no process id based temporary directory"
+
+ALLOW="" run "" "https://releases.example.com/dl" --version 1.2.3
+first=$(tmpdir_of)
+[ "$rc" = "1" ] && [ -n "$first" ] && [[ "$first" == "$WORK"/* ]] && [[ "$(basename "$first")" =~ ^rafikicode_install\.[A-Za-z0-9]{10}$ ]]; check $? "installer: download directory from mktemp ($(basename "${first:-none}"))"
+[ "$(mode_of)" = "700" ]; check $? "installer: download directory mode 700 (got $(mode_of))"
+[ -n "$first" ] && [ ! -e "$first" ]; check $? "installer: download directory removed after a failed download"
+
+ALLOW="" run "" "https://releases.example.com/dl" --version 1.2.3
+second=$(tmpdir_of)
+[ -n "$second" ] && [ "$second" != "$first" ]; check $? "installer: a new download directory on every run"
+
+SIGNAL=TERM ALLOW="" run "" "https://releases.example.com/dl" --version 1.2.3
+stopped=$(tmpdir_of)
+[ "$rc" = "143" ] && [ -n "$stopped" ] && [ ! -e "$stopped" ]; check $? "installer: download directory removed when stopped with TERM (exit $rc)"
+
+SIGNAL=INT ALLOW="" run "" "https://releases.example.com/dl" --version 1.2.3
+stopped=$(tmpdir_of)
+[ "$rc" = "130" ] && [ -n "$stopped" ] && [ ! -e "$stopped" ]; check $? "installer: download directory removed when stopped with INT (exit $rc)"
+
+# The same rules for the review action's installer.
+run_action
+action_dir=$(tmpdir_of)
+[ "$rc" = "1" ] && [ -n "$action_dir" ] && [[ "$action_dir" == "$WORK"/* ]] && [ "$(mode_of)" = "700" ]; check $? "action installer: download directory from mktemp with mode 700 (got $(mode_of))"
+[ -n "$action_dir" ] && [ ! -e "$action_dir" ]; check $? "action installer: download directory removed after a failed download"
+
+SIGNAL=TERM run_action
+stopped=$(tmpdir_of)
+[ "$rc" = "143" ] && [ -n "$stopped" ] && [ ! -e "$stopped" ]; check $? "action installer: download directory removed when stopped with TERM (exit $rc)"
+
+leftover=$(find "$WORK" -maxdepth 1 -type d \( -name 'rafikicode_install*' -o -name 'tmp.*' \) | wc -l)
+[ "$leftover" = "0" ]; check $? "no temporary directory left behind ($leftover)"
 
 echo "install url tests: ${pass} passed, ${fail} failed"
 [ "$fail" = "0" ]

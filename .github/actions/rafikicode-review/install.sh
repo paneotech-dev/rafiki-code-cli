@@ -69,8 +69,15 @@ fi
 [ -n "$expected" ] || fail "the sha256 input has no 64 character hash for ${asset}."
 expected="$(printf '%s' "$expected" | tr 'A-F' 'a-f')"
 
-tmp="$(mktemp -d)"
-trap 'rm -rf "$tmp"' EXIT
+# A new private directory (random name, mode 0700), removed on every exit
+# path; HUP, INT and TERM exit through the same cleanup.
+tmp=""
+trap 'if [ -n "$tmp" ]; then rm -rf "$tmp"; fi' EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+tmp="$(umask 077 && mktemp -d)" || fail "could not create a private temporary directory."
+chmod 700 "$tmp"
 url="${RELEASE_BASE}/download/v${version}/${asset}"
 printf 'Downloading %s\n' "$url"
 curl -fsSL ${curl_proto[@]+"${curl_proto[@]}"} -o "$tmp/$asset" "$url" || fail "could not download ${url}."

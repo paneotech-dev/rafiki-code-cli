@@ -51,9 +51,18 @@ check_override() {
     exit 1
 }
 
-# Scratch directory for downloads, removed on every exit path.
+# Scratch directory for downloads: a new directory from mktemp (random name,
+# mode 0700, owned by this user), so no other user can plant it or swap the
+# archive between the checksum check and the install. Removed on every exit
+# path; HUP, INT and TERM exit through the same cleanup.
 TMP_DIR=""
-trap 'if [ -n "$TMP_DIR" ]; then rm -rf "$TMP_DIR"; fi' EXIT
+cleanup() {
+    if [ -n "$TMP_DIR" ]; then rm -rf "$TMP_DIR"; fi
+}
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 usage() {
     cat <<EOF
@@ -264,8 +273,11 @@ check_installed() {
 download_and_install() {
     if [ "$os" = "linux" ]; then need tar; else need unzip; fi
     print_message info "\n${MUTED}Installing ${NC}${APP} ${MUTED}version ${NC}${specific_version}"
-    TMP_DIR="${TMPDIR:-/tmp}/${APP}_install_$$"
-    mkdir -p "$TMP_DIR"
+    TMP_DIR=$(umask 077 && mktemp -d "${TMPDIR:-/tmp}/${APP}_install.XXXXXXXXXX") || fail "could not create a private temporary directory."
+    chmod 700 "$TMP_DIR"
+    if [ ! -d "$TMP_DIR" ] || [ -L "$TMP_DIR" ] || [ ! -O "$TMP_DIR" ]; then
+        fail "the temporary directory ${TMP_DIR} is not a private directory owned by this user."
+    fi
     local tmp_dir="$TMP_DIR"
 
     if ! curl -fsSL ${CURL_PROTO[@]+"${CURL_PROTO[@]}"} -o "$tmp_dir/$CHECKSUMS" "$sums_url"; then
