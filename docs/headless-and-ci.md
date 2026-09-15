@@ -46,10 +46,15 @@ Standard input is read as the message when it is not a terminal, so a script tha
 
 ## Shell commands in headless runs
 
-A run is *headless* when nobody can answer a question: `CI` is set (and not `0` or `false`), `GITHUB_ACTIONS` is `true`, or `rafikicode run` has no terminal on standard input or output. A prompt injection in a README, an issue or a diff can ask the model to run a command, and the job's environment holds the key, so in headless runs:
+A run is *headless* when nobody can answer a question: `CI` is set (and not `0` or `false`), `GITHUB_ACTIONS` is `true`, or `rafikicode run` has no terminal on standard input or output.
 
-- The shell tool asks before every command, and `rafikicode run` rejects a question nobody can answer. The rejection is printed (`permission requested: bash (...); auto-rejecting`), the command does not run, and the model continues without it.
-- A project config in an untrusted workspace cannot change that: `permission` entries that allow `bash` in `rafikicode.json`, `opencode.json`, agent settings or agent Markdown files are ignored with a warning.
+Your own run without a terminal (a script, a container, `ssh host rafikicode run ...`) keeps the default permissions: tools run inside the directory it was started in, so `rafikicode run "create a calculator web page in index.html"` in an empty directory writes the file. Paths outside that directory still ask, and `rafikicode run` rejects a question nobody can answer.
+
+A CI job is different: a prompt injection in a README, an issue or a diff can ask the model to run a command, and the job's environment holds the key and usually other secrets, so when `CI` or `GITHUB_ACTIONS` is set:
+
+- The shell tool asks before every command, and `rafikicode run` rejects a question nobody can answer. The rejection is printed (`permission requested: bash (...); auto-rejecting`) with a one line hint naming `--auto` and `~/.rafikicode/config.json`, the command does not run, and the model continues without it.
+
+In every headless run, a project config in an untrusted workspace grants nothing: `permission` entries that allow anything (`bash`, `external_directory`, `edit`, `read` and the rest) in `rafikicode.json`, `opencode.json`, agent settings or agent Markdown files are ignored with a warning. Entries that ask or deny still apply.
 
 To let a job run commands, say so from a place the repository does not control:
 

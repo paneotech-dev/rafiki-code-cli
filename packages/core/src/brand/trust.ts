@@ -4,7 +4,7 @@
 // may be hostile, so code declared by the workspace (project plugins, custom
 // tools, TUI plugins, provider SDK packages) only loads from a trusted
 // workspace, and headless runs of an untrusted workspace also get no local
-// MCP, formatter or language server commands and no shell permission from it.
+// MCP, formatter or language server commands and no permission grant from it.
 //
 // A workspace is trusted when:
 //   - it is at or under a directory stored with `rafikicode trust <dir>`
@@ -80,11 +80,18 @@ export function isUserConfigDir(dir: string) {
   return !homeConfigInCheckout()
 }
 
+// A CI job: CI set (and not 0 or false) or GitHub Actions. Its environment
+// usually holds more secrets than the Rafiki key, and the code it checks out
+// may come from a stranger.
+export function ci() {
+  if (!falsey(process.env["CI"])) return true
+  return process.env["GITHUB_ACTIONS"] === "true"
+}
+
 // Headless: nobody at a terminal can answer a question. CI, GitHub Actions, or
 // `rafikicode run` without a terminal on stdin and stdout (marked at start).
 export function headless() {
-  if (!falsey(process.env["CI"])) return true
-  if (process.env["GITHUB_ACTIONS"] === "true") return true
+  if (ci()) return true
   return process.env[Brand.env.headless] === "1"
 }
 
@@ -252,9 +259,14 @@ export function codeDirs(dirs: readonly string[]) {
   })
 }
 
-// Permission defaults for headless runs: the shell asks, and `rafikicode run`
+// Permission defaults on top of upstream's (every tool allowed inside the
+// working directory, paths outside it ask). A person's own run, at a terminal
+// or not (a script, a container, a pipe), keeps them, so a first
+// `rafikicode run "build me ..."` can run commands and write files in the
+// directory it was started in. In CI the shell asks, and `rafikicode run`
 // rejects a question nobody can answer. Global config, OPENCODE_PERMISSION,
-// a trusted workspace's config or `run --auto` still allow it.
+// a trusted workspace's config or `run --auto` still allow it. Project config
+// of an untrusted workspace never widens either default (brand/guard.ts).
 export function headlessPermission(): { bash?: "ask" } {
-  return headless() ? { bash: "ask" } : {}
+  return ci() ? { bash: "ask" } : {}
 }

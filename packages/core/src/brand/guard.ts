@@ -13,7 +13,8 @@
 //    - when project code may not load, plugin entries and provider packages
 //      outside the bundled @ai-sdk scope;
 //    - in a headless run of an untrusted workspace, local MCP, formatter and
-//      language server commands and any permission that allows the shell.
+//      language server commands and every permission rule that allows
+//      something (the file may still ask or deny).
 // 2. substitution() limits {env:} and {file:} in untrusted project files.
 // 3. trust() records the gateway origins that trusted sources chose: the
 //    user's ~/.rafikicode/config.json, explicit config env vars, managed config.
@@ -150,15 +151,17 @@ export function isProjectDir(dir: string, input: { config: string; configDir?: s
 
 const envReference = new RegExp(`\\$\\{\\s*${Brand.env.apiKey}\\s*\\}|\\{env:\\s*${Brand.env.apiKey}\\s*\\}`)
 
-// Removes the entries of a permission config that allow the shell: a bare
-// "allow" for every tool, and allow rules under bash or "*".
-function shellAllows(value: unknown, at: string, ignored: string[]): unknown {
+// Removes every entry of a permission config that allows something: a bare
+// "allow" for every tool, and allow rules under any tool (bash, "*",
+// external_directory, edit, read ...). Ask and deny rules stay, so the file
+// can still narrow what the run may do, never widen it.
+function permissionGrants(value: unknown, at: string, ignored: string[]): unknown {
   if (value === "allow") {
     ignored.push(at)
     return undefined
   }
   if (!isRecord(value)) return value
-  for (const key of ["bash", "*"]) {
+  for (const key of Object.keys(value)) {
     const rule = value[key]
     if (rule === "allow") {
       ignored.push(`${at}.${key}`)
@@ -199,7 +202,7 @@ function agentPermissions(agents: unknown, at: string, ignored: string[]) {
   if (!isRecord(agents)) return
   for (const [name, agent] of Object.entries(agents)) {
     if (!isRecord(agent) || agent.permission === undefined) continue
-    const next = shellAllows(agent.permission, `${at}.${name}.permission`, ignored)
+    const next = permissionGrants(agent.permission, `${at}.${name}.permission`, ignored)
     if (next === undefined) delete agent.permission
     else agent.permission = next
   }
@@ -288,7 +291,8 @@ export function projectConfig<T>(source: string, data: T, where = path.dirname(s
   }
 
   // Nobody can review what a headless run starts, so an untrusted workspace
-  // declares no programs and cannot open the shell.
+  // declares no programs and grants itself no permission (the shell, paths
+  // outside the workspace, or anything the user's own config asks about).
   if (headless && !trustedWorkspace) {
     if (isRecord(data.mcp)) {
       for (const [name, entry] of Object.entries(data.mcp)) {
@@ -308,7 +312,7 @@ export function projectConfig<T>(source: string, data: T, where = path.dirname(s
     }
     const record: Json = data
     if (record.permission !== undefined) {
-      const next = shellAllows(record.permission, "permission", programs)
+      const next = permissionGrants(record.permission, "permission", programs)
       if (next === undefined) delete record.permission
       else record.permission = next
     }
@@ -355,7 +359,7 @@ export function projectConfig<T>(source: string, data: T, where = path.dirname(s
   if (programs.length) {
     Trust.warnOnce(
       `headless:${source}`,
-      `Warning: ignored ${programs.join(", ")} in ${source}: a headless run starts no programs and allows no shell commands from an untrusted workspace; ${Trust.untrustedHint(where)}.`,
+      `Warning: ignored ${programs.join(", ")} in ${source}: a headless run starts no programs and takes no permission grants from an untrusted workspace; ${Trust.untrustedHint(where)}.`,
     )
   }
   return data
@@ -407,7 +411,7 @@ export function checkoutHomeConfig<T>(source: string, data: T): T {
 
 // Agents and modes loaded from Markdown files in a project directory: in an
 // untrusted workspace their options cannot set request body fields, and in a
-// headless run they cannot allow the shell.
+// headless run they grant no permission.
 export function projectAgents<T>(dir: string, project: boolean, agents: T): T {
   if (!project || Trust.isTrusted(dir)) return agents
   const spend: string[] = []
@@ -419,7 +423,7 @@ export function projectAgents<T>(dir: string, project: boolean, agents: T): T {
   if (ignored.length) {
     Trust.warnOnce(
       `agents:${dir}`,
-      `Warning: ignored ${ignored.join(", ")} from ${dir}: a headless run allows no shell commands from an untrusted workspace; ${Trust.untrustedHint(dir)}.`,
+      `Warning: ignored ${ignored.join(", ")} from ${dir}: a headless run takes no permission grants from an untrusted workspace; ${Trust.untrustedHint(dir)}.`,
     )
   }
   return agents

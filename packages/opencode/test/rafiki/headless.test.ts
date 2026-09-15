@@ -1,7 +1,9 @@
-// Headless runs (CI, GitHub Actions, rafikicode run without a terminal) do not
-// run shell commands unless something the user controls allows it: global
-// config, OPENCODE_PERMISSION, run --auto, or a trusted workspace. A project
-// config in an untrusted workspace cannot allow the shell for itself.
+// Headless runs. A person's own `rafikicode run` without a terminal (a script,
+// a container, a pipe) keeps the default permissions, so a first task in an
+// empty directory runs commands and writes files there. CI and GitHub Actions
+// do not run shell commands unless something the user controls allows it:
+// global config, OPENCODE_PERMISSION, run --auto, or a trusted workspace. A
+// project config in an untrusted workspace grants no permission in either.
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import fs from "fs"
 import os from "os"
@@ -37,9 +39,11 @@ describe("headless detection", () => {
     expect(Trust.headless()).toBe(false)
     process.env["CI"] = "1"
     expect(Trust.headless()).toBe(true)
+    expect(Trust.headlessPermission()).toEqual({ bash: "ask" })
     delete process.env["CI"]
     process.env["GITHUB_ACTIONS"] = "true"
     expect(Trust.headless()).toBe(true)
+    expect(Trust.headlessPermission()).toEqual({ bash: "ask" })
     delete process.env["GITHUB_ACTIONS"]
     Trust.markHeadless("run", { stdin: true, stdout: true })
     expect(Trust.headless()).toBe(false)
@@ -48,7 +52,8 @@ describe("headless detection", () => {
     expect(Trust.headlessPermission()).toEqual({})
     Trust.markHeadless("run", { stdin: true, stdout: false })
     expect(Trust.headless()).toBe(true)
-    expect(Trust.headlessPermission()).toEqual({ bash: "ask" })
+    // Not CI: the person's own run keeps the shell.
+    expect(Trust.headlessPermission()).toEqual({})
   })
 
   test("the project code switch: trusted everywhere by default; interactive keeps upstream loading at a terminal only", () => {
@@ -61,7 +66,7 @@ describe("headless detection", () => {
   })
 })
 
-describe("rafikicode run in a headless job, with a model that asks for the shell", () => {
+describe("rafikicode run without a terminal, with a model that asks for the shell", () => {
   let home: string
   let repo: string
   let marker: string
@@ -123,31 +128,60 @@ describe("rafikicode run in a headless job, with a model that asks for the shell
     fs.writeFileSync(path.join(repo, "rafikicode.json"), JSON.stringify({ permission: { bash: "allow" }, agent: { build: { permission: { bash: { "*": "allow" } } } } }))
   const ran = () => fs.existsSync(marker)
   const shellCalls = () => gateway.requests.filter((r: any) => r.path === "/v1/chat/completions").length
+  const CI = { CI: "1" }
 
-  test("the shell asks, nobody answers, the command does not run; the project cannot allow it", async () => {
-    projectAllowsShell()
+  test("a first run in an empty directory, with no config and no git, runs the shell there", async () => {
+    fs.rmSync(path.join(repo, ".git"), { recursive: true, force: true })
     const result = await run(["create the marker"])
+    expect(result.all).not.toContain("auto-rejecting")
+    expect(ran()).toBe(true)
+    expect(result.all).not.toContain(KEY)
+  }, 120_000)
+
+  test("a project config cannot reach outside the directory for itself; the rejection prints a hint", async () => {
+    const outside = path.join(home, "outside-ran")
+    const reach = createMockGateway({
+      quiet: true,
+      toolCall: { name: "bash", arguments: { command: `touch '${outside}'`, workdir: home, description: "Create a marker outside" } },
+    })
+    await reach.ready
+    try {
+      fs.writeFileSync(path.join(repo, "opencode.json"), JSON.stringify({ permission: { external_directory: { "*": "allow" }, bash: "allow" } }))
+      const result = await run(["create the marker outside"], { RAFIKICODE_GATEWAY_URL: reach.url + "/v1" })
+      expect(result.stderr).toContain("Warning: ignored permission.external_directory.*, permission.bash in")
+      expect(result.all).toContain("permission requested: external_directory")
+      expect(result.all).toContain("Hint: external_directory was rejected because this run cannot ask for approval. Rerun with rafikicode run --auto")
+      expect(fs.existsSync(outside)).toBe(false)
+    } finally {
+      await reach.close()
+    }
+  }, 120_000)
+
+  test("in CI the shell asks, nobody answers, the command does not run; the project cannot allow it", async () => {
+    projectAllowsShell()
+    const result = await run(["create the marker"], CI)
     expect(shellCalls()).toBeGreaterThanOrEqual(1)
     expect(result.all).toContain("permission requested: bash")
+    expect(result.all).toContain(`Hint: bash was rejected because this CI run cannot ask for approval. Rerun with rafikicode run --auto, or allow it in ~/.rafikicode/config.json`)
     expect(result.stderr).toContain("Warning: ignored permission.bash, agent.build.permission.bash.* in")
     expect(ran()).toBe(false)
     expect(result.all).not.toContain(KEY)
   }, 120_000)
 
-  test("run --auto answers the question", async () => {
-    const result = await run(["--auto", "create the marker"])
+  test("in CI, run --auto answers the question", async () => {
+    const result = await run(["--auto", "create the marker"], CI)
     expect(result.all).not.toContain("auto-rejecting")
     expect(ran()).toBe(true)
   }, 120_000)
 
-  test("global config and OPENCODE_PERMISSION allow it", async () => {
+  test("in CI, global config and OPENCODE_PERMISSION allow it", async () => {
     fs.mkdirSync(path.join(home, ".rafikicode"), { recursive: true })
     fs.writeFileSync(path.join(home, ".rafikicode", "config.json"), JSON.stringify({ permission: { bash: "allow" } }))
-    await run(["create the marker"])
+    await run(["create the marker"], CI)
     expect(ran()).toBe(true)
     fs.rmSync(marker)
     fs.rmSync(path.join(home, ".rafikicode", "config.json"))
-    await run(["create the marker"], { OPENCODE_PERMISSION: JSON.stringify({ bash: "allow" }) })
+    await run(["create the marker"], { ...CI, OPENCODE_PERMISSION: JSON.stringify({ bash: "allow" }) })
     expect(ran()).toBe(true)
   }, 180_000)
 

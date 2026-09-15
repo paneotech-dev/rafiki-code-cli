@@ -26,6 +26,7 @@ import { Filesystem } from "@/util/filesystem"
 import { createOpencodeClient, type OpencodeClient, type ToolPart } from "@opencode-ai/sdk/v2"
 import { FormatError, FormatUnknownError } from "../error"
 import * as RafikiGateway from "@/rafiki/gateway-errors"
+import * as RafikiPermission from "@/rafiki/permission-hint"
 import { INTERACTIVE_INPUT_ERROR, resolveInteractiveStdin } from "./run/runtime.stdin"
 
 type ModelInput = Parameters<OpencodeClient["session"]["prompt"]>[0]["model"]
@@ -816,6 +817,8 @@ export const RunCommand = effectCmd({
                   UI.Style.TEXT_NORMAL +
                     `permission requested: ${permission.permission} (${permission.patterns.join(", ")}); auto-rejecting`,
                 )
+                const hint = RafikiPermission.rejectHint(permission.permission)
+                if (hint) UI.println(UI.Style.TEXT_NORMAL + hint)
                 await client.permission.reply({
                   requestID: permission.id,
                   reply: "reject",

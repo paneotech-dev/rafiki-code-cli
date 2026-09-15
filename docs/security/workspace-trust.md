@@ -16,7 +16,7 @@ A *workspace* is the directory you start `rafikicode` in, up to the root of its 
 | Local MCP servers | an `mcp` entry with `"type": "local"` and a `command` | started when the session starts, unless the entry sets `"enabled": false` |
 | Formatters | a `formatter` entry with a `command` | after the agent edits a file with a matching extension |
 | Language servers (LSP) | an `lsp` entry with a `command` | when the agent opens a file the server handles |
-| Shell permission | `permission`, `agent.<name>.permission` or an agent Markdown file allowing `bash` | when the model asks to run a command |
+| Permission grants | `permission`, `agent.<name>.permission` or an agent Markdown file allowing `bash`, `external_directory` or any other tool | when the model asks to run a command or reach outside the workspace |
 | Substitution | `{env:NAME}` and `{file:path}` anywhere in project config, including `tui.json` | when the config loads; the value can be sent to any URL the config names (a remote MCP server, an instructions URL, another provider) |
 | Spend | a `rafiki` model's `id`, `options`, `variants` or `limit`, and any agent or mode `options` field other than `temperature`, `top_p`, `top_k`, `reasoningEffort`, `textVerbosity`, `timeout`, `chunkTimeout` and `headerTimeout` (compared without case, `_` or `-`), whether or not the file also configures a provider | on every request: agent and mode options are merged into the request body, so a tier can call another model or raise its output limit while its name stays the same |
 
@@ -34,13 +34,13 @@ The store is ignored when it is a symbolic link, belongs to another user, or can
 | Plugins, custom tools, TUI plugins | not loaded, one warning line | not loaded, one warning line | loaded |
 | Provider packages | only `@ai-sdk/*` packages | only `@ai-sdk/*` packages | any |
 | Local MCP servers, formatters, language servers | loaded (upstream behaviour) | removed, one warning line | loaded |
-| Permission settings that allow the shell | kept | removed, one warning line | kept |
+| Permission settings that allow anything (ask and deny rules stay) | kept | removed, one warning line | kept |
 | `{env:}` of secret names, `{file:}` outside the project, in any project config file (`rafikicode.json`, `opencode.json`, `tui.json`, their `jsonc` forms, the same files in `.rafikicode/` and `.opencode/`) | replaced by an empty value, one warning line per reference | same | full substitution |
 | `rafiki` model `id`, `options`, `variants`, `limit`; request fields in agent and mode `options` (config files and agent Markdown files) | removed, one warning line | same | kept |
 | `rafiki` provider base URL, headers, key source | removed, one warning line | same | kept, but the key still only goes to the gateway (below) |
 | Agents, commands, skills, instructions | loaded | loaded | loaded |
 
-*Headless* means nobody can answer a question: `CI` is set (and not `0` or `false`), `GITHUB_ACTIONS=true`, or `rafikicode run` without a terminal on standard input or output. In headless runs the shell tool (`bash`) defaults to *ask*, and `rafikicode run` rejects a question nobody can answer, so a command runs only when something you control allows it: `permission` in `~/.rafikicode/config.json`, `OPENCODE_PERMISSION`, `rafikicode run --auto`, or a trusted workspace. See [Headless and CI](../headless-and-ci.md#shell-commands-in-headless-runs).
+*Headless* means nobody can answer a question: `CI` is set (and not `0` or `false`), `GITHUB_ACTIONS=true`, or `rafikicode run` without a terminal on standard input or output. Your own `rafikicode run` without a terminal keeps the default permissions (tools allowed inside the working directory, paths outside it ask). In CI (`CI` or `GITHUB_ACTIONS`) the shell tool (`bash`) also defaults to *ask*. `rafikicode run` rejects a question nobody can answer and prints a hint, so such a request goes through only when something you control allows it: `permission` in `~/.rafikicode/config.json`, `OPENCODE_PERMISSION`, `rafikicode run --auto`, or a trusted workspace. See [Headless and CI](../headless-and-ci.md#shell-commands-in-headless-runs).
 
 *Secret names* are environment variable names containing `KEY`, `TOKEN`, `SECRET`, `PASSWORD`, `PASSWD`, `CREDENTIAL` or `PRIVATE` (any case), and `RAFIKICODE_API_KEY`. *The project* is the git repository root, or the working directory outside git; a `{file:}` path is resolved through symbolic links before the check.
 
