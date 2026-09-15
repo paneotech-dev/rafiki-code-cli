@@ -1,4 +1,7 @@
-import { describe, expect } from "bun:test"
+import { afterAll, beforeAll, beforeEach, describe, expect } from "bun:test"
+import fs from "fs/promises"
+import { Brand } from "@opencode-ai/core/brand/brand"
+import { RafikiUpdate } from "../../src/rafiki/update"
 import { makeGlobalNode } from "@opencode-ai/core/effect/app-node"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { httpClient } from "@opencode-ai/core/effect/app-node-platform"
@@ -51,6 +54,54 @@ function jsonResponse(body: unknown) {
   })
 }
 
+// The release lookup and the curl upgrade go through the Rafiki updater
+// (src/rafiki/update.ts), which uses fetch rather than the Effect HttpClient, so
+// that every redirect hop is checked. fetch is stubbed for this whole file:
+// each test answers the brand's release URLs, and any other request fails the
+// test instead of reaching the network.
+const RELEASE_API = "https://api.github.com/repos/paneotech-dev/rafiki-code-cli"
+const RELEASE_DOWNLOAD = "https://github.com/paneotech-dev/rafiki-code-cli/releases/download"
+const RELEASE_ENV = [Brand.env.releaseAPI, Brand.env.releaseBase, Brand.env.allowHttpLoopback]
+let release: (url: string) => Response | undefined = () => undefined
+const fetched: string[] = []
+const realFetch = globalThis.fetch
+const savedEnv: Record<string, string | undefined> = {}
+
+beforeAll(() => {
+  for (const name of RELEASE_ENV) {
+    savedEnv[name] = process.env[name]
+    delete process.env[name]
+  }
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = input instanceof Request ? input.url : String(input)
+    fetched.push(url)
+    const response = release(url)
+    if (!response) throw new Error(`unexpected network request in installation tests: ${url}`)
+    return response
+  }) as typeof fetch
+})
+
+afterAll(() => {
+  globalThis.fetch = realFetch
+  for (const name of RELEASE_ENV) {
+    if (savedEnv[name] === undefined) delete process.env[name]
+    else process.env[name] = savedEnv[name]
+  }
+})
+
+beforeEach(() => {
+  release = () => undefined
+  fetched.length = 0
+})
+
+// For tests whose lookups must not use the Effect HttpClient at all.
+function noHttp(calls: string[]) {
+  return (request: HttpClientRequest.HttpClientRequest) => {
+    calls.push(request.url)
+    return new Response("unexpected", { status: 500 })
+  }
+}
+
 function testLayer(
   httpHandler: (request: HttpClientRequest.HttpClientRequest) => Response,
   spawnHandler?: (cmd: string, args: readonly string[]) => string | { code: number; stdout?: string; stderr?: string },
@@ -68,22 +119,26 @@ function testLayer(
 
 describe("installation", () => {
   describe("latest", () => {
-    testEffect(testLayer(() => jsonResponse({ tag_name: "v1.2.3" }))).effect(
-      "reads release version from GitHub releases",
-      () =>
-        Effect.gen(function* () {
-          const result = yield* Installation.use.latest("unknown")
-          expect(result).toBe("1.2.3")
-        }),
+    const githubHttp: string[] = []
+    testEffect(testLayer(noHttp(githubHttp))).effect("reads release version from GitHub releases", () =>
+      Effect.gen(function* () {
+        release = (url) => (url === `${RELEASE_API}/releases/latest` ? jsonResponse({ tag_name: "v1.2.3" }) : undefined)
+        const result = yield* Installation.use.latest("unknown")
+        expect(result).toBe("1.2.3")
+        expect(fetched).toEqual([`${RELEASE_API}/releases/latest`])
+        expect(githubHttp).toEqual([])
+      }),
     )
 
-    testEffect(testLayer(() => jsonResponse({ tag_name: "v4.0.0-beta.1" }))).effect(
-      "strips v prefix from GitHub release tag",
-      () =>
-        Effect.gen(function* () {
-          const result = yield* Installation.use.latest("curl")
-          expect(result).toBe("4.0.0-beta.1")
-        }),
+    testEffect(testLayer(noHttp(githubHttp))).effect("strips v prefix from GitHub release tag", () =>
+      Effect.gen(function* () {
+        release = (url) =>
+          url === `${RELEASE_API}/releases/latest` ? jsonResponse({ tag_name: "v4.0.0-beta.1" }) : undefined
+        const result = yield* Installation.use.latest("curl")
+        expect(result).toBe("4.0.0-beta.1")
+        expect(fetched).toEqual([`${RELEASE_API}/releases/latest`])
+        expect(githubHttp).toEqual([])
+      }),
     )
 
     const npmCalls: string[] = []
@@ -96,7 +151,7 @@ describe("installation", () => {
       Effect.gen(function* () {
         const result = yield* Installation.use.latest("npm")
         expect(result).toBe("1.5.0")
-        expect(npmCalls).toContain(`https://registry.npmjs.org/opencode-ai/${InstallationChannel}`)
+        expect(npmCalls).toContain(`https://registry.npmjs.org/rafikicode/${InstallationChannel}`)
       }),
     )
 
@@ -110,7 +165,7 @@ describe("installation", () => {
       Effect.gen(function* () {
         const result = yield* Installation.use.latest("bun")
         expect(result).toBe("1.6.0")
-        expect(bunCalls).toContain(`https://registry.npmjs.org/opencode-ai/${InstallationChannel}`)
+        expect(bunCalls).toContain(`https://registry.npmjs.org/rafikicode/${InstallationChannel}`)
       }),
     )
 
@@ -124,7 +179,7 @@ describe("installation", () => {
       Effect.gen(function* () {
         const result = yield* Installation.use.latest("pnpm")
         expect(result).toBe("1.7.0")
-        expect(pnpmCalls).toContain(`https://registry.npmjs.org/opencode-ai/${InstallationChannel}`)
+        expect(pnpmCalls).toContain(`https://registry.npmjs.org/rafikicode/${InstallationChannel}`)
       }),
     )
 
@@ -201,39 +256,49 @@ describe("installation", () => {
       }),
     )
 
-    testEffect(
-      testLayer(
-        () => new Response("install script with token=secret", { status: 200 }),
-        (cmd, args) => {
-          if (cmd === "bash" && args[0] === "--version") return "GNU bash"
-          if (cmd === "bash" || cmd === "sh") return { code: 1, stderr: "script output with token=secret" }
-          return ""
-        },
-      ),
-    ).effect("returns sanitized typed errors when the curl install script fails", () =>
+    // The curl method downloads the release archive and checks it against
+    // SHA256SUMS (src/rafiki/update.ts). Both tests fail before anything is
+    // extracted, so the running binary is never replaced.
+    const curlHttp: string[] = []
+    testEffect(testLayer(noHttp(curlHttp))).effect("returns sanitized typed errors when the release download fails", () =>
       Effect.gen(function* () {
+        const sums = `${RELEASE_DOWNLOAD}/v9.9.9/SHA256SUMS`
+        release = (url) => (url === sums ? new Response("not found token=secret", { status: 404 }) : undefined)
         const error = yield* Effect.flip(Installation.use.upgrade("curl", "9.9.9"))
         expect(error).toBeInstanceOf(Installation.UpgradeFailedError)
-        expect(error.stderr).toBe("Upgrade failed for curl (exit code 1).")
+        expect(error.stderr).toBe(`Upgrade failed for curl. Could not download SHA256SUMS (404) from ${sums}`)
         expect(error.message).toBe(error.stderr)
         expect(error.stderr).not.toContain("secret")
-        expect(error.stderr).not.toContain("script output")
+        expect(fetched).toEqual([sums])
+        expect(curlHttp).toEqual([])
       }),
     )
 
+    const spawned: string[] = []
     testEffect(
-      testLayer(
-        () => new Response("install script", { status: 200 }),
-        (cmd, args) => {
-          if (cmd === "bash" && args[0] === "--version") return { code: 1, stderr: "missing" }
-          if (cmd === "bash") return { code: 1, stderr: "should not execute installer with bash" }
-          if (cmd === "sh") return "ok"
-          return ""
-        },
-      ),
-    ).effect("falls back to sh when bash is unavailable during curl upgrade", () =>
+      testLayer(noHttp(curlHttp), (cmd) => {
+        spawned.push(cmd)
+        return { code: 1, stderr: "should not run anything during curl upgrade" }
+      }),
+    ).effect("verifies the release checksum and never pipes an install script into a shell during curl upgrade", () =>
       Effect.gen(function* () {
-        yield* Installation.use.upgrade("curl", "9.9.9")
+        const variant = yield* Effect.promise(() => RafikiUpdate.detectVariant(process.platform, process.arch))
+        const asset = RafikiUpdate.assetName(process.platform, process.arch, variant)
+        const sums = `${RELEASE_DOWNLOAD}/v9.9.9/SHA256SUMS`
+        release = (url) => {
+          if (url === sums) return new Response(`${"0".repeat(64)}  ${asset}\n`)
+          if (url === `${RELEASE_DOWNLOAD}/v9.9.9/${asset}`) return new Response("#!/bin/sh\necho token=secret\n")
+          return undefined
+        }
+        const error = yield* Effect.flip(Installation.use.upgrade("curl", "9.9.9"))
+        expect(error).toBeInstanceOf(Installation.UpgradeFailedError)
+        expect(error.stderr).toStartWith(`Upgrade failed for curl. Checksum mismatch for ${asset}: expected ${"0".repeat(64)}`)
+        expect(error.stderr).toEndWith("Nothing was installed.")
+        expect(error.stderr).not.toContain("secret")
+        expect(fetched).toEqual([sums, `${RELEASE_DOWNLOAD}/v9.9.9/${asset}`])
+        expect(curlHttp).toEqual([])
+        expect(spawned).toEqual([])
+        expect(yield* Effect.promise(() => fs.access(`${process.execPath}.new`).then(() => true, () => false))).toBe(false)
       }),
     )
   })
