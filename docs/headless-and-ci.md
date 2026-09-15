@@ -4,7 +4,7 @@ Headless means running `rafikicode` where no person can open a browser: a build 
 
 ## Server keys
 
-The browser sign-in (`rafikicode login`) is for terminals people sit at. For machines, create a server key in Rafiki Console:
+The browser sign in (`rafikicode login`) is coming soon and will be for terminals people sit at. Today every machine, laptops included, uses a key. For machines, create a server key in Rafiki Console:
 
 1. Open [console.rafikiai.io/keys](https://console.rafikiai.io/keys).
 2. Create a key of the kind "server", give it a name that identifies the machine or pipeline, and set a budget. The budget caps what this key can spend from your wallet; a key never spends more than the wallet holds.
@@ -16,7 +16,9 @@ Put it in the environment of the job:
 export RAFIKICODE_API_KEY=...
 ```
 
-`RAFIKICODE_API_KEY` takes precedence over any credential stored by `rafikicode login`. `rafikicode whoami --offline` confirms which credential is in use without printing the key, and `rafikicode doctor` checks the whole chain (see below).
+`RAFIKICODE_API_KEY` takes precedence over any credential stored by `rafikicode login`. `rafikicode whoami --offline` confirms which credential is in use without printing the key (`Credential: RAFIKICODE_API_KEY (environment)`), and `rafikicode doctor` checks the whole chain (see below).
+
+The installer puts `rafikicode` on the PATH through `~/.bashrc`, which non-interactive shells do not read. In cron, CI steps and `ssh host "command"`, call `~/.rafikicode/bin/rafikicode` by its full path or add the directory to the PATH in the job.
 
 Store the key in the secret store of your CI system, never in the repository. Revoke it from the same Console page when the machine is retired; the next request fails immediately with a clear message.
 
@@ -48,7 +50,7 @@ Standard input is read as the message when it is not a terminal, so a script tha
 
 A run is *headless* when nobody can answer a question: `CI` is set (and not `0` or `false`), `GITHUB_ACTIONS` is `true`, or `rafikicode run` has no terminal on standard input or output. A prompt injection in a README, an issue or a diff can ask the model to run a command, and the job's environment holds the key, so in headless runs:
 
-- The shell tool asks before every command, and `rafikicode run` rejects a question nobody can answer. The rejection is printed (`permission requested: bash (...); auto-rejecting`), the command does not run, and the model continues without it.
+- The shell tool asks before every command, and `rafikicode run` rejects a question nobody can answer. The rejection is printed (`permission requested: bash (...); auto-rejecting`), the command does not run, and the model continues without it. On 15 September 2026 a first task in an empty folder ("Create a calculator web page in index.html") ended this way with no file written and exit code 0, so check the result, not only the exit code.
 - A project config in an untrusted workspace cannot change that: `permission` entries that allow `bash` in `rafikicode.json`, `opencode.json`, agent settings or agent Markdown files are ignored with a warning.
 
 To let a job run commands, say so from a place the repository does not control:
@@ -57,7 +59,7 @@ To let a job run commands, say so from a place the repository does not control:
 |---|---|
 | `--auto` on the run | `rafikicode run --auto "refresh the lockfile"` approves every question that is not explicitly denied |
 | `OPENCODE_PERMISSION` in the job | `OPENCODE_PERMISSION='{"bash":{"npm test":"allow","*":"deny"}}'` |
-| your own config | `"permission": {"bash": "allow"}` in `~/.rafikicode/config.json` on the machine |
+| your own config | `{"permission":{"bash":"allow","edit":"allow","external_directory":"allow"}}` in `~/.rafikicode/config.json` on the machine (tested on 15 September 2026: the same task then wrote `index.html`) |
 | trust the workspace | `RAFIKICODE_TRUST_WORKSPACE=1` in the job, or `rafikicode trust` on a long lived machine; the repository's own permission settings then apply |
 
 An untrusted workspace also loads no project plugins, custom tools or provider packages, and in headless runs starts none of its local MCP servers, formatters or language servers. See [workspace trust](security/workspace-trust.md) for the full rules. The pull request review action needs none of these: it denies edits, shell commands and web fetches explicitly and reviews an untrusted checkout.
@@ -67,16 +69,18 @@ An untrusted workspace also loads no project plugins, custom tools or provider p
 `rafikicode doctor` runs the checks a headless job depends on and prints one line each, `ok`, `FAIL` with a fix hint, or `skip` when an earlier check makes it moot:
 
 ```text
-ok    config      /home/ci/.rafikicode/config.json not created yet, built in defaults apply
+ok    config      /root/.rafikicode/config.json
 ok    credential  RAFIKICODE_API_KEY from the environment
-ok    gateway     https://gateway.rafikiai.io answered in 135 ms
-ok    key         key ci-review, spent 0.31 USD of 5 USD budget, no expiry
-ok    tiers       rafiki-fast, rafiki-pro (not on this key: rafiki-max)
-ok    console     https://console.rafikiai.io, account Jane jane@example.com, wallet 12.4 USD available
-ok    version     rafikicode 1.2.3, latest channel, installed by the installer script, rafikicode update applies
+ok    gateway     https://gateway.rafikiai.io answered in 100 ms
+ok    key         key rafikicode-..., spent 0.1027 USD of 2.5 USD budget, expires 2026-10-13T12:34:43.455000+00:00
+ok    tiers       rafiki-fast, rafiki-pro, rafiki-max
+FAIL  console     https://console.rafikiai.io does not accept this key (401). Fix: This key was revoked or has expired. Run rafikicode login.
+ok    version     rafikicode 0.1.0, latest channel, installed by the installer script, rafikicode update applies
 
-All checks passed.
+Error: 1 check needs attention, see the lines marked FAIL.
 ```
+
+That is real output of 0.1.0 on 15 September 2026 in a clean Ubuntu container. The `console` line failed for that key while every run on it succeeded; see [Troubleshooting](./troubleshooting.md#seen-on-15-september-2026). With no key at all the `credential` line reads `FAIL  credential  none. Fix: Run rafikicode login, or set RAFIKICODE_API_KEY on servers and in CI.` and the `key` and `tiers` lines are skipped.
 
 The checks, in order:
 
@@ -119,7 +123,7 @@ A refused request from a revoked or expired key is reported the same way with a 
 
 ## Examples
 
-Pull request review in GitHub Actions is packaged as a composite action in this repository, `.github/actions/rafikicode-review`, with an example workflow next to it; see [Pull request review](./review-recipe.md). The hand written job below shows the same idea in plain steps for other CI systems:
+The examples below were not run during the 15 September 2026 check. Pull request review in GitHub Actions is packaged as a composite action in this repository, `.github/actions/rafikicode-review`, with an example workflow next to it; see [Pull request review](./review-recipe.md). The hand written job below shows the same idea in plain steps for other CI systems:
 
 ```yaml
 name: rafikicode review
@@ -158,4 +162,4 @@ A nightly cron entry on a server that keeps a dependency changelog current:
 0 2 * * *  cd /srv/app && RAFIKICODE_API_KEY=$(cat /etc/rafikicode/key) /root/.rafikicode/bin/rafikicode run --auto "refresh docs/dependencies.md from package.json" < /dev/null >> /var/log/rafikicode-nightly.log 2>&1
 ```
 
-Keep the key file readable by the job's user only (`chmod 600`). The log contains the model's output, not the key.
+cron does not read `~/.bashrc`, hence the full path to the binary. Keep the key file readable by the job's user only (`chmod 600`). The log contains the model's output, not the key.
