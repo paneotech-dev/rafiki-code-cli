@@ -250,7 +250,14 @@ export const WhoamiCommand = effectCmd({
               Doctor.checkKey(root, key, consoleURL, fetch, 10_000, Date.now())
                 .then((result) => Doctor.gatewayAccepts(result, Date.now()))
                 .catch(() => false),
-            ).pipe(Effect.flatMap((accepted) => fail(accepted ? Doctor.notRegistered(consoleURL) : cause.message, cause.exitCode)))
+            ).pipe(
+              Effect.flatMap((accepted) =>
+                fail(
+                  accepted ? `${Doctor.notRegistered(consoleURL)}\n${Doctor.notRegisteredMeaning(consoleURL)}` : cause.message,
+                  cause.exitCode,
+                ),
+              ),
+            )
           }
           const message = cause instanceof Error ? cause.message : String(cause)
           UI.println(`${UI.Style.TEXT_DIM}Could not load the account from the Console (${message}).${UI.Style.TEXT_NORMAL}`)
@@ -322,7 +329,7 @@ export const TrustCommand = effectCmd({
   }),
 })
 
-// One line per check, ok or a plain fix hint; exit 0 only when every line is ok.
+// One line per check, ok, a warning, or a plain fix hint; exit 0 unless a line failed.
 export const DoctorCommand = effectCmd({
   command: "doctor",
   describe: `check this terminal's ${Brand.product} setup: config, key, gateway, tiers, Console, version`,
@@ -337,14 +344,21 @@ export const DoctorCommand = effectCmd({
     const report = yield* Effect.promise(() => Doctor.run({ timeoutMs: Math.max(1, Number(args.timeout) || 1) * 1000 }))
     for (const line of report.lines) {
       const color =
-        line.status === "ok" ? UI.Style.TEXT_SUCCESS_BOLD : line.status === "fail" ? UI.Style.TEXT_DANGER_BOLD : UI.Style.TEXT_DIM_BOLD
+        line.status === "ok"
+          ? UI.Style.TEXT_SUCCESS_BOLD
+          : line.status === "fail"
+            ? UI.Style.TEXT_DANGER_BOLD
+            : line.status === "warn"
+              ? UI.Style.TEXT_WARNING_BOLD
+              : UI.Style.TEXT_DIM_BOLD
       const text = Doctor.format(line)
       const status = text.slice(0, 4)
       UI.println(`${color}${status}${UI.Style.TEXT_NORMAL}${text.slice(4)}`)
     }
     UI.empty()
     if (report.ok) {
-      UI.println(`${UI.Style.TEXT_SUCCESS_BOLD}All checks passed.${UI.Style.TEXT_NORMAL}`)
+      const warnings = report.warned === 1 ? ", 1 warning, see the line marked WARN" : report.warned > 1 ? `, ${report.warned} warnings, see the lines marked WARN` : ""
+      UI.println(`${UI.Style.TEXT_SUCCESS_BOLD}All checks passed${warnings}.${UI.Style.TEXT_NORMAL}`)
       return
     }
     const noun = report.failed === 1 ? "1 check needs" : `${report.failed} checks need`

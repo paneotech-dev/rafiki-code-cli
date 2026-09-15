@@ -10,7 +10,8 @@ import * as Credentials from "@opencode-ai/core/brand/credentials"
 import { InstallationChannel, InstallationVersion } from "@opencode-ai/core/installation/version"
 import * as Contract from "./contract"
 
-export type Status = "ok" | "fail" | "skip"
+// warn: worth knowing, but it does not stop runs and does not fail doctor.
+export type Status = "ok" | "warn" | "fail" | "skip"
 
 export interface Line {
   // Short check name, printed in the first column.
@@ -18,8 +19,10 @@ export interface Line {
   status: Status
   // What was found, numbers and paths only.
   detail: string
-  // One sentence telling the person what to do; only on a failure.
+  // One sentence telling the person what to do; on a failure or a warning.
   fix?: string
+  // On a warning: what it means for the person, printed on its own line.
+  note?: string
   // True when the failure is the contract's network class (exit code 4).
   network?: boolean
 }
@@ -48,6 +51,7 @@ export const DEFAULT_TIMEOUT_MS = 8000
 
 const ok = (name: string, detail: string): Line => ({ name, status: "ok", detail })
 const fail = (name: string, detail: string, fix: string): Line => ({ name, status: "fail", detail, fix })
+const warn = (name: string, detail: string, fix: string, note: string): Line => ({ name, status: "warn", detail, fix, note })
 const skip = (name: string, detail: string): Line => ({ name, status: "skip", detail })
 const unreachable = (name: string, detail: string, fix: string): Line => ({ ...fail(name, detail, fix), network: true })
 
@@ -230,6 +234,11 @@ export function notRegistered(consoleURL: string) {
   return `This key is valid at the gateway but not registered in Rafiki Console (created outside the Console). Create a key at ${keysPage(consoleURL)}, or run ${Brand.name} login.`
 }
 
+// What such a key means in practice: runs work, the Console cannot show it.
+export function notRegisteredMeaning(consoleURL: string) {
+  return `Usage still works and is metered at the gateway. Console features such as the wallet view and key management do not apply to this key; create a key at ${keysPage(consoleURL)} to get them.`
+}
+
 export async function checkKey(root: string, key: string, consoleURL: string, f: typeof fetch, timeoutMs: number, now: number): Promise<KeyResult> {
   const url = root + "/key/info"
   let response: Response
@@ -347,7 +356,10 @@ export async function checkConsole(
   }
   if (response.status === 401) {
     if (!key) return ok("console", `${consoleURL} reachable, not signed in`)
-    if (gatewayAccepted) return fail("console", `${consoleURL} does not know this key (401)`, notRegistered(consoleURL))
+    // The gateway accepts the key, so runs work and are metered: a warning, not a failure.
+    if (gatewayAccepted) {
+      return warn("console", `${consoleURL} does not know this key (401)`, notRegistered(consoleURL), notRegisteredMeaning(consoleURL))
+    }
     return fail("console", `${consoleURL} does not accept this key (401)`, Contract.MESSAGE[Contract.ERROR.keyRevoked]!)
   }
   if (response.status >= 500) return fail("console", `${consoleURL} answered ${response.status}`, "The Console is having trouble. Try again shortly.")
@@ -370,7 +382,9 @@ export interface Report {
   lines: Line[]
   ok: boolean
   failed: number
-  // Contract exit code: 0 all ok, 4 when any failure is a network failure, else 1.
+  warned: number
+  // Contract exit code: 0 when nothing failed (warnings included), 4 when any
+  // failure is a network failure, else 1.
   exitCode: number
 }
 
@@ -415,12 +429,18 @@ export async function run(options: Options = {}): Promise<Report> {
   lines.push(checkVersion(options.version ?? InstallationVersion, options.channel ?? InstallationChannel, options.execPath ?? process.execPath))
 
   const failed = lines.filter((l) => l.status === "fail").length
+  const warned = lines.filter((l) => l.status === "warn").length
   const exitCode = failed === 0 ? Contract.EXIT.ok : lines.some((l) => l.network) ? Contract.EXIT.network : Contract.EXIT.failed
-  return { lines, ok: failed === 0, failed, exitCode }
+  return { lines, ok: failed === 0, failed, warned, exitCode }
 }
 
-// One terminal line per check; colors are the caller's business.
+// Width of the status and name columns, so a note lines up under the detail.
+const INDENT = " ".repeat(4 + 2 + 10 + 2)
+
+// One terminal line per check, plus an indented note line on a warning;
+// colors are the caller's business.
 export function format(line: Line) {
-  const status = line.status === "fail" ? "FAIL" : line.status
-  return `${status.padEnd(4)}  ${line.name.padEnd(10)}  ${line.detail}${line.fix ? `. Fix: ${line.fix}` : ""}`
+  const status = line.status === "fail" ? "FAIL" : line.status === "warn" ? "WARN" : line.status
+  const main = `${status.padEnd(4)}  ${line.name.padEnd(10)}  ${line.detail}${line.fix ? `. Fix: ${line.fix}` : ""}`
+  return line.note ? `${main}\n${INDENT}${line.note}` : main
 }

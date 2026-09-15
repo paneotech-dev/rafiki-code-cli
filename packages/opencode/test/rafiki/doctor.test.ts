@@ -144,13 +144,54 @@ describe("doctor checks", () => {
     expect(byName(report, "key")).toMatchObject({ status: "ok" })
     expect(byName(report, "tiers")).toMatchObject({ status: "ok", detail: "rafiki-fast (not on this key: rafiki-pro, rafiki-max)" })
     // The mock Console does not know a key minted at the gateway, which the gateway
-    // accepts: reported as not registered, not as revoked.
-    expect(byName(report, "console")).toMatchObject({ status: "fail" })
+    // accepts: a warning that it is not registered, not a revoked key, and doctor passes.
+    expect(byName(report, "console")).toMatchObject({ status: "warn" })
     expect(byName(report, "console").detail).toContain("does not know this key (401)")
     expect(byName(report, "console").fix).toContain("This key is valid at the gateway but not registered in Rafiki Console (created outside the Console)")
     expect(byName(report, "console").fix).toContain("rafikicode login")
     expect(byName(report, "console").fix).not.toContain("revoked")
+    expect(byName(report, "console").note).toBe(
+      `Usage still works and is metered at the gateway. Console features such as the wallet view and key management do not apply to this key; create a key at ${console_!.url}/keys to get them.`,
+    )
+    expect(byName(report, "console").network).toBeUndefined()
+    expect(report).toMatchObject({ ok: true, failed: 0, warned: 1, exitCode: 0 })
     expect(JSON.stringify(report)).not.toContain("sk-server-stub")
+  })
+
+  test("a key the gateway rejects stays a failure at the Console, not a warning", async () => {
+    await start()
+    const report = await Doctor.run(options({ env: { RAFIKICODE_API_KEY: "sk-unknown-stub" } }))
+    expect(byName(report, "key")).toMatchObject({ status: "fail", detail: "rejected by the gateway (401)" })
+    expect(byName(report, "console")).toMatchObject({
+      status: "fail",
+      detail: `${console_!.url} does not accept this key (401)`,
+      fix: "This key was revoked or has expired. Run rafikicode login.",
+    })
+    expect(report).toMatchObject({ ok: false, failed: 2, warned: 0, exitCode: 1 })
+  })
+
+  test("a key revoked at the Console and the gateway fails both lines and exits 1", async () => {
+    await start()
+    const token = await signIn()
+    const stored = Credentials.read(dir)!
+    const revoked = await fetch(`${console_!.url}/api/v1/keys/${stored.key_id}`, {
+      method: "DELETE",
+      headers: { authorization: `Bearer ${token.access_token}` },
+    })
+    expect(revoked.status).toBe(200)
+    await fetch(gateway!.url + "/key/delete", {
+      method: "POST",
+      headers: { authorization: "Bearer sk-master-mock" },
+      body: JSON.stringify({ key_aliases: [token.key_alias] }),
+    })
+    const report = await Doctor.run(options())
+    expect(byName(report, "key")).toMatchObject({ status: "fail", detail: "rejected by the gateway (401)" })
+    expect(byName(report, "console")).toMatchObject({
+      status: "fail",
+      detail: `${console_!.url} does not accept this key (401)`,
+      fix: "This key was revoked or has expired. Run rafikicode login.",
+    })
+    expect(report).toMatchObject({ ok: false, warned: 0, exitCode: 1 })
   })
 
   test("a stored sign-in is refused when CI is set", async () => {
@@ -342,7 +383,7 @@ describe("doctor checks", () => {
 })
 
 describe("rafikicode doctor as a subprocess", () => {
-  async function run(extra: Record<string, string | undefined> = {}) {
+  async function run(extra: Record<string, string | undefined> = {}, args = ["doctor", "--timeout", "3"]) {
     const env: Record<string, string | undefined> = {
       ...process.env,
       COLUMNS: "120",
@@ -366,7 +407,7 @@ describe("rafikicode doctor as a subprocess", () => {
       if (v === undefined) delete env[k]
       else env[k] = v
     }
-    const proc = Bun.spawn(["bun", "run", path.join(root, "src/index.ts"), "doctor", "--timeout", "3"], {
+    const proc = Bun.spawn(["bun", "run", path.join(root, "src/index.ts"), ...args], {
       cwd: home,
       stdout: "pipe",
       stderr: "pipe",
@@ -407,19 +448,111 @@ describe("rafikicode doctor as a subprocess", () => {
     expect(result.all).toContain("FAIL  key         rejected by the gateway (401)")
     expect(result.all).not.toContain("sk-unknown-stub")
   }, 120_000)
+
+  test("a key the gateway accepts but the Console does not know: doctor warns and exits 0, whoami exits 2", async () => {
+    await start()
+    const registered = await fetch(gateway!.url + "/__test/register", {
+      method: "POST",
+      body: JSON.stringify({ key: "sk-gateway-only-stub", key_alias: "gw-key", models: ["rafiki-fast", "rafiki-pro", "rafiki-max"], max_budget: 5 }),
+    })
+    expect(registered.status).toBe(200)
+    const keys = `${console_!.url}/keys`
+    const explanation = `This key is valid at the gateway but not registered in Rafiki Console (created outside the Console). Create a key at ${keys}, or run rafikicode login.`
+    const meaning = `Usage still works and is metered at the gateway. Console features such as the wallet view and key management do not apply to this key; create a key at ${keys} to get them.`
+
+    const doctor = await run({ RAFIKICODE_API_KEY: "sk-gateway-only-stub", CI: "1" })
+    expect(doctor.exitCode).toBe(0)
+    expect(doctor.all).toContain("ok    key         key gw-key, spent 0 USD of 5 USD budget")
+    expect(doctor.all).toContain(`WARN  console     ${console_!.url} does not know this key (401). Fix: ${explanation}\n                  ${meaning}`)
+    expect(doctor.all).toContain("All checks passed, 1 warning, see the line marked WARN.")
+    expect(doctor.all).not.toContain("FAIL")
+    expect(doctor.all).not.toContain("sk-gateway-only-stub")
+
+    const whoami = await run({ RAFIKICODE_API_KEY: "sk-gateway-only-stub", CI: "1" }, ["whoami"])
+    expect(whoami.exitCode).toBe(2)
+    expect(whoami.all).toContain(explanation)
+    expect(whoami.all).toContain(meaning)
+    expect(whoami.all).not.toContain("revoked")
+    expect(whoami.all).not.toContain("sk-gateway-only-stub")
+  }, 120_000)
 })
 
 describe("a Console 401", () => {
   const unauthorized = (async () =>
     new Response("{}", { status: 401, headers: { "content-type": "application/json" } })) as unknown as typeof fetch
 
-  test("names a revoked key only when the gateway refuses it too", async () => {
+  test("names a revoked key only when the gateway refuses it too, and warns otherwise", async () => {
     const refused = await Doctor.checkConsole("https://console.example", "sk-stub", {}, unauthorized, 1_000)
     expect(refused).toMatchObject({ status: "fail", fix: "This key was revoked or has expired. Run rafikicode login." })
+    expect(refused.note).toBeUndefined()
     const unknown = await Doctor.checkConsole("https://console.example", "sk-stub", {}, unauthorized, 1_000, true)
-    expect(unknown.status).toBe("fail")
+    expect(unknown.status).toBe("warn")
+    expect(unknown.detail).toBe("https://console.example does not know this key (401)")
     expect(unknown.fix).toContain("This key is valid at the gateway but not registered in Rafiki Console (created outside the Console)")
     expect(unknown.fix).toContain("https://console.example/keys")
+    expect(unknown.note).toBe(Doctor.notRegisteredMeaning("https://console.example"))
+    expect(unknown.note).toContain("Usage still works and is metered at the gateway")
+    expect(unknown.note).toContain("wallet view and key management do not apply to this key")
+    expect(Doctor.format(unknown)).toBe(
+      "WARN  console     https://console.example does not know this key (401). Fix: " +
+        Doctor.notRegistered("https://console.example") +
+        "\n                  " +
+        Doctor.notRegisteredMeaning("https://console.example"),
+    )
+  })
+
+  test("a Console network error stays a network failure even when the gateway accepts the key", async () => {
+    const down = (async () => {
+      throw Object.assign(new Error("fetch failed"), { cause: { code: "ECONNREFUSED" } })
+    }) as unknown as typeof fetch
+    const line = await Doctor.checkConsole("https://console.example", "sk-stub", {}, down, 1_000, true)
+    expect(line).toMatchObject({ status: "fail", network: true, detail: "https://console.example unreachable (ECONNREFUSED)" })
+    expect(line.note).toBeUndefined()
+  })
+
+  test("a Console 5xx stays a failure even when the gateway accepts the key", async () => {
+    for (const status of [500, 502, 503]) {
+      const broken = (async () => new Response("{}", { status })) as unknown as typeof fetch
+      const line = await Doctor.checkConsole("https://console.example", "sk-stub", {}, broken, 1_000, true)
+      expect(line).toMatchObject({
+        status: "fail",
+        detail: `https://console.example answered ${status}`,
+        fix: "The Console is having trouble. Try again shortly.",
+      })
+    }
+  })
+
+  test("a warning does not fail the report; a Console outage beside it still does", async () => {
+    const gatewayOK = (async (url: string) => {
+      if (url.endsWith("/health/liveliness")) return new Response("{}", { status: 200 })
+      if (url.endsWith("/key/info")) return Response.json({ info: { key_alias: "gw-key", spend: 0, max_budget: 5, models: ["rafiki-fast"] } })
+      return new Response("", { status: 404 })
+    }) as (url: string) => Promise<Response>
+    const run = (consoleStatus: number | "down") =>
+      Doctor.run({
+        env: { RAFIKICODE_API_KEY: "sk-gateway-only-stub" },
+        configDir: dir,
+        gatewayURL: "https://gateway.example/v1",
+        consoleURL: "https://console.example",
+        timeoutMs: 1_000,
+        fetch: (async (url: string) => {
+          if (url.startsWith("https://console.example")) {
+            if (consoleStatus === "down") throw new Error("fetch failed")
+            return new Response("{}", { status: consoleStatus })
+          }
+          return gatewayOK(url)
+        }) as unknown as typeof fetch,
+      })
+    const warned = await run(401)
+    expect(byName(warned, "console").status).toBe("warn")
+    expect(warned).toMatchObject({ ok: true, failed: 0, warned: 1, exitCode: 0 })
+    const outage = await run(503)
+    expect(byName(outage, "console").status).toBe("fail")
+    expect(outage).toMatchObject({ ok: false, failed: 1, warned: 0, exitCode: 1 })
+    const offline = await run("down")
+    expect(byName(offline, "console")).toMatchObject({ status: "fail", network: true })
+    expect(offline).toMatchObject({ ok: false, failed: 1, warned: 0, exitCode: 4 })
+    expect(JSON.stringify([warned, outage, offline])).not.toContain("sk-gateway-only-stub")
   })
 
   test("the gateway accepts a key it describes and that has not expired", () => {
