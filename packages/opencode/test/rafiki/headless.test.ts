@@ -133,6 +133,7 @@ describe("rafikicode run without a terminal, with a model that asks for the shel
   test("a first run in an empty directory, with no config and no git, runs the shell there", async () => {
     fs.rmSync(path.join(repo, ".git"), { recursive: true, force: true })
     const result = await run(["create the marker"])
+    expect(result.exitCode).toBe(0)
     expect(result.all).not.toContain("auto-rejecting")
     expect(ran()).toBe(true)
     expect(result.all).not.toContain(KEY)
@@ -152,6 +153,8 @@ describe("rafikicode run without a terminal, with a model that asks for the shel
       expect(result.all).toContain("permission requested: external_directory")
       expect(result.all).toContain("Hint: external_directory was rejected because this run cannot ask for approval. Rerun with rafikicode run --auto")
       expect(fs.existsSync(outside)).toBe(false)
+      expect(result.exitCode).toBe(1)
+      expect(result.all).toContain("Every tool call in this run was rejected")
     } finally {
       await reach.close()
     }
@@ -165,6 +168,8 @@ describe("rafikicode run without a terminal, with a model that asks for the shel
     expect(result.all).toContain(`Hint: bash was rejected because this CI run cannot ask for approval. Rerun with rafikicode run --auto, or allow it in ~/.rafikicode/config.json`)
     expect(result.stderr).toContain("Warning: ignored permission.bash, agent.build.permission.bash.* in")
     expect(ran()).toBe(false)
+    expect(result.exitCode).toBe(1)
+    expect(result.all).toContain("Every tool call in this run was rejected, so nothing was changed. Rerun with rafikicode run --auto")
     expect(result.all).not.toContain(KEY)
   }, 120_000)
 
@@ -190,5 +195,14 @@ describe("rafikicode run without a terminal, with a model that asks for the shel
     const result = await run(["create the marker"], { [Brand.env.trustWorkspace]: "1", CI: "1" })
     expect(result.stderr).not.toContain("Warning: ignored permission")
     expect(ran()).toBe(true)
+  }, 120_000)
+
+  test("a run with no key and no login says so instead of a server error", async () => {
+    const result = await run(["create the marker"], { RAFIKICODE_API_KEY: undefined })
+    expect(result.exitCode).toBe(2)
+    expect(result.stderr).toContain("No Rafiki key found. Set RAFIKICODE_API_KEY (create a key at")
+    expect(result.stderr).toContain("or run rafikicode login.")
+    expect(result.all).not.toContain("UnknownError")
+    expect(shellCalls()).toBe(0)
   }, 120_000)
 })

@@ -120,3 +120,22 @@ describe("rejected permission hint", () => {
     expect(longDashes.test(hint)).toBe(false)
   })
 })
+
+describe("run outcome", () => {
+  test("fails only when tools were rejected and none completed", () => {
+    expect(Hint.tracker().outcome()).toBeUndefined()
+    const mixed = Hint.tracker()
+    expect(mixed.rejected("bash")).toContain("Hint: bash was rejected")
+    mixed.completed()
+    expect(mixed.outcome()).toBeUndefined()
+    const all = Hint.tracker()
+    // The hint for one kind is printed once per run.
+    expect(all.rejected("edit")).toContain("Hint: edit was rejected")
+    expect(all.rejected("edit")).toBeUndefined()
+    expect(all.outcome()).toEqual({
+      exitCode: 1,
+      message:
+        "Every tool call in this run was rejected, so nothing was changed. Rerun with rafikicode run --auto, or allow the tools in ~/.rafikicode/config.json.",
+    })
+  })
+})

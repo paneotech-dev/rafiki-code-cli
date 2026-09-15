@@ -27,6 +27,7 @@ import { createOpencodeClient, type OpencodeClient, type ToolPart } from "@openc
 import { FormatError, FormatUnknownError } from "../error"
 import * as RafikiGateway from "@/rafiki/gateway-errors"
 import * as RafikiPermission from "@/rafiki/permission-hint"
+import * as RafikiMissingKey from "@/rafiki/missing-key"
 import { INTERACTIVE_INPUT_ERROR, resolveInteractiveStdin } from "./run/runtime.stdin"
 
 type ModelInput = Parameters<OpencodeClient["session"]["prompt"]>[0]["model"]
@@ -701,6 +702,7 @@ export const RunCommand = effectCmd({
           const toggles = new Map<string, boolean>()
           const sessions = new Set([sessionID])
           let error: string | undefined
+          const permissions = RafikiPermission.tracker()
 
           for await (const event of events.stream) {
             if (event.type === "session.created" && event.properties.info.parentID) {
@@ -725,6 +727,7 @@ export const RunCommand = effectCmd({
               if (part.sessionID !== sessionID) continue
 
               if (part.type === "tool" && (part.state.status === "completed" || part.state.status === "error")) {
+                if (part.state.status === "completed") permissions.completed()
                 if (emit("tool_use", { part })) continue
                 if (part.state.status === "completed") {
                   await tool(part)
@@ -788,8 +791,11 @@ export const RunCommand = effectCmd({
               if ("data" in props.error && props.error.data && "message" in props.error.data) {
                 err = String(props.error.data.message)
               }
+              const missingKey = RafikiMissingKey.message(args.model)
+              if (missingKey) err = missingKey
               error = error ? error + EOL + err : err
               process.exitCode = RafikiGateway.exitCodeFor(props.error) ?? process.exitCode
+              if (missingKey) process.exitCode = RafikiMissingKey.exitCode
               if (emit("error", { error: props.error })) continue
               UI.error(err)
             }
@@ -817,7 +823,7 @@ export const RunCommand = effectCmd({
                   UI.Style.TEXT_NORMAL +
                     `permission requested: ${permission.permission} (${permission.patterns.join(", ")}); auto-rejecting`,
                 )
-                const hint = RafikiPermission.rejectHint(permission.permission)
+                const hint = permissions.rejected(permission.permission)
                 if (hint) UI.println(UI.Style.TEXT_NORMAL + hint)
                 await client.permission.reply({
                   requestID: permission.id,
@@ -825,6 +831,12 @@ export const RunCommand = effectCmd({
                 })
               }
             }
+          }
+          const outcome = permissions.outcome()
+          if (outcome) {
+            UI.error(outcome.message)
+            process.exitCode = process.exitCode || outcome.exitCode
+            error = error ? error + EOL + outcome.message : outcome.message
           }
           return error
         }
@@ -858,8 +870,9 @@ export const RunCommand = effectCmd({
               variant: args.variant,
             })
             if (result.error) {
-              if (!emit("error", { error: result.error })) UI.error(formatRunError(result.error))
-              process.exitCode = 1
+              const missingKey = RafikiMissingKey.message(args.model)
+              if (!emit("error", { error: result.error })) UI.error(missingKey ?? formatRunError(result.error))
+              process.exitCode = missingKey ? RafikiMissingKey.exitCode : 1
               return
             }
             await finish()
@@ -875,8 +888,9 @@ export const RunCommand = effectCmd({
             parts: [...files, { type: "text", text: message }],
           })
           if (result.error) {
-            if (!emit("error", { error: result.error })) UI.error(formatRunError(result.error))
-            process.exitCode = 1
+            const missingKey = RafikiMissingKey.message(args.model)
+            if (!emit("error", { error: result.error })) UI.error(missingKey ?? formatRunError(result.error))
+            process.exitCode = missingKey ? RafikiMissingKey.exitCode : 1
             return
           }
           await finish()
