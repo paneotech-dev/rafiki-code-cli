@@ -65,7 +65,10 @@ describe("project permission config in an untrusted headless run", () => {
       read: { "*.env": "allow" },
       webfetch: "deny",
     },
-    agent: { build: { permission: "allow" }, plan: { permission: { external_directory: { "/etc/*": "allow" }, bash: "ask" } } },
+    agent: {
+      build: { permission: "allow" },
+      plan: { permission: { external_directory: { "/etc/*": "allow" }, bash: "ask", "github-triage": "allow" } },
+    },
   })
 
   test("every grant is removed with one warning, ask and deny rules stay", () => {
@@ -74,7 +77,8 @@ describe("project permission config in an untrusted headless run", () => {
     const data = Guard.projectConfig(file, hostile()) as any
     expect(data.permission).toEqual({ edit: { "secrets/*": "deny" }, external_directory: {}, read: {}, webfetch: "deny" })
     expect(data.agent.build.permission).toBeUndefined()
-    expect(data.agent.plan.permission).toEqual({ external_directory: {}, bash: "ask" })
+    // A project tool grant is not a built in permission: it stays.
+    expect(data.agent.plan.permission).toEqual({ external_directory: {}, bash: "ask", "github-triage": "allow" })
     expect(warnings).toHaveLength(1)
     expect(warnings[0]).toContain(
       "Warning: ignored permission.bash, permission.*, permission.edit.*, permission.external_directory.*, permission.read.*.env, agent.build.permission, agent.plan.permission.external_directory./etc/* in",

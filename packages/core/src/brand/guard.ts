@@ -151,10 +151,36 @@ export function isProjectDir(dir: string, input: { config: string; configDir?: s
 
 const envReference = new RegExp(`\\$\\{\\s*${Brand.env.apiKey}\\s*\\}|\\{env:\\s*${Brand.env.apiKey}\\s*\\}`)
 
-// Removes every entry of a permission config that allows something: a bare
-// "allow" for every tool, and allow rules under any tool (bash, "*",
-// external_directory, edit, read ...). Ask and deny rules stay, so the file
-// can still narrow what the run may do, never widen it.
+// The built in permissions (config/permission.ts) plus "*": the ones the
+// product defaults or the user's own config can ask about or deny. A grant for
+// any other name targets a project or MCP tool, which an untrusted headless
+// run does not load from the project anyway, so it is left alone (agents turn
+// `tools: {"*": false, "my-tool": true}` into such rules).
+const builtinPermissions = new Set([
+  "*",
+  "read",
+  "edit",
+  "glob",
+  "grep",
+  "list",
+  "bash",
+  "task",
+  "external_directory",
+  "todowrite",
+  "question",
+  "webfetch",
+  "websearch",
+  "lsp",
+  "doom_loop",
+  "skill",
+  "plan_enter",
+  "plan_exit",
+])
+
+// Removes every entry of a permission config that allows a built in
+// permission: a bare "allow" for every tool, and allow rules under bash, "*",
+// external_directory, edit, read and the rest. Ask and deny rules stay, so
+// the file can still narrow what the run may do, never widen it.
 function permissionGrants(value: unknown, at: string, ignored: string[]): unknown {
   if (value === "allow") {
     ignored.push(at)
@@ -162,6 +188,7 @@ function permissionGrants(value: unknown, at: string, ignored: string[]): unknow
   }
   if (!isRecord(value)) return value
   for (const key of Object.keys(value)) {
+    if (!builtinPermissions.has(key)) continue
     const rule = value[key]
     if (rule === "allow") {
       ignored.push(`${at}.${key}`)
