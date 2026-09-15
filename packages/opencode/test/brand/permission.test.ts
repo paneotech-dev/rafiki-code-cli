@@ -112,6 +112,7 @@ describe("rejected permission hint", () => {
   test("is one line with no long dashes", () => {
     const hint = Hint.rejectHint("edit")!
     expect(hint.includes("\n")).toBe(false)
-    expect(/[–—]/.test(hint)).toBe(false)
+    const longDashes = new RegExp(`[${String.fromCharCode(0x2013)}${String.fromCharCode(0x2014)}]`)
+    expect(longDashes.test(hint)).toBe(false)
   })
 })
