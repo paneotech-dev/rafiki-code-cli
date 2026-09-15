@@ -14,7 +14,7 @@ curl -fsSL https://get.rafikiai.io | bash
 
 Options, passed after `bash -s --`: `--version 1.2.3` pins a release, `--prefix DIR` chooses another directory, `--no-modify-path` leaves your shell files alone, `--dry-run` only shows what would happen. The script is `install/install.sh` in this repository.
 
-The installer detects your platform, downloads the release archive, verifies it against the published `SHA256SUMS`, installs the binary into `~/.rafikicode/bin`, and adds that directory to your PATH in `~/.bashrc` for new terminals. In the terminal you installed from, run `export PATH=$HOME/.rafikicode/bin:$PATH` (or open a new terminal), then `rafikicode --version` prints `0.1.0`.
+The installer detects your platform, downloads the release archive, verifies it against the published `SHA256SUMS`, installs the binary into `~/.rafikicode/bin`, and adds that directory to your PATH in `~/.bashrc` for new terminals. In the terminal you installed from, run `export PATH=$HOME/.rafikicode/bin:$PATH` (or open a new terminal), then `rafikicode --version` prints `0.1.1`.
 
 There is no npm package yet: `npm install -g rafikicode` does not work. Use the installer.
 
@@ -41,7 +41,7 @@ rafikicode run "Create a calculator web page in index.html with basic styling"
 rafikicode                             # the interactive terminal UI
 ```
 
-The `permission` line lets the agent edit files and run shell commands without asking. Without it, a run with no terminal attached (a script, CI, a container started without `-it`) rejects every shell command, prints `permission requested: bash (...); auto-rejecting`, and can finish without writing anything. Use it in a folder you do not mind it changing, or pass `--auto` for one run instead.
+The `permission` line lets the agent edit files and run shell commands without asking. With 0.1.1 a first run writes files without it (tested with no terminal attached). It is still needed in CI (`CI` or `GITHUB_ACTIONS` set) and on 0.1.0, where a run with no terminal attached rejects every shell command, prints `permission requested: bash (...); auto-rejecting`, and can finish without writing anything. Use it in a folder you do not mind it changing, or pass `--auto` for one run instead.
 
 The browser sign in (`rafikicode login`) is coming soon; until then every machine uses `RAFIKICODE_API_KEY`. In scripts add `< /dev/null` so `run` does not wait for input:
 
