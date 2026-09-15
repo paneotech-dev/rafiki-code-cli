@@ -1,6 +1,6 @@
 # Quick start
 
-This page takes you from nothing to a first file written by `rafikicode` in about five minutes. Every command below was run as written on 15 September 2026 with `rafikicode` 0.1.0 in clean `ubuntu:24.04` and `debian:12` containers that had only `curl` and `ca-certificates` installed.
+This page takes you from nothing to a first file written by `rafikicode` in about five minutes. Every command below was run as written on 15 September 2026 with `rafikicode` 0.1.0 in clean `ubuntu:24.04` and `debian:12` containers, and the install, key, first task and uninstall steps again with 0.1.1 (published the same day at 08:11 UTC), that had only `curl` and `ca-certificates` installed.
 
 Terms used here: a **terminal** is the text window where you type commands. **PATH** is the list of folders your shell searches for programs. A **gateway key** (or API key) is a Rafiki issued key with its own spending budget; every model call is charged to it. **Headless** means running where nobody can answer a question, such as a server, a container or a CI (continuous integration) pipeline.
 
@@ -14,14 +14,21 @@ Linux and macOS (Windows through WSL, the Windows Subsystem for Linux). The mach
 curl -fsSL https://get.rafikiai.io | bash
 ```
 
-Expected output ends with:
+Expected output (0.1.1):
 
 ```text
-Installing rafikicode version 0.1.0
+Installing rafikicode version 0.1.1
 Checksum verified
 Installed rafikicode at /root/.rafikicode/bin/rafikicode
 Added /root/.rafikicode/bin to PATH in /root/.bashrc
-Open a new terminal or run: export PATH=/root/.rafikicode/bin:$PATH
+
+Next steps:
+  1. Make rafikicode available in this terminal:
+       export PATH=/root/.rafikicode/bin:$PATH
+  2. Connect your Rafiki Console account with a key:
+       export RAFIKICODE_API_KEY=sk-...   (create one at https://console.rafikiai.io/keys)
+     or sign in from a browser:
+       rafikicode login
 ```
 
 The installer changes `~/.bashrc` for new terminals only. In the terminal you installed from, `rafikicode` is not found yet. Either open a new terminal, or run:
@@ -31,7 +38,7 @@ export PATH=$HOME/.rafikicode/bin:$PATH
 rafikicode --version
 ```
 
-This prints `0.1.0`.
+This prints `0.1.1`.
 
 There is no npm package yet: `npm install -g rafikicode` does not work (the npm registry answers 404 for `rafikicode`). Use the installer.
 
@@ -53,7 +60,7 @@ ok    key         key rafikicode-..., spent 0.0769 USD of 2.5 USD budget, expire
 ok    tiers       rafiki-fast, rafiki-pro, rafiki-max
 ```
 
-With some keys the `console` line reads `FAIL ... does not accept this key (401)` and `doctor` exits 1, while tasks still run. See [Troubleshooting](./troubleshooting.md#seen-on-15-september-2026).
+With a key created outside Rafiki Console the `console` line reads `FAIL ... does not know this key (401)` (0.1.0: `does not accept this key`) and `doctor` exits 1, while tasks still run. See [Troubleshooting](./troubleshooting.md#seen-on-15-september-2026).
 
 `rafikicode models rafiki` lists the tiers the key may use: `rafiki/rafiki-fast`, `rafiki/rafiki-max`, `rafiki/rafiki-pro`.
 
@@ -61,7 +68,7 @@ The browser sign in, `rafikicode login`, is coming soon. Until it is announced, 
 
 ## 3. Allow file edits and commands
 
-When no terminal is attached (a script, a CI job, `docker run` without `-it`, `ssh host "command"`), `rafikicode run` rejects every shell command the model asks for and prints `! permission requested: bash (...); auto-rejecting`. The run can then end without writing any file and still exit 0. In an interactive terminal the same first task wrote `index.html` without this step. To make runs behave the same everywhere, allow edits and commands in your own configuration file, for a folder you do not mind it changing:
+With 0.1.1 this step is optional: the first task below wrote `index.html` with no terminal attached and no configuration. It is still needed in CI (`CI` or `GITHUB_ACTIONS` set) and on 0.1.0, where a run with no terminal attached (a script, `docker run` without `-it`, `ssh host "command"`) rejects every shell command, prints `! permission requested: bash (...); auto-rejecting`, and can end without writing any file while still exiting 0. For those cases, allow edits and commands in your own configuration file, for a folder you do not mind it changing:
 
 ```bash
 mkdir -p ~/.rafikicode
@@ -121,10 +128,9 @@ Create an `AGENTS.md` at the root of the repository with the conventions you wan
 
 ```bash
 rafikicode uninstall --force
-sed -i '/^# rafikicode$/d; /\.rafikicode\/bin/d' ~/.bashrc
 ```
 
-The first line removes `~/.rafikicode` (binary and configuration), `~/.cache/rafikicode`, `~/.local/state/rafikicode` and `~/.local/share/rafikicode`; without `--force` it asks first, and `--dry-run` only lists what it would remove. The second line removes the two lines the installer added to `~/.bashrc`.
+It removes `~/.rafikicode` (binary and configuration), `~/.cache/rafikicode`, `~/.local/state/rafikicode`, `~/.local/share/rafikicode` and, from 0.1.1, the two lines the installer added to `~/.bashrc`; without `--force` it asks first, and `--dry-run` only lists what it would remove. On 0.1.0 remove the `~/.bashrc` lines with `sed -i '/^# rafikicode$/d; /\.rafikicode\/bin/d' ~/.bashrc`.
 
 ## Next
 

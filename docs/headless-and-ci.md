@@ -50,7 +50,7 @@ Standard input is read as the message when it is not a terminal, so a script tha
 
 A run is *headless* when nobody can answer a question: `CI` is set (and not `0` or `false`), `GITHUB_ACTIONS` is `true`, or `rafikicode run` has no terminal on standard input or output. A prompt injection in a README, an issue or a diff can ask the model to run a command, and the job's environment holds the key, so in headless runs:
 
-- The shell tool asks before every command, and `rafikicode run` rejects a question nobody can answer. The rejection is printed (`permission requested: bash (...); auto-rejecting`), the command does not run, and the model continues without it. On 15 September 2026 a first task in an empty folder ("Create a calculator web page in index.html") ended this way with no file written and exit code 0, so check the result, not only the exit code.
+- The shell tool asks before every command, and `rafikicode run` rejects a question nobody can answer. The rejection is printed (`permission requested: bash (...); auto-rejecting`), the command does not run, and the model continues without it. With 0.1.0 on 15 September 2026, a first task in an empty folder ("Create a calculator web page in index.html") with no terminal attached ended this way with no file written and exit code 0, so check the result, not only the exit code. With 0.1.1 the same run wrote the file, because a run keeps the default permissions inside its own folder unless `CI` or `GITHUB_ACTIONS` is set.
 - A project config in an untrusted workspace cannot change that: `permission` entries that allow `bash` in `rafikicode.json`, `opencode.json`, agent settings or agent Markdown files are ignored with a warning.
 
 To let a job run commands, say so from a place the repository does not control:
@@ -71,16 +71,16 @@ An untrusted workspace also loads no project plugins, custom tools or provider p
 ```text
 ok    config      /root/.rafikicode/config.json
 ok    credential  RAFIKICODE_API_KEY from the environment
-ok    gateway     https://gateway.rafikiai.io answered in 100 ms
-ok    key         key rafikicode-..., spent 0.1027 USD of 2.5 USD budget, expires 2026-10-13T12:34:43.455000+00:00
+ok    gateway     https://gateway.rafikiai.io answered in 143 ms
+ok    key         key rafikicode-..., spent 0.1255 USD of 2.5 USD budget, expires 2026-10-13T12:34:43.455000+00:00
 ok    tiers       rafiki-fast, rafiki-pro, rafiki-max
-FAIL  console     https://console.rafikiai.io does not accept this key (401). Fix: This key was revoked or has expired. Run rafikicode login.
-ok    version     rafikicode 0.1.0, latest channel, installed by the installer script, rafikicode update applies
+FAIL  console     https://console.rafikiai.io does not know this key (401). Fix: This key is valid at the gateway but not registered in Rafiki Console (created outside the Console). Create a key at https://console.rafikiai.io/keys, or run rafikicode login.
+ok    version     rafikicode 0.1.1, latest channel, installed by the installer script, rafikicode update applies
 
 Error: 1 check needs attention, see the lines marked FAIL.
 ```
 
-That is real output of 0.1.0 on 15 September 2026 in a clean Ubuntu container. The `console` line failed for that key while every run on it succeeded; see [Troubleshooting](./troubleshooting.md#seen-on-15-september-2026). With no key at all the `credential` line reads `FAIL  credential  none. Fix: Run rafikicode login, or set RAFIKICODE_API_KEY on servers and in CI.` and the `key` and `tiers` lines are skipped.
+That is real output of 0.1.1 on 15 September 2026 in a clean Ubuntu container. The `console` line failed because that key was created at the gateway, not in Rafiki Console, while every run on it succeeded; see [Troubleshooting](./troubleshooting.md#seen-on-15-september-2026). With no key at all the `credential` line reads `FAIL  credential  none. Fix: Run rafikicode login, or set RAFIKICODE_API_KEY on servers and in CI.` and the `key` and `tiers` lines are skipped.
 
 The checks, in order:
 
