@@ -74,6 +74,9 @@ function isolatedEnv(home: string, configJson: string): Record<string, string> {
     OPENCODE_DISABLE_AUTOCOMPACT: "1",
     OPENCODE_DISABLE_MODELS_FETCH: "1",
     OPENCODE_AUTH_CONTENT: "{}",
+    // A CI runner's own CI variables would make every run ask before the shell.
+    CI: "false",
+    GITHUB_ACTIONS: "false",
   }
 }
 
