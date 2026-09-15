@@ -371,6 +371,8 @@ path_note() {
         print_message info "${MUTED}${INSTALL_DIR} is already on your PATH${NC}"
         return
     fi
+    # Shown again in the next steps: this terminal does not read the startup file.
+    path_hint="$command"
 
     if [ "$no_modify_path" = "true" ]; then
         print_message info "\nAdd ${INSTALL_DIR} to your PATH for ${current_shell}:"
@@ -391,7 +393,6 @@ path_note() {
         return
     fi
     add_to_path "$config_file" "$command"
-    print_message info "${MUTED}Open a new terminal or run: ${NC}$command"
 }
 
 if [ -n "$binary_path" ]; then
@@ -416,4 +417,14 @@ fi
 
 print_message info "${MUTED}Installed ${NC}${APP}${MUTED} at ${NC}${INSTALL_DIR}/${BIN_NAME}"
 path_note
-print_message info "\nRun ${APP} login to connect your Rafiki Console account, or set RAFIKICODE_API_KEY on servers."
+step=1
+print_message info "\nNext steps:"
+if [ -n "${path_hint:-}" ]; then
+    print_message info "  ${step}. Make ${APP} available in this terminal:"
+    print_message info "       $path_hint"
+    step=$((step + 1))
+fi
+print_message info "  ${step}. Connect your Rafiki Console account with a key:"
+print_message info "       export RAFIKICODE_API_KEY=sk-...   ${MUTED}(create one at https://console.rafikiai.io/keys)${NC}"
+print_message info "     or sign in from a browser:"
+print_message info "       ${APP} login"
