@@ -115,8 +115,9 @@ describe("HttpApi CORS", () => {
         }),
       )
 
-      expect(rejected.status).toBe(204)
-      expect(rejected.headers.get("access-control-allow-origin")).not.toBe("https://evil.example")
+      // A listener refuses origins other than its own and the configured ones (brand/serve.ts listenerGuard).
+      expect(rejected.status).toBe(403)
+      expect(rejected.headers.get("access-control-allow-origin")).toBeNull()
     }),
   )
 })
