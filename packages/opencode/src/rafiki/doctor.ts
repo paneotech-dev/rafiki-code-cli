@@ -216,6 +216,20 @@ export interface KeyResult {
   info?: KeyInfo
 }
 
+// True when the gateway answered the key check with the key's details and the
+// key has not expired: the gateway still accepts it, whatever the Console says.
+export function gatewayAccepts(result: KeyResult, now: number) {
+  if (!result.info) return false
+  const at = result.info.expires ? Date.parse(result.info.expires) : NaN
+  return Number.isNaN(at) || at > now
+}
+
+// For a key the gateway accepts while the Console answers 401: minted directly
+// at the gateway, not revoked.
+export function notRegistered(consoleURL: string) {
+  return `This key is valid at the gateway but not registered in Rafiki Console (created outside the Console). Create a key at ${keysPage(consoleURL)}, or run ${Brand.name} login.`
+}
+
 export async function checkKey(root: string, key: string, consoleURL: string, f: typeof fetch, timeoutMs: number, now: number): Promise<KeyResult> {
   const url = root + "/key/info"
   let response: Response
@@ -298,7 +312,14 @@ export async function checkTiers(root: string, key: string, info: KeyInfo, conso
   return ok("tiers", `${allowed.join(", ")}${note}`)
 }
 
-export async function checkConsole(consoleURL: string, key: string | undefined, env: Env, f: typeof fetch, timeoutMs: number): Promise<Line> {
+export async function checkConsole(
+  consoleURL: string,
+  key: string | undefined,
+  env: Env,
+  f: typeof fetch,
+  timeoutMs: number,
+  gatewayAccepted = false,
+): Promise<Line> {
   const url = consoleURL + Contract.PATH.me
   let response: Response
   try {
@@ -326,6 +347,7 @@ export async function checkConsole(consoleURL: string, key: string | undefined, 
   }
   if (response.status === 401) {
     if (!key) return ok("console", `${consoleURL} reachable, not signed in`)
+    if (gatewayAccepted) return fail("console", `${consoleURL} does not know this key (401)`, notRegistered(consoleURL))
     return fail("console", `${consoleURL} does not accept this key (401)`, Contract.MESSAGE[Contract.ERROR.keyRevoked]!)
   }
   if (response.status >= 500) return fail("console", `${consoleURL} answered ${response.status}`, "The Console is having trouble. Try again shortly.")
@@ -372,6 +394,7 @@ export async function run(options: Options = {}): Promise<Report> {
   lines.push(gateway)
 
   let info: KeyInfo | undefined
+  let accepted = false
   // An unreachable gateway cannot answer the key check either; asking again
   // would only double the wait.
   if (credential.key && gateway.network) {
@@ -380,6 +403,7 @@ export async function run(options: Options = {}): Promise<Report> {
     const key = await checkKey(root, credential.key, consoleURL, f, timeoutMs, now())
     lines.push(key.line)
     info = key.line.status === "ok" ? key.info : undefined
+    accepted = gatewayAccepts(key, now())
   } else {
     lines.push(skip("key", "no credential to check"))
   }
@@ -387,7 +411,7 @@ export async function run(options: Options = {}): Promise<Report> {
   if (credential.key && info) lines.push(await checkTiers(root, credential.key, info, consoleURL, f, timeoutMs))
   else lines.push(skip("tiers", !credential.key ? "no credential to check" : gateway.network ? "gateway unreachable" : "key check failed"))
 
-  lines.push(await checkConsole(consoleURL, credential.key, env, f, timeoutMs))
+  lines.push(await checkConsole(consoleURL, credential.key, env, f, timeoutMs, accepted))
   lines.push(checkVersion(options.version ?? InstallationVersion, options.channel ?? InstallationChannel, options.execPath ?? process.execPath))
 
   const failed = lines.filter((l) => l.status === "fail").length

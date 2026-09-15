@@ -143,9 +143,13 @@ describe("doctor checks", () => {
     expect(byName(report, "credential")).toMatchObject({ status: "ok", detail: "RAFIKICODE_API_KEY from the environment" })
     expect(byName(report, "key")).toMatchObject({ status: "ok" })
     expect(byName(report, "tiers")).toMatchObject({ status: "ok", detail: "rafiki-fast (not on this key: rafiki-pro, rafiki-max)" })
-    // The mock Console does not know a key it did not mint: a 401 is reported as revoked.
+    // The mock Console does not know a key minted at the gateway, which the gateway
+    // accepts: reported as not registered, not as revoked.
     expect(byName(report, "console")).toMatchObject({ status: "fail" })
+    expect(byName(report, "console").detail).toContain("does not know this key (401)")
+    expect(byName(report, "console").fix).toContain("This key is valid at the gateway but not registered in Rafiki Console (created outside the Console)")
     expect(byName(report, "console").fix).toContain("rafikicode login")
+    expect(byName(report, "console").fix).not.toContain("revoked")
     expect(JSON.stringify(report)).not.toContain("sk-server-stub")
   })
 
@@ -403,4 +407,27 @@ describe("rafikicode doctor as a subprocess", () => {
     expect(result.all).toContain("FAIL  key         rejected by the gateway (401)")
     expect(result.all).not.toContain("sk-unknown-stub")
   }, 120_000)
+})
+
+describe("a Console 401", () => {
+  const unauthorized = (async () =>
+    new Response("{}", { status: 401, headers: { "content-type": "application/json" } })) as unknown as typeof fetch
+
+  test("names a revoked key only when the gateway refuses it too", async () => {
+    const refused = await Doctor.checkConsole("https://console.example", "sk-stub", {}, unauthorized, 1_000)
+    expect(refused).toMatchObject({ status: "fail", fix: "This key was revoked or has expired. Run rafikicode login." })
+    const unknown = await Doctor.checkConsole("https://console.example", "sk-stub", {}, unauthorized, 1_000, true)
+    expect(unknown.status).toBe("fail")
+    expect(unknown.fix).toContain("This key is valid at the gateway but not registered in Rafiki Console (created outside the Console)")
+    expect(unknown.fix).toContain("https://console.example/keys")
+  })
+
+  test("the gateway accepts a key it describes and that has not expired", () => {
+    const line = { name: "key", status: "ok", detail: "" } as any
+    const now = Date.parse("2026-09-15T00:00:00Z")
+    expect(Doctor.gatewayAccepts({ line }, now)).toBe(false)
+    expect(Doctor.gatewayAccepts({ line, info: {} }, now)).toBe(true)
+    expect(Doctor.gatewayAccepts({ line, info: { expires: "2030-01-01T00:00:00Z" } }, now)).toBe(true)
+    expect(Doctor.gatewayAccepts({ line, info: { expires: "2026-01-01T00:00:00Z" } }, now)).toBe(false)
+  })
 })

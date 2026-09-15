@@ -243,7 +243,14 @@ export const WhoamiCommand = effectCmd({
           // A revoked or unknown key is an answer, not an outage: say so and
           // exit 2, the way every other command does once the key is dead.
           if (cause instanceof DeviceFlow.DeviceFlowError && cause.exitCode === Contract.EXIT.usage) {
-            return fail(cause.message, cause.exitCode)
+            if (cause.code !== Contract.ERROR.keyRevoked) return fail(cause.message, cause.exitCode)
+            // A key the gateway still accepts was minted outside the Console, not revoked.
+            const root = Doctor.gatewayRoot(Brand.gatewayURL())
+            return Effect.promise(() =>
+              Doctor.checkKey(root, key, consoleURL, fetch, 10_000, Date.now())
+                .then((result) => Doctor.gatewayAccepts(result, Date.now()))
+                .catch(() => false),
+            ).pipe(Effect.flatMap((accepted) => fail(accepted ? Doctor.notRegistered(consoleURL) : cause.message, cause.exitCode)))
           }
           const message = cause instanceof Error ? cause.message : String(cause)
           UI.println(`${UI.Style.TEXT_DIM}Could not load the account from the Console (${message}).${UI.Style.TEXT_NORMAL}`)
