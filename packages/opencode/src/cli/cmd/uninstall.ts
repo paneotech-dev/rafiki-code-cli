@@ -171,7 +171,10 @@ async function executeUninstall(method: Installation.Method, targets: RemovalTar
 
   for (const file of targets.binary ? targets.shellConfigs : []) {
     spinner.start(`Removing the PATH line from ${shortenPath(file)}...`)
-    const err = await RafikiShell.cleanFile(file, path.dirname(targets.binary!)).catch((e) => e)
+    const err = await RafikiShell.cleanFile(file, path.dirname(targets.binary!)).then(
+      () => undefined,
+      (e) => e,
+    )
     if (err) {
       spinner.stop("Failed to clean shell config", 1)
       errors.push(`Shell config: ${err.message}`)
