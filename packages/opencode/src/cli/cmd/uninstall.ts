@@ -7,8 +7,9 @@ import { Global } from "@opencode-ai/core/global"
 import fs from "fs/promises"
 import path from "path"
 import os from "os"
-import { Filesystem } from "@/util/filesystem"
 import { Process } from "@/util/process"
+import { existsSync } from "fs"
+import * as RafikiShell from "@/rafiki/shell-path"
 
 interface UninstallArgs {
   keepConfig: boolean
@@ -19,7 +20,7 @@ interface UninstallArgs {
 
 interface RemovalTargets {
   directories: Array<{ path: string; label: string; keep: boolean }>
-  shellConfig: string | null
+  shellConfigs: string[]
   binary: string | null
 }
 
@@ -96,10 +97,10 @@ async function collectRemovalTargets(args: UninstallArgs, method: Installation.M
     { path: Global.Path.state, label: "State", keep: false },
   ]
 
-  const shellConfig = method === "curl" ? await getShellConfigFile() : null
   const binary = method === "curl" ? process.execPath : null
+  const shellConfigs = binary ? await RafikiShell.configsWithPath(path.dirname(binary)) : []
 
-  return { directories, shellConfig, binary }
+  return { directories, shellConfigs, binary }
 }
 
 async function showRemovalSummary(targets: RemovalTargets, method: Installation.Method) {
@@ -124,8 +125,8 @@ async function showRemovalSummary(targets: RemovalTargets, method: Installation.
     prompts.log.info(`  ✓ Binary: ${shortenPath(targets.binary)}`)
   }
 
-  if (targets.shellConfig) {
-    prompts.log.info(`  ✓ Shell PATH in ${shortenPath(targets.shellConfig)}`)
+  for (const file of targets.shellConfigs) {
+    prompts.log.info(`  ✓ Shell PATH in ${shortenPath(file)}`)
   }
 
   if (method !== "curl" && method !== "unknown") {
@@ -168,9 +169,9 @@ async function executeUninstall(method: Installation.Method, targets: RemovalTar
     spinner.stop(`Removed ${dir.label}`)
   }
 
-  if (targets.shellConfig) {
-    spinner.start("Cleaning shell config...")
-    const err = await cleanShellConfig(targets.shellConfig).catch((e) => e)
+  for (const file of targets.binary ? targets.shellConfigs : []) {
+    spinner.start(`Removing the PATH line from ${shortenPath(file)}...`)
+    const err = await RafikiShell.cleanFile(file, path.dirname(targets.binary!)).catch((e) => e)
     if (err) {
       spinner.stop("Failed to clean shell config", 1)
       errors.push(`Shell config: ${err.message}`)
@@ -212,12 +213,15 @@ async function executeUninstall(method: Installation.Method, targets: RemovalTar
 
   if (method === "curl" && targets.binary) {
     UI.empty()
-    prompts.log.message("To finish removing the binary, run:")
-    prompts.log.info(`  rm "${targets.binary}"`)
-
-    const binDir = path.dirname(targets.binary)
-    if (binDir.includes(".opencode")) {
-      prompts.log.info(`  rmdir "${binDir}" 2>/dev/null`)
+    if (!existsSync(targets.binary)) {
+      prompts.log.message(`Removed the binary ${shortenPath(targets.binary)}.`)
+    } else {
+      prompts.log.message("To finish removing the binary, run:")
+      prompts.log.info(`  rm "${targets.binary}"`)
+      const binDir = path.dirname(targets.binary)
+      if (binDir.includes(Brand.configDirName)) {
+        prompts.log.info(`  rmdir "${binDir}" 2>/dev/null`)
+      }
     }
   }
 
@@ -231,88 +235,6 @@ async function executeUninstall(method: Installation.Method, targets: RemovalTar
 
   UI.empty()
   prompts.log.success(`Thank you for using ${Brand.product}!`)
-}
-
-async function getShellConfigFile(): Promise<string | null> {
-  const shell = path.basename(process.env.SHELL || "bash")
-  const home = os.homedir()
-  const xdgConfig = process.env.XDG_CONFIG_HOME || path.join(home, ".config")
-
-  const configFiles: Record<string, string[]> = {
-    fish: [path.join(xdgConfig, "fish", "config.fish")],
-    zsh: [
-      path.join(home, ".zshrc"),
-      path.join(home, ".zshenv"),
-      path.join(xdgConfig, "zsh", ".zshrc"),
-      path.join(xdgConfig, "zsh", ".zshenv"),
-    ],
-    bash: [
-      path.join(home, ".bashrc"),
-      path.join(home, ".bash_profile"),
-      path.join(home, ".profile"),
-      path.join(xdgConfig, "bash", ".bashrc"),
-      path.join(xdgConfig, "bash", ".bash_profile"),
-    ],
-    ash: [path.join(home, ".ashrc"), path.join(home, ".profile")],
-    sh: [path.join(home, ".profile")],
-  }
-
-  const candidates = configFiles[shell] || configFiles.bash
-
-  for (const file of candidates) {
-    const exists = await fs
-      .access(file)
-      .then(() => true)
-      .catch(() => false)
-    if (!exists) continue
-
-    const content = await Filesystem.readText(file).catch(() => "")
-    if (content.includes("# opencode") || content.includes(".opencode/bin")) {
-      return file
-    }
-  }
-
-  return null
-}
-
-async function cleanShellConfig(file: string) {
-  const content = await Filesystem.readText(file)
-  const lines = content.split("\n")
-
-  const filtered: string[] = []
-  let skip = false
-
-  for (const line of lines) {
-    const trimmed = line.trim()
-
-    if (trimmed === "# opencode") {
-      skip = true
-      continue
-    }
-
-    if (skip) {
-      skip = false
-      if (trimmed.includes(".opencode/bin") || trimmed.includes("fish_add_path")) {
-        continue
-      }
-    }
-
-    if (
-      (trimmed.startsWith("export PATH=") && trimmed.includes(".opencode/bin")) ||
-      (trimmed.startsWith("fish_add_path") && trimmed.includes(".opencode"))
-    ) {
-      continue
-    }
-
-    filtered.push(line)
-  }
-
-  while (filtered.length > 0 && filtered[filtered.length - 1].trim() === "") {
-    filtered.pop()
-  }
-
-  const output = filtered.join("\n") + "\n"
-  await Filesystem.write(file, output)
 }
 
 async function getDirectorySize(dir: string): Promise<number> {
