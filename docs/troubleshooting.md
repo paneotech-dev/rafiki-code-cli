@@ -12,7 +12,7 @@ These are real messages from `rafikicode` 0.1.0 on clean `ubuntu:24.04` and `deb
 export PATH=$HOME/.rafikicode/bin:$PATH
 ```
 
-or open a new terminal. Shells that are not interactive (`bash -lc`, cron, CI steps, `ssh host "command"`) do not read `~/.bashrc` either: call `~/.rafikicode/bin/rafikicode` by its full path there.
+or open a new terminal. From 0.1.1 the installer prints this export as its first next step. Shells that are not interactive (`bash -lc`, cron, CI steps, `ssh host "command"`) do not read `~/.bashrc` either: call `~/.rafikicode/bin/rafikicode` by its full path there.
 
 **`curl: (22) The requested URL returned error: 404` from the installer.** Before release 0.1.0 was published on 15 September, the installer had no release to download and stopped with this 404. The same message appears today when you ask for a version that does not exist:
 
@@ -33,7 +33,7 @@ Run the installer without `--version` to get the latest release.
 Error: The user rejected permission to use this specific tool call.
 ```
 
-The run had no terminal attached, so nobody could approve the shell command. The run still exits 0, with nothing created. Allow edits and commands in your own configuration, in a folder you do not mind it changing:
+In 0.1.0 the run had no terminal attached, so nobody could approve the shell command, and it still exited 0 with nothing created. From 0.1.1 your own run keeps the default permissions inside the folder it starts in, so this only happens in CI (`CI` or `GITHUB_ACTIONS` set) or for paths outside that folder; the rejection prints a hint, and a run whose every tool call was rejected exits 1. To allow edits and commands anyway, in a folder you do not mind it changing:
 
 ```bash
 mkdir -p ~/.rafikicode
@@ -51,9 +51,9 @@ git config --global user.name "Your Name"
 git config --global user.email "you@example.com"
 ```
 
-**`doctor` shows `FAIL console ... does not accept this key (401)` and `whoami` says `This key was revoked or has expired`, but tasks run.** Seen with a working gateway key: the `key`, `gateway` and `tiers` lines read `ok` and `run` completes, while the Console does not recognise the key. `doctor` then exits 1. Runs are not affected. If the `key` line fails too, the key really is revoked or spent.
+**`doctor` shows `FAIL console ... does not accept this key (401)` and `whoami` says `This key was revoked or has expired`, but tasks run.** Seen with a working gateway key: the `key`, `gateway` and `tiers` lines read `ok` and `run` completes, while the Console does not recognise the key. `doctor` then exits 1. Runs are not affected. If the `key` line fails too, the key really is revoked or spent. From 0.1.1 both commands say `This key is valid at the gateway but not registered in Rafiki Console (created outside the Console)` in this case, and `revoked or has expired` only when the gateway refuses the key too.
 
-**`run` without a key prints `"name": "UnknownError"` and `Unexpected server error. Check server logs for details.`** No credential is set. Set `RAFIKICODE_API_KEY` and check that `rafikicode doctor` shows `ok credential`.
+**`run` without a key prints `"name": "UnknownError"` and `Unexpected server error. Check server logs for details.`** No credential is set. Set `RAFIKICODE_API_KEY` and check that `rafikicode doctor` shows `ok credential`. From 0.1.1 the run says `No Rafiki key found. Set RAFIKICODE_API_KEY (create a key at https://console.rafikiai.io/keys), or run rafikicode login.` and exits 2.
 
 ## Installation
 

@@ -44,25 +44,25 @@ Every top-level key the CLI honors, with the meaning from the configuration sche
 | `shell` | default shell for the terminal and the shell tool |
 | `username` | name displayed in conversations |
 | `instructions` | additional file paths or URLs whose content is added as instructions to every session |
-| `permissions` | ordered rules deciding which tool actions run without asking, ask, or are denied |
-| `agents` | overrides of built-in agents and custom agent definitions |
-| `commands` | named slash commands |
+| `permission` | ordered rules deciding which tool actions run without asking, ask, or are denied, for example `{"permission": {"bash": "allow", "edit": "allow"}}` |
+| `agent` | overrides of built-in agents and custom agent definitions |
+| `command` | named slash commands |
 | `skills` | additional paths or URLs to discover skills from |
 | `references` | named local directories or Git repositories available as external context |
-| `plugins` | ordered external plugin packages to load |
+| `plugin` | ordered external plugin packages to load |
 | `mcp` | Model Context Protocol server configuration (external tool servers the agent can call) |
 | `lsp` | enable built-in language servers or configure overrides |
 | `formatter` | enable built-in formatters or configure overrides |
 | `watcher` | filesystem watcher settings |
-| `snapshots` | enable snapshots used for undo and revert |
+| `snapshot` | enable snapshots used for undo and revert |
 | `compaction` | conversation compaction behavior for long sessions |
-| `attachments` | attachment processing settings |
+| `attachment` | attachment processing settings |
 | `tool_output` | truncation thresholds for tool output |
-| `providers` | provider definitions. The `rafiki` entry is seeded for you; add others only if you have your own keys, they are not metered by the wallet |
+| `provider` | provider definitions. The `rafiki` entry is seeded for you; add others only if you have your own keys, they are not metered by the wallet |
 | `enterprise` | enterprise sharing service settings |
 | `experimental` | switches that may change between releases |
 
-The structure of the nested keys (`permissions`, `agents`, `mcp`, and so on) is unchanged from the upstream project; the upstream documentation for those sections applies as written.
+The structure of the nested keys (`permission`, `agent`, `mcp`, and so on) is unchanged from the upstream project; the upstream documentation for those sections applies as written.
 
 ## Environment variables
 
