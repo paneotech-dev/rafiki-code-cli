@@ -140,7 +140,8 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
 
     const upgradeCurl = Effect.fnUntraced(
       function* (target: string) {
-        const result = yield* Effect.promise(() => RafikiUpdate.apply({ version: target }))
+        // tryPromise, not promise: a rejection must reach mapError as UpgradeFailedError, not die as a defect.
+        const result = yield* Effect.tryPromise({ try: () => RafikiUpdate.apply({ version: target }), catch: (err) => err })
         return { code: 0, stdout: `installed ${result.version} at ${result.path}`, stderr: "" }
       },
       Effect.mapError((err) => new UpgradeFailedError({ stderr: `${upgradeFailure("curl")} ${errorMessage(err)}` })),
