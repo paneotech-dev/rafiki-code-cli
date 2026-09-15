@@ -8,6 +8,7 @@ import { existsSync } from "fs"
 import { logo, plain } from "./wordmark"
 import { houseStyle } from "./house-style"
 import * as Credentials from "./credentials"
+import { InstallationChannel, InstallationVersion } from "../installation/version"
 
 const gatewayDefault = "https://gateway.rafikiai.io/v1"
 const consoleDefault = "https://console.rafikiai.io"
@@ -97,6 +98,40 @@ function consoleAllowed(value: string | undefined) {
   return safeURL(value, (url) => isLoopback(url.hostname))
 }
 
+// Schema files are served from the release tag of the running binary. A tag
+// never moves and carries the schema generated for that version, so the URL
+// written into a config file keeps resolving after later releases. Builds that
+// are not a release (local runs, 0.0.0 snapshots, other channels) point at
+// schemaFallbackTag, a published tag, so their URL resolves as well.
+const schemaBase = "https://raw.githubusercontent.com/paneotech-dev/rafiki-code-cli"
+const schemaFallbackTag = "v0.1.1"
+const releaseVersion = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$/
+type SchemaKind = "config" | "tui"
+
+function schemaURL(kind: SchemaKind, version: string = InstallationVersion, channel: string = InstallationChannel) {
+  const release = channel === "latest" && releaseVersion.test(version) && !version.startsWith("0.0.0-")
+  return `${schemaBase}/${release ? `v${version}` : schemaFallbackTag}/schema/${kind}.json`
+}
+
+// Written by v0.1.0 and v0.1.1. The main branch carries no schema directory,
+// so these return 404 and editors warn about the file.
+const brokenSchemaURLs: Record<SchemaKind, string> = {
+  config: `${schemaBase}/main/schema/config.json`,
+  tui: `${schemaBase}/main/schema/tui.json`,
+}
+
+// Config text with a broken $schema value replaced by url, or undefined when
+// there is nothing to replace. Acts only when the parsed $schema value is the
+// exact broken URL and the text holds that key and value exactly once; every
+// other byte of the file stays as it was.
+function schemaRepair(text: string, value: unknown, kind: SchemaKind = "config", url: string = schemaURL(kind)) {
+  const broken = brokenSchemaURLs[kind]
+  if (value !== broken) return undefined
+  const pattern = new RegExp(`("\\$schema"\\s*:\\s*)"${broken.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")}"`, "g")
+  if (text.match(pattern)?.length !== 1) return undefined
+  return text.replace(pattern, (_, key: string) => `${key}"${url}"`)
+}
+
 export const Brand = {
   // Binary and script name, also the npm package name.
   name: "rafikicode",
@@ -151,11 +186,16 @@ export const Brand = {
       return path.join(root, Brand.project.dir)
     },
   },
-  // JSON schemas written as $schema into generated config files. Regenerate
+  // JSON schemas written as $schema into generated config files, pinned to the
+  // release tag of the running binary (see schemaURL). Regenerate before tagging
   // with: bun run packages/opencode/script/schema.ts schema/config.json schema/tui.json
   schema: {
-    config: "https://raw.githubusercontent.com/paneotech-dev/rafiki-code-cli/main/schema/config.json",
-    tui: "https://raw.githubusercontent.com/paneotech-dev/rafiki-code-cli/main/schema/tui.json",
+    config: schemaURL("config"),
+    tui: schemaURL("tui"),
+    fallbackTag: schemaFallbackTag,
+    broken: brokenSchemaURLs,
+    url: schemaURL,
+    repair: schemaRepair,
   },
   // Upstream hosted providers are never offered: without them an install
   // without a key shows no upstream model names, and every model goes

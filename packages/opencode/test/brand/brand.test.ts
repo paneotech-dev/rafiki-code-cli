@@ -20,9 +20,10 @@ const upstreamWord = /(?<![A-Z_])opencode(?![A-Z_])/i
 async function help(
   args: string[],
   extraEnv: Record<string, string> = {},
-  options: { cwd?: string; inspect?: (home: string) => Promise<void> } = {},
+  options: { cwd?: string; prepare?: (home: string) => Promise<void>; inspect?: (home: string) => Promise<void> } = {},
 ) {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), "rafikicode-brand-"))
+  if (options.prepare) await options.prepare(home)
   const proc = Bun.spawn(["bun", "run", path.join(root, "src/index.ts"), ...args], {
     cwd: options.cwd ?? root,
     stdout: "pipe",
@@ -201,8 +202,28 @@ describe("brand constants", () => {
     })
     expect(result.exitCode).toBe(0)
     expect(JSON.parse(seeded).$schema).toBe(Brand.schema.config)
-    expect(Brand.schema.config).toBe("https://raw.githubusercontent.com/paneotech-dev/rafiki-code-cli/main/schema/config.json")
+    // A source run is not a release, so it points at the published fallback tag.
+    expect(Brand.schema.config).toBe(
+      `https://raw.githubusercontent.com/paneotech-dev/rafiki-code-cli/${Brand.schema.fallbackTag}/schema/config.json`,
+    )
     expect(seeded).not.toMatch(upstreamWord)
+  }, 60_000)
+
+  test("a global config holding the broken main schema URL gets only that value replaced", async () => {
+    const before = `{\n  // kept as written\n  "$schema": "${Brand.schema.broken.config}",\n  "username": "keep-me"\n}\n`
+    let after = ""
+    const result = await help(["debug", "config"], { XDG_CONFIG_HOME: "" }, {
+      prepare: async (home) => {
+        await fs.mkdir(path.join(home, ".rafikicode"), { recursive: true })
+        await fs.writeFile(path.join(home, ".rafikicode", "config.json"), before)
+      },
+      inspect: async (home) => {
+        after = await fs.readFile(path.join(home, ".rafikicode", "config.json"), "utf8")
+      },
+    })
+    expect(result.exitCode).toBe(0)
+    expect(after).toBe(before.replace(Brand.schema.broken.config, Brand.schema.config))
+    expect(JSON.parse(result.stdout).username).toBe("keep-me")
   }, 60_000)
 
   test("the schema files are checked in and free of upstream names", async () => {

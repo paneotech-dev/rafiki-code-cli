@@ -36,6 +36,7 @@ import fs from "fs/promises"
 import os from "os"
 import { pathToFileURL } from "url"
 import { Global } from "@opencode-ai/core/global"
+import { Brand } from "@opencode-ai/core/brand/brand"
 import { ProjectV2 } from "@opencode-ai/core/project"
 import { Filesystem } from "@/util/filesystem"
 import { ConfigPlugin } from "@/config/plugin"
@@ -316,7 +317,7 @@ it.effect("creates global config.json with schema when no global configs exist",
       yield* Config.use.get().pipe(provideInstanceEffect(dir))
 
       const content = yield* FSUtil.use.readFileString(path.join(dir, "config.json"))
-      expect(content).toContain('"$schema": "https://raw.githubusercontent.com/paneotech-dev/rafiki-code-cli/main/schema/config.json"')
+      expect(content).toContain(`"$schema": "${Brand.schema.config}"`)
     }).pipe(Effect.provide(testInstanceStoreLayer), Effect.provide(LayerNode.compile(CrossSpawnSpawner.node))),
   ),
 )

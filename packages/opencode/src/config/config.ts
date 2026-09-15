@@ -252,6 +252,11 @@ const layer = Layer.effect(
         const updated = text.replace(/^\s*\{/, `{\n  "$schema": "${Brand.schema.config}",`)
         yield* fs.writeFileString(options.path, updated).pipe(Effect.catch(() => Effect.void))
       }
+      const repaired = Brand.schema.repair(text, data.$schema)
+      if (repaired) {
+        data.$schema = Brand.schema.config
+        yield* fs.writeFileString(options.path, repaired).pipe(Effect.catch(() => Effect.void))
+      }
       return data
     })
 
