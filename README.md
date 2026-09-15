@@ -12,40 +12,44 @@ One line installer for Linux and macOS (Windows through WSL for now):
 curl -fsSL https://get.rafikiai.io | bash
 ```
 
-The installer detects your platform, downloads the release archive, verifies it against the published `SHA256SUMS`, installs the binary into `~/.rafikicode/bin`, and prints the PATH line for your shell. Options: `--version 1.2.3` pins a release, `--prefix DIR` chooses another directory, `--no-modify-path` leaves your shell files alone, `--dry-run` only shows what would happen. The script is `install/install.sh` in this repository.
+Options, passed after `bash -s --`: `--version 1.2.3` pins a release, `--prefix DIR` chooses another directory, `--no-modify-path` leaves your shell files alone, `--dry-run` only shows what would happen. The script is `install/install.sh` in this repository.
 
-npm as a second channel:
+The installer detects your platform, downloads the release archive, verifies it against the published `SHA256SUMS`, installs the binary into `~/.rafikicode/bin`, and adds that directory to your PATH in `~/.bashrc` for new terminals. In the terminal you installed from, run `export PATH=$HOME/.rafikicode/bin:$PATH` (or open a new terminal), then `rafikicode --version` prints `0.1.0`.
 
-```bash
-npm install -g rafikicode
-```
+There is no npm package yet: `npm install -g rafikicode` does not work. Use the installer.
 
 Keeping it current:
 
 ```bash
 rafikicode update            # latest release, checksum verified, binary swapped in place
-rafikicode update 1.2.3      # a specific version
 ```
 
-Automatic update checks are off by default. Installation channels go live with the first tagged release; until then, build from source (see [Development](#development)). Release archives are unsigned in this phase and verified by checksum only, see `docs/RELEASE_TODO.md`.
+`rafikicode update <version>` installs a specific release. Automatic update checks are off by default. Release archives are unsigned in this phase and verified by checksum only, see `docs/RELEASE_TODO.md`.
 
 ## Quick start
 
+Tested as written on 15 September 2026 in clean Ubuntu 24.04 and Debian 12 containers:
+
 ```bash
-rafikicode login                       # prints a code, approve it at console.rafikiai.io/device
-cd your-project
-rafikicode run "explain the build setup in this repo"
+export PATH=$HOME/.rafikicode/bin:$PATH
+export RAFIKICODE_API_KEY=...          # your Rafiki gateway key
+rafikicode doctor                      # credential, gateway, key and tiers should read ok
+mkdir -p ~/.rafikicode
+echo '{"permission":{"bash":"allow","edit":"allow","external_directory":"allow"}}' > ~/.rafikicode/config.json
+mkdir -p ~/calc && cd ~/calc
+rafikicode run "Create a calculator web page in index.html with basic styling"
 rafikicode                             # the interactive terminal UI
 ```
 
-`login` gives this terminal its own gateway key with a budget you can see and revoke in Rafiki Console; the key is stored in `~/.rafikicode/credentials`, readable by your user only. `whoami` shows the account, key budget and wallet balance; `logout` revokes the key; `doctor` checks the whole setup, one line per check. On servers and in CI there is no browser, so set a server key instead:
+The `permission` line lets the agent edit files and run shell commands without asking. Without it, a run with no terminal attached (a script, CI, a container started without `-it`) rejects every shell command, prints `permission requested: bash (...); auto-rejecting`, and can finish without writing anything. Use it in a folder you do not mind it changing, or pass `--auto` for one run instead.
+
+The browser sign in (`rafikicode login`) is coming soon; until then every machine uses `RAFIKICODE_API_KEY`. In scripts add `< /dev/null` so `run` does not wait for input:
 
 ```bash
-export RAFIKICODE_API_KEY=...   # created at console.rafikiai.io/keys
 rafikicode run "fix the failing test in packages/api" < /dev/null
 ```
 
-The full walkthrough is in [docs/quickstart.md](./docs/quickstart.md).
+The full walkthrough is in [docs/quickstart.md](./docs/quickstart.md), and the errors seen during testing are in [docs/troubleshooting.md](./docs/troubleshooting.md).
 
 ## Models
 
@@ -66,15 +70,18 @@ Global configuration lives at `~/.rafikicode/config.json`. Project configuration
 ```json
 {
   "model": "rafiki/rafiki-fast",
+  "permission": { "bash": "allow", "edit": "allow", "external_directory": "allow" },
   "instructions": ["docs/style.md"]
 }
 ```
+
+`permission` in your own file lets runs edit files and run commands without asking; leave it out to keep the default questions.
 
 Environment variables:
 
 | variable | purpose |
 |---|---|
-| `RAFIKICODE_API_KEY` | server key for headless and CI use, takes precedence over the stored login |
+| `RAFIKICODE_API_KEY` | gateway key used by every run; takes precedence over a stored login |
 | `RAFIKICODE_GATEWAY_URL` | override the gateway base URL (local mocks, staging) |
 | `RAFIKICODE_CONSOLE_URL` | override the Console base URL used by login, logout and whoami; https only (plain http only for 127.0.0.1, [::1] or localhost), otherwise ignored with a warning |
 | `RAFIKICODE_INSTALL_DIR` | installer target directory (default `~/.rafikicode/bin`) |
@@ -90,7 +97,7 @@ Put an `AGENTS.md` at the root of your repository (or in any subdirectory) and `
 
 ## Documentation
 
-- [Quick start](./docs/quickstart.md): install, sign in, first task, tiers.
+- [Quick start](./docs/quickstart.md): install, key, permissions, first task, tiers.
 - [Configuration](./docs/configuration.md): files, keys, environment variables.
 - [Headless and CI](./docs/headless-and-ci.md): server keys, non-interactive runs, `rafikicode doctor`, exit codes, budget exhaustion, pipeline examples.
 - [Pull request review](./docs/review-recipe.md): review a diff from the terminal, or every pull request with the bundled GitHub Action.
