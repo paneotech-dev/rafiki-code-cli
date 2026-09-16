@@ -5,6 +5,8 @@ Rafiki Code reaches editors in two ways, and both spend from the same Rafiki Con
 - **The full agent through ACP.** ACP (Agent Client Protocol) is an open protocol that lets an editor drive an external coding agent: the editor starts the agent as a child process and they exchange JSON-RPC messages (small JSON requests and answers) over its standard input and output. `rafikicode acp` is such an agent. Zed and JetBrains IDEs speak ACP, so you get the Rafiki agent (tiers, your `AGENTS.md`, permissions, clear wallet errors) inside the editor's own agent panel.
 - **Presets for other tools.** A preset is a documented configuration for a third party tool; nothing is installed by Rafiki. Any tool that accepts an OpenAI compatible endpoint can use the Rafiki gateway with a Rafiki key and a tier name. This page covers Cline, the Zed agent panel, JetBrains AI Assistant and Aider.
 
+VS Code has its own Rafiki Code extension, which opens `rafikicode` in an editor tab and adds sign in, a status bar item and a tier picker: see [Rafiki Code for VS Code](./vscode.md).
+
 Each section says whether it was tested, and how. "Not yet tested" means the configuration follows the tool's own documentation as of September 2026 but nobody has run it in that editor yet; tell us if a field is named differently in your version.
 
 ## At a glance

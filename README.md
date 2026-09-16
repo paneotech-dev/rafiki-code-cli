@@ -103,6 +103,7 @@ Put an `AGENTS.md` at the root of your repository (or in any subdirectory) and `
 - [Pull request review](./docs/review-recipe.md): review a diff from the terminal, or every pull request with the bundled GitHub Action.
 - [GitHub Action recipe](./docs/github-action.md): one workflow file that reviews every pull request and posts a comment.
 - [MCP: n8n and Dify](./docs/mcp-rafiki-services.md): give the agent tools from your n8n workflows and Dify apps.
+- [VS Code extension](./docs/vscode.md): Rafiki Code in a VS Code editor tab, with sign in, status bar and tier picker.
 - [Editors](./docs/ide.md): the Rafiki Code agent in Zed and JetBrains IDEs through ACP, and presets for Cline, the Zed agent panel, JetBrains AI Assistant and Aider.
 - [IDE preset](./docs/ide-preset.md): Cline pointed at the gateway with a Rafiki key, field by field.
 - [Troubleshooting](./docs/troubleshooting.md): messages, causes, fixes.
