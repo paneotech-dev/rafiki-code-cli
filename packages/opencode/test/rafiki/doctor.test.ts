@@ -564,3 +564,85 @@ describe("a Console 401", () => {
     expect(Doctor.gatewayAccepts({ line, info: { expires: "2026-01-01T00:00:00Z" } }, now)).toBe(false)
   })
 })
+
+describe("key type", () => {
+  const uuid = "1a2b3c4d-5e6f-4a1b-8c2d-3e4f5a6b7c8d"
+  const replying =
+    (status: number, info: unknown) =>
+    (async () =>
+      status === 200 ? Response.json(info) : new Response("{}", { status })) as unknown as typeof fetch
+  const check = (f: typeof fetch) => Doctor.checkKey("https://gateway.example", "sk-type-stub", "https://console.example", f, 1_000, Date.now())
+  const info = (key_alias: unknown, metadata?: unknown) => ({
+    key: "hashed",
+    info: { key_alias, metadata, spend: 0.5, max_budget: 25, models: ["rafiki-fast"] },
+  })
+
+  test("a Rafiki Code key passes", async () => {
+    const byAlias = await check(replying(200, info(`rafikicode-${uuid}`, { rafiki_surface: "cli", rafiki_key_kind: "session" })))
+    expect(byAlias.line).toMatchObject({ status: "ok", detail: `key rafikicode-${uuid}, spent 0.5 USD of 25 USD budget, no expiry` })
+    expect(byAlias.line.note).toBeUndefined()
+    expect(Doctor.keyType({ key_alias: `rafikicode-${uuid}` })).toBe("code")
+    // Contract metadata marks a Rafiki Code key whatever its alias.
+    expect(Doctor.keyType({ key_alias: `rafiki-${uuid}`, metadata: { rafiki_key_kind: "server" } })).toBe("code")
+  })
+
+  test("a general console key warns, keeps the tier check, and prints a short alias only", async () => {
+    const result = await check(replying(200, info(`rafiki-${uuid}`, {})))
+    expect(result.line).toMatchObject({
+      status: "warn",
+      detail: "key rafiki-1a2b3c4d..., spent 0.5 USD of 25 USD budget, no expiry",
+      fix: "This key was not created for Rafiki Code. Create one in the Rafiki AI console with the Rafiki Code option ticked, or run rafikicode login.",
+      note: Doctor.NOT_CODE_KEY_MEANING,
+    })
+    expect(result.info).toBeTruthy()
+    expect(Doctor.gatewayAccepts(result, Date.now())).toBe(true)
+    const text = Doctor.format(result.line)
+    expect(text).toStartWith("WARN  key         key rafiki-1a2b3c4d..., spent")
+    expect(text).toContain(`. Fix: ${Doctor.NOT_CODE_KEY}\n                  ${Doctor.NOT_CODE_KEY_MEANING}`)
+    expect(text).not.toContain(uuid)
+    expect(text).not.toContain("sk-type-stub")
+    expect(text).not.toContain("Rafiki Console")
+    expect(text).not.toContain("wallet")
+    expect(text).not.toMatch(/[\u2013\u2014]/)
+  })
+
+  test("missing alias or metadata, or an alias of another shape, is neutral", async () => {
+    for (const reply of [info(undefined), info(null, null), { info: { spend: 0 } }, info("ci-key"), info("rafiki-not-a-uuid"), { key_alias: 7 }]) {
+      const result = await check(replying(200, reply))
+      expect(result.line.status).toBe("ok")
+      expect(result.line.note).toBeUndefined()
+    }
+    expect(Doctor.keyType({})).toBe("unknown")
+    expect(Doctor.shortAlias("ci-key")).toBe("ci-key")
+  })
+
+  test("a gateway error is reported as before, with no key type warning", async () => {
+    const broken = await check(replying(500, undefined))
+    expect(broken.line).toMatchObject({ status: "fail", detail: "https://gateway.example/key/info answered 500" })
+    const rejected = await check(replying(401, undefined))
+    expect(rejected.line).toMatchObject({ status: "fail", detail: "rejected by the gateway (401)" })
+    const down = await check((async () => {
+      throw new Error("fetch failed")
+    }) as unknown as typeof fetch)
+    expect(down.line).toMatchObject({ status: "fail", network: true })
+    for (const r of [broken, rejected, down]) expect(r.line.fix).not.toContain("not created for")
+  })
+
+  test("the warning does not fail the report and doctor exits 0", async () => {
+    gateway = createMockGateway({ quiet: true })
+    await gateway.ready
+    console_ = createMockConsole({ quiet: true, gatewayURL: gateway.url + "/v1" })
+    await console_.ready
+    await fetch(gateway.url + "/__test/register", {
+      method: "POST",
+      body: JSON.stringify({ key: "sk-console-plain-stub", key_alias: `rafiki-${uuid}`, models: ["rafiki-fast", "rafiki-pro"], max_budget: 25 }),
+    })
+    const report = await Doctor.run(options({ env: { RAFIKICODE_API_KEY: "sk-console-plain-stub" } }))
+    expect(byName(report, "key")).toMatchObject({ status: "warn", fix: Doctor.NOT_CODE_KEY })
+    expect(byName(report, "tiers")).toMatchObject({ status: "ok", detail: "rafiki-fast, rafiki-pro (not on this key: rafiki-max)" })
+    expect(report).toMatchObject({ ok: true, failed: 0, exitCode: 0 })
+    expect(report.warned).toBeGreaterThanOrEqual(1)
+    expect(JSON.stringify(report)).not.toContain("sk-console-plain-stub")
+    expect(JSON.stringify(report)).not.toContain(uuid)
+  })
+})
