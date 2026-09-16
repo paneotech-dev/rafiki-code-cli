@@ -1,0 +1,118 @@
+name: rafiki-vscode
+
+# Builds the Rafiki Code VS Code extension (.vsix) from sdks/vscode and keeps
+# it as a workflow artifact. It publishes nothing: publishing to the
+# Microsoft Marketplace and Open VSX is a manual step, see
+# docs/release-vscode.md.
+#
+# Trigger: push a tag rafiki-vscode-v<version>, for example
+# rafiki-vscode-v0.1.0. The prefix keeps it apart from the CLI's v* tags and
+# from upstream vscode-v* tags. The version in the tag must match
+# sdks/vscode/package.json.
+#
+# The tag name reaches scripts only through env variables, always quoted, and
+# is checked before any other step uses it.
+
+on:
+  push:
+    tags:
+      - "rafiki-vscode-v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build (for example rafiki-vscode-v0.1.0)"
+        required: true
+        type: string
+
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  vsix:
+    name: build the extension package
+    runs-on: ubuntu-24.04
+    steps:
+      - id: meta
+        shell: bash
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          TAG="${INPUT_TAG:-$REF_NAME}"
+          if [ "${#TAG}" -gt 64 ] || ! [[ "$TAG" =~ ^rafiki-vscode-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::The tag must be rafiki-vscode-v followed by major.minor.patch, for example rafiki-vscode-v0.1.0."
+            exit 1
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#rafiki-vscode-v}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: refs/tags/${{ steps.meta.outputs.tag }}
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+
+      - name: Check the version
+        shell: bash
+        working-directory: sdks/vscode
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          declared="$(node -p "require('./package.json').version")"
+          if [ "$declared" != "$VERSION" ]; then
+            echo "::error::sdks/vscode/package.json declares ${declared}, the tag says ${VERSION}."
+            exit 1
+          fi
+
+      - name: Install
+        shell: bash
+        working-directory: sdks/vscode
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Typecheck, lint and unit tests
+        shell: bash
+        working-directory: sdks/vscode
+        run: |
+          set -euo pipefail
+          bun run check-types
+          bun run lint
+          bun run test:unit
+
+      - name: Integration tests in VS Code
+        shell: bash
+        working-directory: sdks/vscode
+        run: xvfb-run -a bun run test
+
+      - name: Package
+        shell: bash
+        working-directory: sdks/vscode
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          ./node_modules/.bin/vsce package --no-dependencies -o "dist/rafiki-code-${VERSION}.vsix"
+          ./node_modules/.bin/vsce ls --no-dependencies
+          cd dist
+          sha256sum "rafiki-code-${VERSION}.vsix" > "rafiki-code-${VERSION}.vsix.sha256"
+          cat "rafiki-code-${VERSION}.vsix.sha256"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: rafiki-code-vsix
+          path: |
+            sdks/vscode/dist/rafiki-code-*.vsix
+            sdks/vscode/dist/rafiki-code-*.vsix.sha256
+          if-no-files-found: error
