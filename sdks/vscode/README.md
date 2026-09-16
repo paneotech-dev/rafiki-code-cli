@@ -4,7 +4,7 @@ Rafiki Code is the PANEOTECH coding agent that runs on your Rafiki Console accou
 
 ## Requirements
 
-- The `rafikicode` command, version 0.1.3 or later. Install it with:
+- The `rafikicode` command, version 0.1.4 or later. Install it with:
 
   ```bash
   curl -fsSL https://get.rafikiai.io | bash
