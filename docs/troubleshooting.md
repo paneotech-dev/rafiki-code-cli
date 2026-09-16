@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Each entry gives the message or symptom, the cause, and what to do. The messages are those of `rafikicode` 0.1.4. Start with `rafikicode doctor`: it checks the configuration file, the credential, the gateway, the key's budget, the tiers, the Rafiki AI console and the installed version, one line each with a fix hint (details in [Headless and CI](./headless-and-ci.md#checking-a-machine-with-doctor)). Add `--print-logs --log-level DEBUG` to any command to see what it did.
+Each entry gives the message or symptom, the cause, and what to do. The messages are those of `rafikicode` 0.1.5. Start with `rafikicode doctor`: it checks the configuration file, the credential, the gateway, the key's budget, the tiers, the Rafiki AI console and the installed version, one line each with a fix hint (details in [Headless and CI](./headless-and-ci.md#checking-a-machine-with-doctor)). Add `--print-logs --log-level DEBUG` to any command to see what it did.
 
 ## Installation
 
@@ -120,7 +120,7 @@ git config --global user.email "you@example.com"
 
 ## Updating
 
-**`rafikicode upgrade skipped: 0.1.4 is already installed`.** `rafikicode update` (or `upgrade`) found nothing newer; nothing to do.
+**`rafikicode upgrade skipped: 0.1.5 is already installed`.** `rafikicode update` (or `upgrade`) found nothing newer; nothing to do.
 
 **`update` fails with a checksum error.** The downloaded binary did not match `SHA256SUMS`; the installed binary was left untouched. Retry, or install the release with the installer script.
 

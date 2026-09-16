@@ -1,6 +1,6 @@
 # Quick start
 
-This page takes you from nothing to a first file written by `rafikicode` in about five minutes. It describes `rafikicode` 0.1.4. The install, key, first task and uninstall steps were run as written in clean `ubuntu:24.04` and `debian:12` containers that had only `curl` and `ca-certificates` installed.
+This page takes you from nothing to a first file written by `rafikicode` in about five minutes. It describes `rafikicode` 0.1.5. The install, key, first task and uninstall steps were run as written in clean `ubuntu:24.04` and `debian:12` containers that had only `curl` and `ca-certificates` installed.
 
 Terms used here: a **terminal** is the text window where you type commands. **PATH** is the list of folders your shell searches for programs. An **API key** is a key issued by Rafiki AI with its own spending limit; every model call made with it uses credits in your Rafiki AI account. **Headless** means running where nobody can answer a question, such as a server, a container or a CI (continuous integration) pipeline.
 
@@ -17,7 +17,7 @@ curl -fsSL https://get.rafikiai.io | bash
 Expected output:
 
 ```text
-Installing rafikicode version 0.1.4
+Installing rafikicode version 0.1.5
 Checksum verified
 Installed rafikicode at /root/.rafikicode/bin/rafikicode
 Added /root/.rafikicode/bin to PATH in /root/.bashrc
@@ -38,7 +38,7 @@ export PATH=$HOME/.rafikicode/bin:$PATH
 rafikicode --version
 ```
 
-This prints `0.1.4`.
+This prints `0.1.5`.
 
 `rafikicode` is installed with the installer script; it is not published on npm.
 

@@ -5,7 +5,7 @@ Rafiki Code reaches editors in two ways, and both use the credits in your Rafiki
 - **The full agent through ACP.** ACP (Agent Client Protocol) is an open protocol that lets an editor drive an external coding agent: the editor starts the agent as a child process and they exchange JSON-RPC messages (small JSON requests and answers) over its standard input and output. `rafikicode acp` is such an agent. Zed and JetBrains IDEs speak ACP, so you get the Rafiki Code agent (tiers, your `AGENTS.md`, permissions, clear credit errors) inside the editor's own agent panel.
 - **Settings for other tools.** Any tool that accepts an OpenAI compatible endpoint can use the Rafiki AI gateway with a Rafiki AI key and a tier name. Nothing is installed by Rafiki AI. This page covers Cline and Aider.
 
-This page describes `rafikicode` 0.1.4.
+This page describes `rafikicode` 0.1.5.
 
 ## At a glance
 
