@@ -71,21 +71,22 @@ An untrusted workspace also loads no project plugins, custom tools or provider p
 
 ## Checking a machine with doctor
 
-`rafikicode doctor` runs the checks a headless job depends on and prints one line each, `ok`, `FAIL` with a fix hint, or `skip` when an earlier check makes it moot:
+`rafikicode doctor` runs the checks a headless job depends on and prints one line each, `ok`, `WARN` with a fix hint and a note (from 0.1.2), `FAIL` with a fix hint, or `skip` when an earlier check makes it moot. It exits 0 when nothing failed, warnings included:
 
 ```text
-ok    config      /root/.rafikicode/config.json
+ok    config      ~/.rafikicode/config.json not created yet, built in defaults apply
 ok    credential  RAFIKICODE_API_KEY from the environment
-ok    gateway     https://gateway.rafikiai.io answered in 143 ms
-ok    key         key rafikicode-..., spent 0.1255 USD of 2.5 USD budget, expires 2026-10-13T12:34:43.455000+00:00
+ok    gateway     https://gateway.rafikiai.io answered in 134 ms
+ok    key         key rafikicode-..., spent 0.1568 USD of 2.5 USD budget, expires 2026-10-13T12:34:43.455000+00:00
 ok    tiers       rafiki-fast, rafiki-pro, rafiki-max
-FAIL  console     https://console.rafikiai.io does not know this key (401). Fix: This key is valid at the gateway but not registered in Rafiki Console (created outside the Console). Create a key at https://console.rafikiai.io/keys, or run rafikicode login.
-ok    version     rafikicode 0.1.1, latest channel, installed by the installer script, rafikicode update applies
+WARN  console     https://console.rafikiai.io does not know this key (401). Fix: This key is valid at the gateway but not registered in Rafiki Console (created outside the Console). Create a key at https://console.rafikiai.io/keys, or run rafikicode login.
+                  Usage still works and is metered at the gateway. Console features such as the wallet view and key management do not apply to this key; create a key at https://console.rafikiai.io/keys to get them.
+ok    version     rafikicode 0.1.2, latest channel, installed elsewhere, update through the channel you installed with
 
-Error: 1 check needs attention, see the lines marked FAIL.
+All checks passed, 1 warning, see the line marked WARN.
 ```
 
-That is real output of 0.1.1 on 15 September 2026 in a clean Ubuntu container. The `console` line failed because that key was created at the gateway, not in Rafiki Console, while every run on it succeeded; see [Troubleshooting](./troubleshooting.md#seen-on-15-september-2026). With no key at all the `credential` line reads `FAIL  credential  none. Fix: Run rafikicode login, or set RAFIKICODE_API_KEY on servers and in CI.` and the `key` and `tiers` lines are skipped.
+That is output of a local 0.1.2 build on 16 September 2026 (exit code 0), with the home directory shortened to `~`. A copy installed by the installer script reads `installed by the installer script, rafikicode update applies` on the `version` line instead. The `console` line is a warning because that key was created at the gateway, not in Rafiki Console, while every run on it succeeds; see [Troubleshooting](./troubleshooting.md#seen-on-15-september-2026). With 0.1.1 the same key gave `FAIL  console` and exit code 1. With no key at all the `credential` line reads `FAIL  credential  none. Fix: Run rafikicode login, or set RAFIKICODE_API_KEY on servers and in CI.`, the `key` and `tiers` lines are skipped, and `doctor` exits 1.
 
 The checks, in order:
 

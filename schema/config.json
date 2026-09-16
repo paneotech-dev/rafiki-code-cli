@@ -833,7 +833,7 @@
             ],
             "additionalProperties": false
           },
-          "description": "Command configuration, see https://github.com/paneotech-dev/rafiki-code-cli/commands"
+          "description": "Command configuration, see https://github.com/paneotech-dev/rafiki-code-cli"
         },
         "skills": {
           "type": "object",
@@ -1037,7 +1037,7 @@
           "additionalProperties": {
             "$ref": "#/$defs/AgentConfig"
           },
-          "description": "Agent configuration, see https://github.com/paneotech-dev/rafiki-code-cli/agents"
+          "description": "Agent configuration, see https://github.com/paneotech-dev/rafiki-code-cli"
         },
         "provider": {
           "type": "object",
