@@ -74,6 +74,7 @@ describe("whenConnected", () => {
       for await (const event of events.stream) seen.push(event)
     })()
     await connected
+    await Bun.sleep(10)
     expect(seen).toEqual(["server.connected"])
     release()
     await reading
@@ -155,26 +156,30 @@ describe("run --attach against rafikicode serve", () => {
       stderr: "pipe",
       env: env(extra),
     })
-    const reader = proc.stdout.getReader()
     let text = ""
+    const decoder = new TextDecoder()
+    void (async () => {
+      for await (const chunk of proc.stdout as unknown as AsyncIterable<Uint8Array>) text += decoder.decode(chunk)
+    })()
+    void (async () => {
+      for await (const chunk of proc.stderr as unknown as AsyncIterable<Uint8Array>) text += decoder.decode(chunk)
+    })()
     const deadline = Date.now() + 60_000
-    while (!text.includes("listening on") && Date.now() < deadline) {
-      const chunk = await reader.read()
-      if (chunk.done) break
-      text += new TextDecoder().decode(chunk.value)
-    }
-    reader.releaseLock()
+    while (!text.includes("listening on") && proc.exitCode === null && Date.now() < deadline) await Bun.sleep(100)
     expect(text).toContain(`listening on http://127.0.0.1:${port}`)
     return {
       url: `http://127.0.0.1:${port}`,
       stop: async () => {
         proc.kill()
+        const timer = setTimeout(() => proc.kill(9), 10_000)
         await proc.exited
+        clearTimeout(timer)
       },
     }
   }
 
   async function run(args: string[], extra: Record<string, string | undefined> = {}) {
+    const started = Date.now()
     const proc = Bun.spawn(["bun", "run", path.join(root, "src/index.ts"), "run", "--model", "rafiki/rafiki-fast", ...args], {
       cwd: home,
       stdin: "ignore",
@@ -182,8 +187,12 @@ describe("run --attach against rafikicode serve", () => {
       stderr: "pipe",
       env: env(extra),
     })
+    const timer = setTimeout(() => proc.kill(9), 90_000)
     const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])
-    return { exitCode: await proc.exited, stdout, stderr }
+    const exitCode = await proc.exited
+    clearTimeout(timer)
+    if (exitCode !== 0) console.error(`run ${args.join(" ")}: exit ${exitCode} after ${Date.now() - started} ms\n${stdout}\n${stderr}`)
+    return { exitCode, stdout, stderr }
   }
 
   test("a server without a password: the answer is printed, JSON has a text event", async () => {
@@ -196,7 +205,7 @@ describe("run --attach against rafikicode serve", () => {
       const json = await run(["--attach", server.url, "--format", "json", "say it"])
       expect(json.exitCode).toBe(0)
       const events = json.stdout.trim().split("\n").map((line) => JSON.parse(line))
-      const texts = events.filter((event) => event.type === "text").map((event) => event.part.text)
+      const texts = events.filter((event) => event.type === "text").map((event) => event.part.text.trim())
       expect(texts).toContain("attached-answer")
       expect(json.stdout + json.stderr).not.toContain(KEY)
     } finally {
