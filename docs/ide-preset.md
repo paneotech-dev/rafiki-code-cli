@@ -39,4 +39,4 @@ Ask Cline something small ("summarize this file") and watch the Console: the req
 ## Notes
 
 - Cline sends its own system prompt and tool definitions; it does not read your `AGENTS.md`. Put the same conventions in Cline's custom instructions setting if you want parity with the CLI.
-- Other editors and tools with an OpenAI compatible provider setting work the same way: base URL, key, alias. Only Cline is documented here because it is the preset we test.
+- Other editors and tools with an OpenAI compatible provider setting work the same way: base URL, key, alias. Zed, JetBrains IDEs and Aider are covered on [Using Rafiki Code from your editor](./ide.md), including the full Rafiki Code agent through ACP.

@@ -101,8 +101,10 @@ Put an `AGENTS.md` at the root of your repository (or in any subdirectory) and `
 - [Configuration](./docs/configuration.md): files, keys, environment variables.
 - [Headless and CI](./docs/headless-and-ci.md): server keys, non-interactive runs, `rafikicode doctor`, exit codes, budget exhaustion, pipeline examples.
 - [Pull request review](./docs/review-recipe.md): review a diff from the terminal, or every pull request with the bundled GitHub Action.
+- [GitHub Action recipe](./docs/github-action.md): one workflow file that reviews every pull request and posts a comment.
 - [MCP: n8n and Dify](./docs/mcp-rafiki-services.md): give the agent tools from your n8n workflows and Dify apps.
-- [IDE preset](./docs/ide-preset.md): Cline pointed at the gateway with a Rafiki key.
+- [Editors](./docs/ide.md): the Rafiki Code agent in Zed and JetBrains IDEs through ACP, and presets for Cline, the Zed agent panel, JetBrains AI Assistant and Aider.
+- [IDE preset](./docs/ide-preset.md): Cline pointed at the gateway with a Rafiki key, field by field.
 - [Troubleshooting](./docs/troubleshooting.md): messages, causes, fixes.
 
 `rafikicode serve --port 4096` starts the HTTP server for editors and automation; `rafikicode --help` lists every command.
