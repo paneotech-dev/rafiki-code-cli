@@ -305,6 +305,13 @@ export function projectConfig<T>(source: string, data: T, where = path.dirname(s
     }
   }
 
+  // The provider scope is user level at most (providerScope below).
+  if (data.enabled_providers !== undefined && !Brand.providers.testing()) {
+    if (!sameList(data.enabled_providers, Brand.providers.enabled))
+      Trust.warnOnce(`scope:${source}`, scopeWarning(`enabled_providers in ${source}`))
+    delete data.enabled_providers
+  }
+
   // Agent and mode options reach the request body whether or not the file also
   // configures a provider.
   if (!trustedWorkspace) {
@@ -389,6 +396,49 @@ export function projectConfig<T>(source: string, data: T, where = path.dirname(s
       `Warning: ignored ${programs.join(", ")} in ${source}: a headless run starts no programs and takes no permission grants from an untrusted workspace; ${Trust.untrustedHint(where)}.`,
     )
   }
+  return data
+}
+
+function sameList(value: unknown, list: readonly string[]) {
+  return Array.isArray(value) && value.length === list.length && value.every((item, i) => item === list[i])
+}
+
+function scopeWarning(what: string) {
+  return `Warning: ignored ${what}: ${Brand.name} runs on ${Brand.provider.name} models only (${Brand.models.join(", ")}). Run ${Brand.name} models to see them.`
+}
+
+// Applied once to the fully merged config (config.ts), after every source:
+// only the providers in Brand.providers.enabled are offered, whatever a user,
+// managed, env or remote config asked for, and the upstream hosted providers
+// stay disabled. With Brand.providers.userOverride on, the list trusted
+// sources chose is kept instead (projects never set it, projectConfig above).
+export function providerScope<T>(data: T): T {
+  if (!isRecord(data) || Brand.providers.testing()) return data
+  const config: Json = data
+  const disabled = Array.isArray(config.disabled_providers) ? config.disabled_providers : []
+  config.disabled_providers = [...new Set([...disabled, ...Brand.disabledProviders])]
+  if (Brand.providers.userOverride && Array.isArray(config.enabled_providers)) return data
+  if (config.enabled_providers !== undefined && !sameList(config.enabled_providers, Brand.providers.enabled))
+    Trust.warnOnce("scope:user", scopeWarning("enabled_providers in your configuration"))
+  config.enabled_providers = [...Brand.providers.enabled]
+  // A model setting naming another provider would fail every session with
+  // "model not found"; without it the Rafiki default applies.
+  const outside: string[] = []
+  const models = (record: Json, at: string) => {
+    for (const field of ["model", "small_model"]) {
+      const value = record[field]
+      if (typeof value !== "string" || Brand.providers.enabled.some((id) => value.startsWith(`${id}/`))) continue
+      outside.push(`${at}${field} ${value}`)
+      delete record[field]
+    }
+  }
+  models(config, "")
+  for (const kind of ["agent", "mode"]) {
+    const entries = config[kind]
+    if (!isRecord(entries)) continue
+    for (const [name, entry] of Object.entries(entries)) if (isRecord(entry)) models(entry, `${kind}.${name}.`)
+  }
+  if (outside.length) Trust.warnOnce(`scope:model:${outside.join(",")}`, scopeWarning(`${outside.join(", ")} in your configuration`))
   return data
 }
 

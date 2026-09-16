@@ -8,7 +8,7 @@ import { existsSync } from "fs"
 import { logo, plain } from "./wordmark"
 import { houseStyle } from "./house-style"
 import * as Credentials from "./credentials"
-import { InstallationChannel, InstallationVersion } from "../installation/version"
+import { InstallationChannel, InstallationLocal, InstallationVersion } from "../installation/version"
 
 const gatewayDefault = "https://gateway.rafikiai.io/v1"
 const consoleDefault = "https://console.rafikiai.io"
@@ -201,6 +201,35 @@ export const Brand = {
   // without a key shows no upstream model names, and every model goes
   // through the gateway.
   disabledProviders: ["opencode", "opencode-go"],
+  // Provider scope (docs/security/provider-scope.md). The official binary
+  // offers only the rafiki provider: enabled_providers is set to this list
+  // after every config source is merged (guard.ts providerScope), so a user,
+  // project, managed or env config cannot widen it. This is product scope,
+  // not a security control: a rebuilt binary can drop it, and the gateway is
+  // what refuses keys the Console did not mint.
+  providers: {
+    enabled: [providerID] as readonly string[],
+    // The one escape hatch. When true, enabled_providers and
+    // disabled_providers from user level config (~/.rafikicode/config.json,
+    // OPENCODE_CONFIG, OPENCODE_CONFIG_CONTENT, managed config) are honoured,
+    // the upstream providers command is registered again, and a run or the
+    // terminal interface may start without a Rafiki key. Project config never
+    // widens the scope. Off in the official build; a build time choice, open
+    // for Julien (memo D5).
+    userOverride: false,
+    // Test affordance, not a user setting: the upstream test suites configure
+    // their own providers, so a source run (no release channel compiled in)
+    // with RAFIKICODE_TEST_PROVIDER_SCOPE=off behaves as if userOverride were
+    // on. Every built binary has a channel and ignores the variable.
+    testEnv: "RAFIKICODE_TEST_PROVIDER_SCOPE",
+    testing() {
+      return InstallationLocal && process.env[Brand.providers.testEnv] === "off"
+    },
+    // True when the scope is open: the escape hatch, or the test affordance.
+    open() {
+      return Brand.providers.userOverride || Brand.providers.testing()
+    },
+  },
   env: {
     // Headless and CI key. Takes precedence over the stored credential.
     apiKey: "RAFIKICODE_API_KEY",
@@ -402,8 +431,10 @@ export const Brand = {
   // Built in defaults seeded under the user's global config. Anything the user
   // writes to ~/.rafikicode/config.json or a project config overrides these.
   // The gateway provider is registered once a credential exists; upstream
-  // hosted providers are disabled either way, so an install without a key
-  // offers no model and the interface points at rafikicode login.
+  // hosted providers are disabled either way, and the provider scope
+  // (providers above, applied to the merged config) enables only rafiki, so
+  // an install without a key offers no model and the interface points at
+  // rafikicode login.
   config() {
     if (Brand.sessionKeyRefusedInCI()) {
       warnOnce(

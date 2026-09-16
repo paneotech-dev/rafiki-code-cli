@@ -613,7 +613,7 @@ const layer = Layer.effect(
         }
 
         return {
-          config: result,
+          config: BrandGuard.providerScope(result),
           directories,
           deps,
           consoleState: {

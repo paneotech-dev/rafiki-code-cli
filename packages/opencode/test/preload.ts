@@ -42,6 +42,10 @@ process.env["OPENCODE_EXPERIMENTAL_WORKSPACES"] = "true"
 // trust them, so those suites keep testing upstream loading. The workspace
 // trust tests (test/rafiki) remove this to test untrusted workspaces.
 process.env["RAFIKICODE_TRUST_WORKSPACE"] = "1"
+// Upstream suites configure their own providers (test/test-model, openai,
+// anthropic): open the provider scope for source runs. The provider scope
+// tests (test/brand/provider-scope.test.ts) remove this.
+process.env["RAFIKICODE_TEST_PROVIDER_SCOPE"] = "off"
 
 // Set test home directory to isolate tests from user's actual home directory
 // This prevents tests from picking up real user configs/skills from ~/.claude/skills
