@@ -54,7 +54,7 @@ function View(props: { api: TuiPluginApi; sessionID: string }) {
                 ✕
               </text>
             </box>
-            <text fg={theme().textMuted}>Run {Brand.name} login to use your Rafiki Console credits.</text>
+            <text fg={theme().textMuted}>Run {Brand.name} login to use the credits of your Rafiki AI account.</text>
             <text fg={theme().textMuted}>
               Connect from 75+ providers to use other models, including Claude, GPT, Gemini etc
             </text>

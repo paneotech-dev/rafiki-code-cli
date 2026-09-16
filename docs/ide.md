@@ -117,7 +117,7 @@ The command prints a code and a link; approve the code at https://console.rafiki
 
 Editors that support terminal sign in also offer a "Login with Rafiki Code" action (ACP method id `rafikicode-login`; the older id `opencode-login` is still accepted). It runs `rafikicode login --surface ide` in a terminal, naming `rafikicode` by the full path of the running binary, so it works when the editor's `PATH` lacks `~/.rafikicode/bin`. `--surface ide` makes the key list of the Rafiki AI console show the key as an editor sign in; the same stored key serves your terminals too. If the action reports a problem, run `rafikicode login` yourself in a terminal instead.
 
-Until you sign in, the agent starts but cannot open a thread: it answers `Authentication required: Rafiki Code needs a Rafiki Console account. ...` (ACP error `auth_required`, code -32000), which editors show as a prompt to sign in. Sign in, or give the agent a key, then start a new thread.
+Until you sign in, the agent starts but cannot open a thread: it answers `Authentication required: Rafiki Code needs a Rafiki AI account. ...` (ACP error `auth_required`, code -32000), which editors show as a prompt to sign in. Sign in, or give the agent a key, then start a new thread.
 
 To give the agent an API key instead of a sign in:
 

@@ -108,7 +108,7 @@ describe("doctor checks", () => {
     expect(byName(report, "key").detail).toBe(`key ${token.key_alias}, spent 0 USD of 2.5 USD budget, no expiry`)
     expect(byName(report, "tiers").detail).toBe("rafiki-fast, rafiki-pro, rafiki-max")
     expect(byName(report, "console").detail).toContain("account Jane jane@example.com")
-    expect(byName(report, "console").detail).toContain("wallet 12.4 USD available")
+    expect(byName(report, "console").detail).toContain("credits 12.4 USD available")
     expect(byName(report, "version").detail).toBe("rafikicode 1.2.3, latest channel, installed by the installer script, rafikicode update applies")
     const text = report.lines.map(Doctor.format).join("\n")
     expect(text).not.toContain(token.access_token)
@@ -147,11 +147,11 @@ describe("doctor checks", () => {
     // accepts: a warning that it is not registered, not a revoked key, and doctor passes.
     expect(byName(report, "console")).toMatchObject({ status: "warn" })
     expect(byName(report, "console").detail).toContain("does not know this key (401)")
-    expect(byName(report, "console").fix).toContain("This key is valid at the gateway but not registered in Rafiki Console (created outside the Console)")
+    expect(byName(report, "console").fix).toContain("This key is valid at the gateway but not registered in the Rafiki AI console (it was created outside the console)")
     expect(byName(report, "console").fix).toContain("rafikicode login")
     expect(byName(report, "console").fix).not.toContain("revoked")
     expect(byName(report, "console").note).toBe(
-      `Usage still works and is metered at the gateway. Console features such as the wallet view and key management do not apply to this key; create a key at ${console_!.url}/keys to get them.`,
+      `Usage still works and is metered at the gateway. The credit balance and key management of the Rafiki AI console do not apply to this key; create a key at ${console_!.url}/keys to get them.`,
     )
     expect(byName(report, "console").network).toBeUndefined()
     expect(report).toMatchObject({ ok: true, failed: 0, warned: 1, exitCode: 0 })
@@ -215,7 +215,7 @@ describe("doctor checks", () => {
     fs.writeFileSync(path.join(dir, "config.json"), '{ "model": "openai/gpt-x" }\n')
     const other = Doctor.checkConfig(dir)
     expect(other.status).toBe("ok")
-    expect(other.detail).toContain("not metered by the wallet")
+    expect(other.detail).toContain("not metered on your Rafiki AI account")
   })
 
   test("a revoked key, a spent budget, and a key without tiers each fail with the Console link", async () => {
@@ -457,8 +457,8 @@ describe("rafikicode doctor as a subprocess", () => {
     })
     expect(registered.status).toBe(200)
     const keys = `${console_!.url}/keys`
-    const explanation = `This key is valid at the gateway but not registered in Rafiki Console (created outside the Console). Create a key at ${keys}, or run rafikicode login.`
-    const meaning = `Usage still works and is metered at the gateway. Console features such as the wallet view and key management do not apply to this key; create a key at ${keys} to get them.`
+    const explanation = `This key is valid at the gateway but not registered in the Rafiki AI console (it was created outside the console). Create a key at ${keys}, or run rafikicode login.`
+    const meaning = `Usage still works and is metered at the gateway. The credit balance and key management of the Rafiki AI console do not apply to this key; create a key at ${keys} to get them.`
 
     const doctor = await run({ RAFIKICODE_API_KEY: "sk-gateway-only-stub", CI: "1" })
     expect(doctor.exitCode).toBe(0)
@@ -488,11 +488,11 @@ describe("a Console 401", () => {
     const unknown = await Doctor.checkConsole("https://console.example", "sk-stub", {}, unauthorized, 1_000, true)
     expect(unknown.status).toBe("warn")
     expect(unknown.detail).toBe("https://console.example does not know this key (401)")
-    expect(unknown.fix).toContain("This key is valid at the gateway but not registered in Rafiki Console (created outside the Console)")
+    expect(unknown.fix).toContain("This key is valid at the gateway but not registered in the Rafiki AI console (it was created outside the console)")
     expect(unknown.fix).toContain("https://console.example/keys")
     expect(unknown.note).toBe(Doctor.notRegisteredMeaning("https://console.example"))
     expect(unknown.note).toContain("Usage still works and is metered at the gateway")
-    expect(unknown.note).toContain("wallet view and key management do not apply to this key")
+    expect(unknown.note).toContain("credit balance and key management of the Rafiki AI console do not apply to this key")
     expect(Doctor.format(unknown)).toBe(
       "WARN  console     https://console.example does not know this key (401). Fix: " +
         Doctor.notRegistered("https://console.example") +
@@ -517,7 +517,7 @@ describe("a Console 401", () => {
       expect(line).toMatchObject({
         status: "fail",
         detail: `https://console.example answered ${status}`,
-        fix: "The Console is having trouble. Try again shortly.",
+        fix: "The Rafiki AI console is having trouble. Try again shortly.",
       })
     }
   })

@@ -47,11 +47,11 @@ Run the installer without `--version` to get the latest release.
 
 **`doctor` shows `WARN  console ... does not know this key (401)`, while tasks run.** The key works at the gateway, but the Rafiki AI console does not know it (it was created outside the console). `doctor` adds that usage still works and is metered at the gateway, ends with `All checks passed, 1 warning, see the line marked WARN.` and exits 0. `whoami` prints the same explanation and exits 2. Create a key in the Rafiki AI console at [console.rafikiai.io/keys](https://console.rafikiai.io/keys) with the Rafiki Code option ticked, or run `rafikicode login`. If the `key` line fails too, the key really is revoked or spent, and both commands say `revoked or has expired`.
 
-**`run` or the terminal interface stops at once with `Rafiki Code needs a Rafiki Console account.`** No credential is available:
+**`run` or the terminal interface stops at once with `Rafiki Code needs a Rafiki AI account.`** No credential is available:
 
 ```text
-Error: Rafiki Code needs a Rafiki Console account. Create one at https://console.rafikiai.io, then run: rafikicode login
-On a server or in CI, create a server key at https://console.rafikiai.io/keys and set RAFIKICODE_API_KEY.
+Error: Rafiki Code needs a Rafiki AI account. Create one in the Rafiki AI console (https://console.rafikiai.io), then run: rafikicode login
+On a server or in CI, create an API key at https://console.rafikiai.io/keys with the Rafiki Code option ticked, and set RAFIKICODE_API_KEY.
 ```
 
 Sign in with `rafikicode login`, or set `RAFIKICODE_API_KEY`, and check that `rafikicode doctor` shows `ok credential`. Exit code 2.

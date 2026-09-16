@@ -98,7 +98,7 @@ export const LoginCommand = effectCmd({
     yargs
       .option("label", {
         type: "string",
-        describe: "name shown on the approval page and in the Console key list",
+        describe: "name shown on the approval page and in the key list of the Rafiki AI console",
       })
       .option("refresh", {
         type: "boolean",
@@ -166,7 +166,7 @@ export const LoginCommand = effectCmd({
 
     const token = yield* tryFlow(
       DeviceFlow.pollToken(c, code, {
-        onSlowDown: ({ interval }) => UI.println(`${UI.Style.TEXT_DIM}Console asked to slow down; polling every ${interval} s.${UI.Style.TEXT_NORMAL}`),
+        onSlowDown: ({ interval }) => UI.println(`${UI.Style.TEXT_DIM}The Rafiki AI console asked to slow down; polling every ${interval} s.${UI.Style.TEXT_NORMAL}`),
         onRateLimited: ({ retryAfter }) => UI.println(`${UI.Style.TEXT_DIM}Rate limited; retrying in ${retryAfter} s.${UI.Style.TEXT_NORMAL}`),
       }),
     )
@@ -223,12 +223,12 @@ export const LogoutCommand = effectCmd({
         Effect.catch((cause) => {
           const message = cause instanceof Error ? cause.message : String(cause)
           UI.println(
-            `${UI.Style.TEXT_WARNING}Could not revoke the key at the Console (${message}). Revoke it at ${Brand.consoleFor(existing.console_url)}${Contract.PATH.keysPage}.${UI.Style.TEXT_NORMAL}`,
+            `${UI.Style.TEXT_WARNING}Could not revoke the key in the Rafiki AI console (${message}). Revoke it at ${Brand.consoleFor(existing.console_url)}${Contract.PATH.keysPage}.${UI.Style.TEXT_NORMAL}`,
           )
           return Effect.succeed(false)
         }),
       )
-      if (revoked) UI.println(`Revoked key ${existing.key_alias ?? existing.key_id} at the Console.`)
+      if (revoked) UI.println(`Revoked key ${existing.key_alias ?? existing.key_id} in the Rafiki AI console.`)
     }
     Credentials.remove(dir)
     UI.println(`Removed ${Credentials.file(dir)}. Signed out.`)
@@ -243,7 +243,7 @@ export const WhoamiCommand = effectCmd({
     yargs.option("offline", {
       type: "boolean",
       default: false,
-      describe: "print the stored credential without asking the Console",
+      describe: "print the stored credential without asking the Rafiki AI console",
     }),
   handler: Effect.fn("Cli.rafiki.whoami")(function* (args) {
     const envKey = process.env[Brand.env.apiKey]
@@ -285,7 +285,7 @@ export const WhoamiCommand = effectCmd({
             )
           }
           const message = cause instanceof Error ? cause.message : String(cause)
-          UI.println(`${UI.Style.TEXT_DIM}Could not load the account from the Console (${message}).${UI.Style.TEXT_NORMAL}`)
+          UI.println(`${UI.Style.TEXT_DIM}Could not load the account from the Rafiki AI console (${message}).${UI.Style.TEXT_NORMAL}`)
           return Effect.succeed(undefined)
         }),
       )
@@ -296,7 +296,7 @@ export const WhoamiCommand = effectCmd({
             `Key: ${remote.key.alias ?? "(no alias)"}${remote.key.name ? ` "${remote.key.name}"` : ""}${remote.key.kind ? ` (${remote.key.kind})` : ""}${remote.key.expires_at ? `, expires ${remote.key.expires_at}` : ""}`,
           )
         }
-        if (remote.wallet?.balance_usd != null) UI.println(`Wallet: ${remote.wallet.balance_usd} USD available`)
+        if (remote.wallet?.balance_usd != null) UI.println(`Credits: ${remote.wallet.balance_usd} USD available`)
         if (remote.limits?.max_budget_usd != null) {
           UI.println(`Key budget: ${remote.limits.spend_usd ?? 0} of ${remote.limits.max_budget_usd} USD used`)
         }
@@ -305,7 +305,7 @@ export const WhoamiCommand = effectCmd({
       }
     }
     if (envKey) {
-      UI.println("Account: a server key from the environment (details are on the Console key page).")
+      UI.println("Account: a server key from the environment (details are on the key page of the Rafiki AI console).")
       return
     }
     UI.println(`Account: ${describeOwner(stored!.owner)}`)
@@ -386,7 +386,7 @@ export const ProvidersCommand = Brand.providers.open() ? UpstreamProvidersComman
 // One line per check, ok, a warning, or a plain fix hint; exit 0 unless a line failed.
 export const DoctorCommand = effectCmd({
   command: "doctor",
-  describe: `check this terminal's ${Brand.product} setup: config, key, gateway, tiers, Console, version`,
+  describe: `check this terminal's ${Brand.product} setup: config, key, gateway, tiers, Rafiki AI console, version`,
   instance: false,
   builder: (yargs: Argv) =>
     yargs.option("timeout", {

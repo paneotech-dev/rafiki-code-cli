@@ -217,7 +217,7 @@ export function Prompt(props: PromptProps) {
   function promptModelWarning() {
     toast.show({
       variant: "warning",
-      message: `Run ${Brand.name} login to use your Rafiki Console credits, or connect a provider`,
+      message: `Run ${Brand.name} login to use the credits of your Rafiki AI account, or connect a provider`,
       duration: 3000,
     })
     if (sync.data.provider.length === 0) {

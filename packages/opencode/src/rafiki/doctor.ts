@@ -121,7 +121,7 @@ export function checkConfig(dir: string): Line {
   const model = typeof data.model === "string" ? data.model : undefined
   const note = model ? ` (model ${model})` : ""
   if (model && !model.startsWith(`${Brand.provider.id}/`)) {
-    return ok("config", `${file}${note}, a model outside the ${Brand.provider.name} gateway is not metered by the wallet`)
+    return ok("config", `${file}${note}, a model outside the ${Brand.provider.name} gateway is not metered on your Rafiki AI account`)
   }
   return ok("config", `${file}${note}`)
 }
@@ -232,12 +232,12 @@ export function gatewayAccepts(result: KeyResult, now: number) {
 // For a key the gateway accepts while the Console answers 401: minted directly
 // at the gateway, not revoked.
 export function notRegistered(consoleURL: string) {
-  return `This key is valid at the gateway but not registered in Rafiki Console (created outside the Console). Create a key at ${keysPage(consoleURL)}, or run ${Brand.name} login.`
+  return `This key is valid at the gateway but not registered in the Rafiki AI console (it was created outside the console). Create a key at ${keysPage(consoleURL)}, or run ${Brand.name} login.`
 }
 
 // What such a key means in practice: runs work, the Console cannot show it.
 export function notRegisteredMeaning(consoleURL: string) {
-  return `Usage still works and is metered at the gateway. Console features such as the wallet view and key management do not apply to this key; create a key at ${keysPage(consoleURL)} to get them.`
+  return `Usage still works and is metered at the gateway. The credit balance and key management of the Rafiki AI console do not apply to this key; create a key at ${keysPage(consoleURL)} to get them.`
 }
 
 // Key types by gateway alias. Keys made for Rafiki Code (sign-in keys, and
@@ -385,8 +385,8 @@ export async function checkConsole(
     const data = await body(response)
     const owner = data?.owner
     const who = owner ? [owner.name, owner.email].filter(Boolean).join(" ") || owner.id : undefined
-    const wallet = data?.wallet?.balance_usd != null ? `, wallet ${money(data.wallet.balance_usd)} USD available` : ""
-    return ok("console", `${consoleURL}${who ? `, account ${who}` : ""}${wallet}`)
+    const credits = data?.wallet?.balance_usd != null ? `, credits ${money(data.wallet.balance_usd)} USD available` : ""
+    return ok("console", `${consoleURL}${who ? `, account ${who}` : ""}${credits}`)
   }
   if (response.status === 401) {
     if (!key) return ok("console", `${consoleURL} reachable, not signed in`)
@@ -396,7 +396,7 @@ export async function checkConsole(
     }
     return fail("console", `${consoleURL} does not accept this key (401)`, Contract.MESSAGE[Contract.ERROR.keyRevoked]!)
   }
-  if (response.status >= 500) return fail("console", `${consoleURL} answered ${response.status}`, "The Console is having trouble. Try again shortly.")
+  if (response.status >= 500) return fail("console", `${consoleURL} answered ${response.status}`, "The Rafiki AI console is having trouble. Try again shortly.")
   return ok("console", `${consoleURL} reachable (${response.status})`)
 }
 

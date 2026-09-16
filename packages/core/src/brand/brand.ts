@@ -479,7 +479,7 @@ export const Brand = {
   config() {
     if (Brand.sessionKeyRefusedInCI()) {
       warnOnce(
-        `${Brand.product}: CI is set, so the stored browser sign-in is not used. Create a server key at ${Brand.consoleURL()}/keys and set ${Brand.env.apiKey}.`,
+        `${Brand.product}: CI is set, so the stored browser sign-in is not used. Create an API key at ${Brand.consoleURL()}/keys with the Rafiki Code option ticked, and set ${Brand.env.apiKey}.`,
       )
       return { autoupdate: false as const, disabled_providers: [...Brand.disabledProviders] }
     }

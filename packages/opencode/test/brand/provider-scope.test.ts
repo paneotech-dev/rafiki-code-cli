@@ -18,8 +18,8 @@ const root = path.resolve(import.meta.dir, "../..")
 const scopeEnv = Brand.providers.testEnv
 const stubKey = "sk-stub-rafiki-scope-0001"
 const noKeyLines = [
-  "Rafiki Code needs a Rafiki Console account. Create one at https://console.rafikiai.io, then run: rafikicode login",
-  "On a server or in CI, create a server key at https://console.rafikiai.io/keys and set RAFIKICODE_API_KEY.",
+  "Rafiki Code needs a Rafiki AI account. Create one in the Rafiki AI console (https://console.rafikiai.io), then run: rafikicode login",
+  "On a server or in CI, create an API key at https://console.rafikiai.io/keys with the Rafiki Code option ticked, and set RAFIKICODE_API_KEY.",
 ]
 const outOfScopeLine = "rafikicode runs on Rafiki models only (rafiki-fast, rafiki-pro, rafiki-max). Run rafikicode models to see them."
 

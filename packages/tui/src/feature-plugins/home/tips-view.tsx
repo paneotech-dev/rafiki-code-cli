@@ -69,7 +69,7 @@ function parse(tip: string): TipPart[] {
   return parts
 }
 
-const NO_MODELS_TIP = `Run {highlight}${Brand.name} login{/highlight} to use your Rafiki Console credits and start coding`
+const NO_MODELS_TIP = `Run {highlight}${Brand.name} login{/highlight} to use the credits of your Rafiki AI account and start coding`
 const NO_MODELS_PARTS = parse(NO_MODELS_TIP)
 
 function shortcutText(value: string) {
