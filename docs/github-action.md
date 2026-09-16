@@ -17,13 +17,13 @@ Both do the same work and need the same secret and variables.
 
    | variable | value |
    |---|---|
-   | `RAFIKICODE_VERSION` | a release number, for example `0.1.1` |
+   | `RAFIKICODE_VERSION` | a release number, for example `0.1.4` |
    | `RAFIKICODE_SHA256` | the line for `rafikicode-linux-x64.tar.gz` from that release's `SHA256SUMS` file |
 
    Get the line with:
 
    ```bash
-   curl -fsSL https://github.com/paneotech-dev/rafiki-code-cli/releases/download/v0.1.1/SHA256SUMS | grep ' rafikicode-linux-x64.tar.gz$'
+   curl -fsSL https://github.com/paneotech-dev/rafiki-code-cli/releases/download/v0.1.4/SHA256SUMS | grep ' rafikicode-linux-x64.tar.gz$'
    ```
 
    The job downloads exactly that archive and stops if its hash differs, so a changed release file can never run in your pipeline. Update both variables together when you move to a new release.

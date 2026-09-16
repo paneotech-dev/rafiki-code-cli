@@ -10,7 +10,7 @@
 # Setup, once per repository (Settings, Secrets and variables, Actions):
 #   secret    RAFIKICODE_API_KEY  a key from console.rafikiai.io/keys, created
 #                                 with the Rafiki Code option ticked
-#   variable  RAFIKICODE_VERSION  a release number, for example 0.1.1
+#   variable  RAFIKICODE_VERSION  a release number, for example 0.1.4
 #   variable  RAFIKICODE_SHA256   the hash of rafikicode-linux-x64.tar.gz from
 #                                 that release's SHA256SUMS file
 #

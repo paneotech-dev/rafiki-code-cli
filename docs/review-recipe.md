@@ -44,7 +44,7 @@ Setup, once per repository:
 
 1. In the Rafiki AI console at [console.rafikiai.io/keys](https://console.rafikiai.io/keys), create a key and tick the Rafiki Code option. Name it after the repository, choose the tiers the review may use, and give it a budget you are comfortable spending on reviews per month. A key never spends more than its budget or the credits in your Rafiki AI account.
 2. Store the key as the repository secret `RAFIKICODE_API_KEY`.
-3. Pick the `rafikicode` release to run and store two repository variables: `RAFIKICODE_VERSION` (for example `0.1.1`) and `RAFIKICODE_SHA256`, the `rafikicode-linux-x64.tar.gz` line from that release's `SHA256SUMS` (paste several lines if your runners differ). The action refuses to run without both.
+3. Pick the `rafikicode` release to run and store two repository variables: `RAFIKICODE_VERSION` (for example `0.1.4`) and `RAFIKICODE_SHA256`, the `rafikicode-linux-x64.tar.gz` line from that release's `SHA256SUMS` (paste several lines if your runners differ). The action refuses to run without both.
 4. Copy `.github/workflows/rafikicode-review.example.yml` to `.github/workflows/rafikicode-review.yml` and commit it. When you use the action from another repository, change `uses:` to the published reference pinned by full commit SHA, for example `paneotech-dev/rafiki-code-cli/.github/actions/rafikicode-review@<commit sha>`. A tag can be moved to other code later; a commit SHA cannot, and it also pins the install script the action runs.
 
 What the action does on each pull request:
@@ -62,7 +62,7 @@ Inputs, all optional except `api-key`, `version` and `sha256`:
 | `api-key` | required | the Rafiki AI key, from a secret |
 | `model` | `rafiki/rafiki-fast` | tier for the review |
 | `pr-number` | the triggering pull request | which pull request to review |
-| `version` | required | `rafikicode` release to install, for example `0.1.1` |
+| `version` | required | `rafikicode` release to install, for example `0.1.4` |
 | `sha256` | required | the archive hash, or `SHA256SUMS` lines, for that release |
 | `prompt` | built in review prompt | your own instructions; the diff is appended |
 | `max-diff-lines` | `4000` | cut the diff here and say so in the comment |

@@ -34,7 +34,7 @@ inputs:
     required: false
     default: "rafiki/rafiki-fast"
   version:
-    description: "rafikicode release to install, for example 0.1.0. Required: the action never installs an unpinned latest release."
+    description: "rafikicode release to install, for example 0.1.4. Required: the action never installs an unpinned latest release."
     required: true
     default: ""
   sha256:

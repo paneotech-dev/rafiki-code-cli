@@ -44,13 +44,13 @@ describe("schema URL", () => {
     expect(Brand.schema.broken.tui).toBe(`${base}/main/schema/tui.json`)
   })
 
-  // The published v0.1.1 tag points at this commit. It is checked by commit and
+  // The published v0.1.4 tag points at this commit. It is checked by commit and
   // not by tag name: a clone that also fetched upstream tags holds an unrelated
-  // v0.1.1. Skipped in shallow clones that lack the commit.
-  const fallbackCommit = "bcc2511c313088bc5374c4c92f44afc43c955b40"
+  // v0.1.4. Skipped in shallow clones that lack the commit.
+  const fallbackCommit = "1ba22868a8f0b668072ed02b79ae6a3f17f70d6b"
   const present = Bun.spawnSync(["git", "cat-file", "-e", `${fallbackCommit}^{commit}`], { cwd: repo }).success
   test.skipIf(!present)("the fallback tag commit carries both schema files", () => {
-    expect(Brand.schema.fallbackTag).toBe("v0.1.1")
+    expect(Brand.schema.fallbackTag).toBe("v0.1.4")
     for (const file of ["schema/config.json", "schema/tui.json"]) {
       const proc = Bun.spawnSync(["git", "cat-file", "-e", `${fallbackCommit}:${file}`], { cwd: repo })
       expect(proc.success).toBe(true)

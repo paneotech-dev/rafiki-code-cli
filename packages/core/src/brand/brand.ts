@@ -116,7 +116,7 @@ function consoleAllowed(value: string | undefined) {
 // are not a release (local runs, 0.0.0 snapshots, other channels) point at
 // schemaFallbackTag, a published tag, so their URL resolves as well.
 const schemaBase = "https://raw.githubusercontent.com/paneotech-dev/rafiki-code-cli"
-const schemaFallbackTag = "v0.1.1"
+const schemaFallbackTag = "v0.1.4"
 const releaseVersion = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$/
 type SchemaKind = "config" | "tui"
 
