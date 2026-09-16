@@ -105,7 +105,7 @@ export function make(input: {
       authMethod._meta = {
         "terminal-auth": {
           command: RafikiACP.loginCommand(),
-          args: ["login"],
+          args: RafikiACP.loginArgs(),
           label: `${Brand.product} Login`,
         },
       }

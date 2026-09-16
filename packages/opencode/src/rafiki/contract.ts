@@ -5,7 +5,15 @@
 // that needs editing.
 
 export const CLIENT_ID = "rafikicode"
-export const SURFACE = "cli"
+// Sign in surfaces the Console accepts on a device code request: a terminal
+// (the default) or an editor (ACP terminal auth, the VS Code extension).
+export const SURFACES = ["cli", "ide"] as const
+export type Surface = (typeof SURFACES)[number]
+export const SURFACE: Surface = "cli"
+
+export function isSurface(value: unknown): value is Surface {
+  return typeof value === "string" && (SURFACES as readonly string[]).includes(value)
+}
 export const GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code"
 
 export const TIERS = ["fast", "pro", "max"] as const

@@ -104,8 +104,17 @@ export const LoginCommand = effectCmd({
         type: "boolean",
         default: false,
         describe: "rotate the stored key instead of starting a new sign-in",
+      })
+      .option("surface", {
+        type: "string",
+        default: Contract.SURFACE,
+        describe: "where the key is used: cli for a terminal, ide for an editor",
       }),
   handler: Effect.fn("Cli.rafiki.login")(function* (args) {
+    // Checked here rather than with yargs choices, so the person sees which
+    // value was wrong (exit 2, the contract's usage code).
+    const surface = args.surface
+    if (!Contract.isSurface(surface)) return yield* fail(DeviceFlow.surfaceMessage(surface), Contract.EXIT.usage)
     const dir = Brand.configDir()
     const { stored: existing, unsafe } = storedOrUnsafe()
 
@@ -139,8 +148,8 @@ export const LoginCommand = effectCmd({
     }
 
     const c = DeviceFlow.client()
-    const label = DeviceFlow.deviceLabel(InstallationVersion, args.label)
-    const code = yield* tryFlow(DeviceFlow.requestCode(c, { label }))
+    const label = DeviceFlow.deviceLabel(InstallationVersion, args.label, surface)
+    const code = yield* tryFlow(DeviceFlow.requestCode(c, { label, surface }))
 
     UI.empty()
     UI.println(`Open ${UI.Style.TEXT_HIGHLIGHT_BOLD}${code.verification_uri}${UI.Style.TEXT_NORMAL} in a browser and enter this code:`)

@@ -46,9 +46,14 @@ export function headlessMessage(reason: "key" | "ci" | "tty") {
   return lines.join("\n")
 }
 
-export function deviceLabel(version: string, override?: string) {
-  const label = (override?.trim() || `${Brand.name} ${version} on ${os.hostname()}`).slice(0, Contract.DEVICE_LABEL_MAX)
+export function deviceLabel(version: string, override?: string, surface: Contract.Surface = Contract.SURFACE) {
+  const where = surface === "ide" ? "in an editor on" : "on"
+  const label = (override?.trim() || `${Brand.name} ${version} ${where} ${os.hostname()}`).slice(0, Contract.DEVICE_LABEL_MAX)
   return label
+}
+
+export function surfaceMessage(value: unknown) {
+  return `Unknown sign in surface ${JSON.stringify(value)}. Use --surface ${Contract.SURFACES.join(" or --surface ")}.`
 }
 
 async function parse(response: Response): Promise<{ body: any; error?: Contract.ErrorEnvelope["error"]; ref?: string }> {
@@ -103,9 +108,13 @@ export function client(overrides: Partial<Client> = {}): Client {
 
 export async function requestCode(
   c: Client,
-  input: { label: string; tiers?: readonly string[] },
+  input: { label: string; tiers?: readonly string[]; surface?: Contract.Surface },
 ): Promise<Required<Pick<Contract.DeviceCodeResponse, "device_code" | "user_code" | "verification_uri">> &
   Contract.DeviceCodeResponse & { interval: number; expires_in: number }> {
+  const surface = input.surface ?? Contract.SURFACE
+  if (!Contract.isSurface(surface)) {
+    throw new DeviceFlowError(surfaceMessage(surface), Contract.ERROR.invalidRequest, Contract.EXIT.usage)
+  }
   let response: Response
   try {
     response = await c.fetch(c.consoleURL + Contract.PATH.deviceCode, {
@@ -113,7 +122,7 @@ export async function requestCode(
       headers: { "content-type": "application/json", accept: "application/json" },
       body: JSON.stringify({
         client_id: Contract.CLIENT_ID,
-        surface: Contract.SURFACE,
+        surface,
         device_label: input.label,
         requested_tiers: input.tiers ?? Contract.TIERS,
       }),

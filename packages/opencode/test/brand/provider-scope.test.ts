@@ -277,6 +277,7 @@ describe("acp", () => {
     expect(RafikiACP.loginCommand("/home/u/.rafikicode/bin/rafikicode")).toBe("/home/u/.rafikicode/bin/rafikicode")
     expect(RafikiACP.loginCommand("C:\\Users\\u\\rafikicode.exe".replaceAll("\\", "/"))).toBe("C:/Users/u/rafikicode.exe")
     expect(RafikiACP.loginCommand("/usr/local/bin/bun")).toBe("rafikicode")
+    expect(RafikiACP.loginArgs()).toEqual(["login", "--surface", "ide"])
   })
 
   async function acpSession(extra: Env) {
@@ -323,7 +324,7 @@ describe("acp", () => {
       const init = await acp.request("initialize", { protocolVersion: 1, clientCapabilities: { _meta: { "terminal-auth": true } } })
       expect(init.result.authMethods).toHaveLength(1)
       expect(init.result.authMethods[0].id).toBe("rafikicode-login")
-      expect(init.result.authMethods[0]._meta["terminal-auth"].args).toEqual(["login"])
+      expect(init.result.authMethods[0]._meta["terminal-auth"].args).toEqual(["login", "--surface", "ide"])
       for (const [method, params] of [
         ["authenticate", { methodId: "rafikicode-login" }],
         ["session/new", { cwd: acp.home, mcpServers: [] }],

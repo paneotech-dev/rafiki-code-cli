@@ -37,3 +37,9 @@ export function loginCommand(execPath: string = process.execPath) {
   const base = path.basename(execPath).toLowerCase()
   return base === Brand.name || base === `${Brand.name}.exe` ? execPath : Brand.name
 }
+
+// The arguments of that command: an editor sign in reaches the Console as
+// surface ide, so the key list shows where the key is used.
+export function loginArgs() {
+  return ["login", "--surface", "ide"]
+}
