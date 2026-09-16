@@ -28,6 +28,7 @@ import { FormatError, FormatUnknownError } from "../error"
 import * as RafikiGateway from "@/rafiki/gateway-errors"
 import * as RafikiPermission from "@/rafiki/permission-hint"
 import * as RafikiMissingKey from "@/rafiki/missing-key"
+import * as RafikiAttach from "@/rafiki/attach"
 import { INTERACTIVE_INPUT_ERROR, resolveInteractiveStdin } from "./run/runtime.stdin"
 
 type ModelInput = Parameters<OpencodeClient["session"]["prompt"]>[0]["model"]
@@ -198,12 +199,12 @@ export const RunCommand = effectCmd({
       .option("password", {
         alias: ["p"],
         type: "string",
-        describe: "basic auth password (defaults to OPENCODE_SERVER_PASSWORD)",
+        describe: `basic auth password (defaults to ${Brand.server.env.password})`,
       })
       .option("username", {
         alias: ["u"],
         type: "string",
-        describe: `basic auth username (defaults to OPENCODE_SERVER_USERNAME or '${Brand.name}')`,
+        describe: `basic auth username (defaults to ${Brand.server.env.username} or '${Brand.name}')`,
       })
       .option("dir", {
         type: "string",
@@ -850,12 +851,13 @@ export const RunCommand = effectCmd({
 
         if (!interactive) {
           const events = await client.event.subscribe()
+          const connected = args.attach ? RafikiAttach.whenConnected(events) : undefined
           const completed = loop(client, events).catch((e) => {
             console.error(e)
             process.exitCode = 1
           })
+          await connected
           async function finish() {
-            if (args.attach) return
             const error = await completed
             if (error) process.exitCode = process.exitCode || 1
           }
@@ -961,6 +963,7 @@ export const RunCommand = effectCmd({
       }
 
       if (args.attach) {
+        await RafikiAttach.preflight(args.attach, attachHeaders)
         const sdk = attachSDK(directory)
         return await execute(sdk)
       }
