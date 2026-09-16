@@ -4,7 +4,7 @@ description: "Review a pull request with rafikicode headless and post the result
 # inputs, checked by install.sh next to this file), checks the setup with rafikicode
 # doctor, reads the pull request diff with gh, runs the review on the chosen
 # tier, and posts the result with gh pr comment. Every model call is metered
-# against the key's budget in Rafiki Console. Documented in
+# against the key's budget and the credits of the Rafiki AI account. Documented in
 # docs/review-recipe.md; the example workflow is
 # .github/workflows/rafikicode-review.example.yml.
 #
@@ -12,14 +12,14 @@ description: "Review a pull request with rafikicode headless and post the result
 #   0  review completed and posted
 #   1  the review run failed (model error, unusable diff)
 #   2  the key was refused: revoked, expired, or not allowed on the tier
-#   3  the key's budget or the wallet is spent, nothing was charged
-#   4  the gateway or the Console could not be reached
+#   3  the key's budget or the account credits are spent, nothing was charged
+#   4  the gateway or the Rafiki AI console could not be reached
 #   5  internal error in the CLI
 # On 2, 3 and 4 the action posts a short comment naming the cause when
 # comments are enabled, then fails the job.
 inputs:
   api-key:
-    description: "A Rafiki Console server key, from a repository secret. Never a session key from rafikicode login."
+    description: "A Rafiki AI API key created with the Rafiki Code option, from a repository secret. Never a session key from rafikicode login."
     required: true
   github-token:
     description: "Token for gh: reading the diff and posting the comment. Needs pull-requests: write."
@@ -198,13 +198,13 @@ runs:
                 echo "The diff has ${LINES} lines; only the first ${MAX_LINES} were reviewed."
               fi
               ;;
-            2) echo "The review did not run: the Rafiki key was refused (revoked, expired, or not allowed on ${MODEL}). Check the key in Rafiki Console." ;;
-            3) echo "The review did not run: the Rafiki key's budget or the wallet is spent. Nothing was charged. Top up or raise the key's budget in Rafiki Console." ;;
-            4) echo "The review did not run: the Rafiki gateway or Console could not be reached from the runner." ;;
+            2) echo "The review did not run: the Rafiki key was refused (revoked, expired, or not allowed on ${MODEL}). Check the key in the Rafiki AI console." ;;
+            3) echo "The review did not run: the Rafiki key's budget or the account credits are spent. Nothing was charged. Add credits or raise the key's budget in the Rafiki AI console." ;;
+            4) echo "The review did not run: the Rafiki gateway or the Rafiki AI console could not be reached from the runner." ;;
             *) echo "The review did not complete (exit code ${CODE}). See the workflow log." ;;
           esac
           echo
-          echo "_Reviewed on ${MODEL}. Spend is visible on the key's page in Rafiki Console._"
+          echo "_Reviewed on ${MODEL}. Spend is visible on the key's page in the Rafiki AI console._"
         } > "${body}"
         gh pr comment "${PR_NUMBER}" --body-file "${body}"
 

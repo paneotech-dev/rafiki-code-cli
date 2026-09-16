@@ -424,7 +424,7 @@ if [ -n "${path_hint:-}" ]; then
     print_message info "       $path_hint"
     step=$((step + 1))
 fi
-print_message info "  ${step}. Connect your Rafiki Console account with a key:"
-print_message info "       export RAFIKICODE_API_KEY=sk-...   ${MUTED}(create one at https://console.rafikiai.io/keys)${NC}"
+print_message info "  ${step}. Connect your Rafiki AI account with a key:"
+print_message info "       export RAFIKICODE_API_KEY=sk-...   ${MUTED}(create one at https://console.rafikiai.io/keys, tick the Rafiki Code option)${NC}"
 print_message info "     or sign in from a browser:"
 print_message info "       ${APP} login"
