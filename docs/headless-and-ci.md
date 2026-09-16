@@ -104,7 +104,7 @@ The checks, in order:
 | `config` | `~/.rafikicode/config.json` is absent (defaults apply) or valid JSON with comments allowed; the default model is shown |
 | `credential` | which credential a run would use: `RAFIKICODE_API_KEY`, a stored sign-in, or none. A stored browser sign-in is reported as refused when `CI` is set |
 | `gateway` | the gateway answers its liveness probe, with the round trip time |
-| `key` | the gateway knows the key: alias, spend, budget and expiry as numbers and dates. A revoked key, a spent budget or an expired key fail here |
+| `key` | the gateway knows the key: alias, spend, budget and expiry as numbers and dates. A revoked key, a spent budget or an expired key fail here. A key made in the Rafiki AI console without the Rafiki Code option gives `WARN` (exit code still 0): create one with the option ticked, or run `rafikicode login` |
 | `tiers` | which of `rafiki-fast`, `rafiki-pro`, `rafiki-max` the key may use |
 | `console` | Rafiki Console answers, and with a key, the account and wallet balance |
 | `version` | the installed version, its update channel, and how it was installed |

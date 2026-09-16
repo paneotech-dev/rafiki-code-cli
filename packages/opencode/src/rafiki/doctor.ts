@@ -213,6 +213,7 @@ export interface KeyInfo {
   max_budget?: number | null
   expires?: string | null
   models?: string[] | null
+  metadata?: Record<string, unknown> | null
 }
 
 export interface KeyResult {
@@ -238,6 +239,36 @@ export function notRegistered(consoleURL: string) {
 export function notRegisteredMeaning(consoleURL: string) {
   return `Usage still works and is metered at the gateway. Console features such as the wallet view and key management do not apply to this key; create a key at ${keysPage(consoleURL)} to get them.`
 }
+
+// Key types by gateway alias. Keys made for Rafiki Code (sign-in keys, and
+// Rafiki AI console keys with the Rafiki Code option) are rafikicode-<uuid>;
+// general console keys are rafiki-<uuid> and carry no Rafiki Code metadata.
+const CODE_ALIAS = /^rafikicode-/i
+const CONSOLE_ALIAS = /^rafiki-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const CODE_METADATA = ["rafiki_surface", "rafiki_key_kind"]
+
+export type KeyType = "code" | "other" | "unknown"
+
+// "other" only on positive evidence: a console alias and no Rafiki Code
+// metadata. A missing alias or an alias of another shape stays "unknown", so
+// a key minted some other way never raises a false alarm.
+export function keyType(info: KeyInfo): KeyType {
+  const alias = typeof info.key_alias === "string" ? info.key_alias : ""
+  if (CODE_ALIAS.test(alias)) return "code"
+  const metadata = info.metadata && typeof info.metadata === "object" ? info.metadata : {}
+  if (CODE_METADATA.some((field) => metadata[field] != null)) return "code"
+  if (CONSOLE_ALIAS.test(alias)) return "other"
+  return "unknown"
+}
+
+// An alias for the terminal: the prefix and the first uuid group only.
+export function shortAlias(alias: string) {
+  const match = /^([a-z]+-[0-9a-f]{8})-[0-9a-f-]+$/i.exec(alias)
+  return match ? `${match[1]}...` : alias
+}
+
+export const NOT_CODE_KEY = `This key was not created for ${Brand.product}. Create one in the Rafiki AI console with the ${Brand.product} option ticked, or run ${Brand.name} login.`
+export const NOT_CODE_KEY_MEANING = `Runs still work, but ${Brand.product} tracks usage only on keys created for it.`
 
 export async function checkKey(root: string, key: string, consoleURL: string, f: typeof fetch, timeoutMs: number, now: number): Promise<KeyResult> {
   const url = root + "/key/info"
@@ -288,6 +319,9 @@ export async function checkKey(root: string, key: string, consoleURL: string, f:
       ),
       info,
     }
+  }
+  if (keyType(info) === "other") {
+    return { line: warn("key", `key ${shortAlias(alias)}, spent ${spend} USD of ${budget}${expires}`, NOT_CODE_KEY, NOT_CODE_KEY_MEANING), info }
   }
   return { line: ok("key", `key ${alias}, spent ${spend} USD of ${budget}${expires}`), info }
 }
@@ -416,7 +450,7 @@ export async function run(options: Options = {}): Promise<Report> {
   } else if (credential.key) {
     const key = await checkKey(root, credential.key, consoleURL, f, timeoutMs, now())
     lines.push(key.line)
-    info = key.line.status === "ok" ? key.info : undefined
+    info = key.line.status === "fail" ? undefined : key.info
     accepted = gatewayAccepts(key, now())
   } else {
     lines.push(skip("key", "no credential to check"))
