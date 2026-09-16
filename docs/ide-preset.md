@@ -9,7 +9,7 @@ Cline is an open source coding agent extension for VS Code. It can talk to any O
 
 ## Settings
 
-Open the Cline settings panel with the gear icon in the Cline view, then fill in the provider section as follows. Field names are as they appear in the current Cline documentation for the OpenAI Compatible provider; if your version labels a field differently, confirm in the Cline settings screen.
+Open the Cline settings panel with the gear icon in the Cline view, then fill in the provider section as follows. Field names are as they appear in Cline 4.1.17 (tested on 16 September 2026 in VS Code 1.138.0, see [What was tested](./ide.md#what-was-tested)). On a fresh install, choose "Use your own API key" on the first screen to reach the same fields. If your version labels a field differently, confirm in the Cline settings screen.
 
 | field | value |
 |---|---|
@@ -20,14 +20,13 @@ Open the Cline settings panel with the gear icon in the Cline view, then fill in
 
 The model field takes the alias exactly as written, without a provider prefix. The three aliases and their credit multipliers are the same as in the CLI: `rafiki-fast` 1x, `rafiki-pro` 4x, `rafiki-max` 15x.
 
-Optional fields in the model configuration section of the same screen (confirm the exact labels in your Cline version):
+Optional fields in the Model Configuration section of the same screen (labels as in Cline 4.1.17; these optional values were not changed in the test):
 
 | field | suggested value |
 |---|---|
 | Context Window size | `128000` |
 | Max Output Tokens | `16384` |
-| Computer Use, or tool and function calling | enabled, all three aliases support tool calls |
-| Image Support | disabled |
+| Supports Images | off |
 | Input Price and Output Price | leave empty or zero; Cline's cost display cannot reflect Rafiki credits, use the Console for spend |
 
 Leave any Azure identity option unchecked.
@@ -38,5 +37,5 @@ Ask Cline something small ("summarize this file") and watch the Console: the req
 
 ## Notes
 
-- Cline sends its own system prompt and tool definitions; it does not read your `AGENTS.md`. Put the same conventions in Cline's custom instructions setting if you want parity with the CLI.
+- Cline sends its own system prompt and tool definitions; it does not read your `AGENTS.md`. Put the same conventions in Cline rules (for example a `.clinerules` file at the project root) if you want parity with the CLI.
 - Other editors and tools with an OpenAI compatible provider setting work the same way: base URL, key, alias. Zed, JetBrains IDEs and Aider are covered on [Using Rafiki Code from your editor](./ide.md), including the full Rafiki Code agent through ACP.

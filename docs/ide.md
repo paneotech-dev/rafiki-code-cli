@@ -7,15 +7,15 @@ Rafiki Code reaches editors in two ways, and both spend from the same Rafiki Con
 
 VS Code has its own Rafiki Code extension, which opens `rafikicode` in an editor tab and adds sign in, a status bar item and a tier picker: see [Rafiki Code for VS Code](./vscode.md).
 
-Each section says whether it was tested, and how. "Not yet tested" means the configuration follows the tool's own documentation as of September 2026 but nobody has run it in that editor yet; tell us if a field is named differently in your version.
+Each section says whether it was tested, and how. The Zed, JetBrains and Cline checks on this page ran on Linux on 16 September 2026, with `rafikicode` 0.1.3 and a stand in gateway (a local OpenAI compatible test server that answers every request with a fixed reply), so they prove the configuration and the protocol, not answer quality. "Not yet tested" means the configuration follows the tool's own documentation as of September 2026 but nobody has run it in that editor yet; tell us if a field is named differently in your version.
 
 ## At a glance
 
 | tool | how it connects | model name to type | tested |
 |---|---|---|---|
-| Zed, agent panel with Rafiki Code | ACP, `rafikicode acp` | picked in the panel (`rafiki/rafiki-fast` and so on) | protocol tested without an editor; Zed itself not yet tested |
-| JetBrains IDEs, AI Chat with Rafiki Code | ACP, `rafikicode acp` | picked in the panel | protocol tested without an editor; JetBrains itself not yet tested |
-| Cline (VS Code) | OpenAI compatible provider | `rafiki-fast` | not yet tested in the editor (settings page: [Cline preset](./ide-preset.md)) |
+| Zed, agent panel with Rafiki Code | ACP, `rafikicode acp` | picked in the panel (`rafiki/rafiki-fast` and so on) | tested on 16 September 2026, Zed 1.19.2 |
+| JetBrains IDEs, AI Chat with Rafiki Code | ACP, `rafikicode acp` | picked in the panel | tested on 16 September 2026, PyCharm 2026.2.2 with AI Assistant 262.10315.187 |
+| Cline (VS Code) | OpenAI compatible provider | `rafiki-fast` | tested on 16 September 2026, Cline 4.1.17 in VS Code 1.138.0 (settings page: [Cline preset](./ide-preset.md)) |
 | Zed, agent panel with its own models | OpenAI compatible provider | `rafiki-fast` | not yet tested |
 | JetBrains AI Assistant | OpenAI compatible provider | `rafiki-fast` | not yet tested |
 | Aider | OpenAI compatible provider | `openai/rafiki-fast` | tested on 16 September 2026, Aider 0.86.2 |
@@ -41,17 +41,25 @@ The gateway base URL for every preset is:
 https://gateway.rafikiai.io/v1
 ```
 
+## Find the full path of rafikicode
+
+Both ACP setups below start `rafikicode` by its full path. An editor started from a desktop menu or a dock does not read your shell start up file, so its `PATH` usually lacks `~/.rafikicode/bin`, and a bare `rafikicode` in the `command` field means the agent cannot start.
+
+In a terminal where `rafikicode --version` works, run:
+
+```bash
+command -v rafikicode
+```
+
+It prints the full path, for example `/home/you/.rafikicode/bin/rafikicode` on Linux or `/Users/you/.rafikicode/bin/rafikicode` on macOS. Copy that line into the `command` field exactly. If it prints nothing, the installer's `PATH` change has not reached this terminal: open a new terminal, or write out the installer's location with your own home folder, for example `/home/you/.rafikicode/bin/rafikicode`. Write the path in full, without `~` or `$HOME`.
+
 ## Zed with the Rafiki Code agent (ACP)
 
-Requirements: `rafikicode` installed (see [Quick start](./quickstart.md)) and Zed with external agent support.
+Requirements: `rafikicode` installed (see [Quick start](./quickstart.md)) and Zed with external agent support (tested with 1.19.2).
 
-1. Find the full path of the binary, since an editor started from a desktop menu may not have `~/.rafikicode/bin` on its `PATH`:
+1. Find the full path of the binary with `command -v rafikicode`, see [Find the full path of rafikicode](#find-the-full-path-of-rafikicode).
 
-   ```bash
-   command -v rafikicode
-   ```
-
-2. In Zed, run the command `agent: open settings`, open the External Agents page, choose Add Agent, then Add Custom Agent. Or add the entry to your `settings.json` directly, with your own path:
+2. In Zed, run the command `agent: open settings`, open the External Agents page, choose Add Agent, then Add Custom Agent. Or add the entry to your user `settings.json` directly (on Linux `~/.config/zed/settings.json`), with the path from step 1:
 
    ```json
    {
@@ -66,16 +74,18 @@ Requirements: `rafikicode` installed (see [Quick start](./quickstart.md)) and Ze
    }
    ```
 
-3. Open the agent panel, start a new thread and choose Rafiki Code. Pick the tier in the model selector of the thread.
+3. Open the agent panel, open the `+` (new thread) menu and choose Rafiki Code under External Agents. Pick the tier in the model selector at the bottom of the thread; it starts on Rafiki/Rafiki Fast.
 
-Status: not yet tested in Zed. The ACP exchange Zed performs was tested on this release without an editor, see [What was tested](#what-was-tested).
+Zed opens a folder it has not seen before in Restricted Mode and asks whether to trust it. The check below trusted the folder first; Rafiki Code in a folder left in Restricted Mode was not tried.
+
+Status: tested on 16 September 2026 with Zed 1.19.2 on Linux. Zed read the entry above from the user settings file, listed Rafiki Code under External Agents, started `rafikicode acp` from the full path, opened a thread with Rafiki/Rafiki Fast selected, and showed the reply to a one line prompt. Both requests of the turn (the thread title and the answer) reached the gateway on `rafiki-fast` with the key from the `env` block.
 
 ## JetBrains IDEs with the Rafiki Code agent (ACP)
 
 ACP agents work in JetBrains IDEs (IntelliJ IDEA, PyCharm, WebStorm and the others) without a JetBrains AI subscription.
 
 1. Open the AI Chat tool window, open the menu in its upper right corner and choose Add Custom Agent. The IDE creates `~/.jetbrains/acp.json`.
-2. Add Rafiki Code, with the full path from `command -v rafikicode`:
+2. Add Rafiki Code to that file, with the full path from `command -v rafikicode` (see [Find the full path of rafikicode](#find-the-full-path-of-rafikicode)):
 
    ```json
    {
@@ -89,9 +99,11 @@ ACP agents work in JetBrains IDEs (IntelliJ IDEA, PyCharm, WebStorm and the othe
    }
    ```
 
-3. Choose Rafiki Code in the AI Chat agent selector.
+3. Choose Rafiki Code in the agent selector at the bottom of the AI Chat window (the welcome page of AI Chat lists only the built in agents). The tier selector next to it starts on Rafiki/Rafiki Fast.
 
-Status: not yet tested in a JetBrains IDE; the minimum IDE version for custom agents is not confirmed yet. The ACP exchange was tested without an editor.
+The IDE reads `acp.json` from the `.jetbrains` folder in your home folder as Java sees it (the home folder of your account, not a `HOME` value set only for the IDE) and registers the agent when the project opens. The IDE also offers Rafiki Code its own tools through a private MCP connection (in PyCharm they appear as tools such as `pycharm_apply_patch`); using those tools was not tested.
+
+Status: tested on 16 September 2026 with PyCharm 2026.2.2 (build PY-262.10315.174) and the AI Assistant plugin 262.10315.187 on Linux, without a JetBrains account or AI subscription. The IDE accepted the file above, logged `Successfully registered local agent: Rafiki Code`, started `rafikicode acp` from the full path when Rafiki Code was chosen, and showed the reply to a one line prompt; the request reached the gateway on `rafiki-fast` with the key from the `env` block. With the gateway unreachable, the chat showed `Cannot reach the model gateway at <url> ... Check the network, and RAFIKICODE_GATEWAY_URL`. Other JetBrains IDEs share the AI Assistant plugin but were not run, and the minimum IDE version for custom agents is not confirmed.
 
 ## Signing in from the editor
 
@@ -110,7 +122,7 @@ If browser sign in is not available to you yet, give the agent a server key thro
 
 Cline is an open source coding agent extension for VS Code (a JetBrains plugin also exists). In its settings choose the provider `OpenAI Compatible`, set Base URL to `https://gateway.rafikiai.io/v1`, paste your key, and set the model to `rafiki-fast`. The field by field table and suggested model settings are on the [Cline preset](./ide-preset.md) page.
 
-Status: not yet tested in the editor.
+Status: tested on 16 September 2026 with Cline 4.1.17 in VS Code 1.138.0 on Linux, using Cline's established interface (VS Code setting `"cline.rollout.bundleOverride": "legacy"`). From the first run screen, "Use your own API key" shows the provider field; the fields were accepted as documented, Cline listed the models from the gateway, and a one line task on `rafiki-fast` ended with "Task Completed" and the gateway's reply. Cline's newer interface (`"next"`, rolling out gradually) was not tried.
 
 ## Zed with its own models (OpenAI compatible provider)
 
@@ -169,7 +181,14 @@ Status: tested on 16 September 2026 with Aider 0.86.2. One edit request on `rafi
 
 ## What was tested
 
-On 16 September 2026, with `rafikicode` 0.1.1 and a test key, on Linux:
+On 16 September 2026, with `rafikicode` 0.1.3, a test key and a stand in gateway, on Linux, in each editor:
+
+- Zed 1.19.2: the Zed entry above in the user settings file, trusted folder, Rafiki Code thread, one prompt. Reply shown; two requests (title and answer) on `rafiki-fast` with the test key.
+- PyCharm 2026.2.2 with AI Assistant 262.10315.187: the JetBrains entry above in `~/.jetbrains/acp.json`, Rafiki Code chosen in the AI Chat agent selector, one prompt. Reply shown; one request on `rafiki-fast` with the test key.
+- Cline 4.1.17 in VS Code 1.138.0: OpenAI Compatible provider with the base URL, key and model fields from the [Cline preset](./ide-preset.md). Model list read, one task completed on `rafiki-fast` with the test key.
+- ACP without an editor, on the same 0.1.3 build: `initialize` answered as `Rafiki Code` 0.1.3 with the `rafikicode-login` sign in method; `session/new` listed the three tiers with `rafiki/rafiki-fast` selected; one prompt ended with stop reason `end_turn`. Without a key, `session/new` answered `auth_required`.
+
+Earlier on the same day, with `rafikicode` 0.1.1 and a test key, on Linux:
 
 - ACP without an editor: a small script started `rafikicode acp`, sent `initialize` announcing terminal sign in, then `session/new`, then one prompt. The agent answered as `Rafiki Code` 0.1.1 with the sign in method above, listed `rafiki/rafiki-fast`, `rafiki/rafiki-pro` and `rafiki/rafiki-max` with `rafiki/rafiki-fast` selected, and replied to the prompt (stop reason `end_turn`). Without a key, `session/new` still succeeded but listed no models.
 - The gateway: `GET /v1/models` listed the three tiers, and one chat completion on `rafiki-fast` answered.
@@ -178,7 +197,7 @@ On 16 September 2026, with `rafikicode` 0.1.1 and a test key, on Linux:
 
 A note for any preset: `rafiki-fast` reasons before it answers (56 of 58 output tokens in our one word test), and that reasoning counts as output tokens. With a very small output limit (5 tokens in our test) the answer came back empty. Keep the tool's output limit at its default or at least a few hundred tokens.
 
-Not yet tested: Zed, JetBrains IDEs (ACP and AI Assistant), Cline in the editor, the sign in action from an editor, and every platform other than Linux.
+Not yet tested: JetBrains IDEs other than PyCharm, JetBrains AI Assistant with its own models, Zed with its own models, Cline's newer interface, the sign in action from an editor (all editor checks used a key in the `env` block or the provider settings), a real gateway from an editor, and every platform other than Linux.
 
 ## Cost and spend
 
