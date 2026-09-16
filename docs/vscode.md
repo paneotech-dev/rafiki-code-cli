@@ -13,7 +13,7 @@ What you get:
 ## Requirements
 
 - VS Code 1.94 or later.
-- The `rafikicode` command, version 0.1.2 or later. With 0.1.1, sessions open and sign in works, but references sent from the editor do not appear in the prompt. Install or update with:
+- The `rafikicode` command, version 0.1.3 or later. With 0.1.1 and 0.1.2, sessions open and sign in works, but references sent from the editor do not appear in the prompt. Install or update with:
 
   ```bash
   curl -fsSL https://get.rafikiai.io | bash
@@ -123,7 +123,7 @@ Why this design: the terminal interface is the complete Rafiki Code experience (
 | The sign in terminal shows an error and stays open | Read the message; it is the same as in a terminal (see [Troubleshooting](./troubleshooting.md)). Close the terminal and run **Sign In** again. |
 | **Sign In** says a server key is already in use | `RAFIKICODE_API_KEY` is set in VS Code's environment. Remove it and restart VS Code to use your account instead. |
 | Status bar in warning colour with "cannot use its key" | Usually the credential file: run **Doctor**; it prints the exact fix (for example `chmod 600 ~/.rafikicode/credentials`). |
-| **Send Selection or File** does nothing visible | Update `rafikicode` to 0.1.2 or later. If the session was just opened, wait for its screen to appear and send again. Messages are in the **Rafiki Code** output (View, Output). |
+| **Send Selection or File** does nothing visible | Update `rafikicode` to 0.1.3 or later. If the session was just opened, wait for its screen to appear and send again. Messages are in the **Rafiki Code** output (View, Output). |
 | "Rafiki Code did not accept the reference" | The session has exited or is still starting. Open a new one. |
 | A new session still uses the old tier | The tier applies to sessions started after the change. Open a new tab. |
 | `Ctrl+Esc` opens something else | Another extension uses the same key. Change it in Keyboard Shortcuts (search for "Rafiki Code"). |
@@ -137,7 +137,8 @@ On 16 September 2026, on Linux:
 - Unit tests for the binary search order, the whoami and doctor parsing (including real coloured output), references, tiers and the password protected control calls.
 - Integration tests inside VS Code 1.138.0 (headless, `@vscode/test-cli`) with a stub `rafikicode`: commands registered, missing binary, no key state, opening without a key starts nothing, sign in through a terminal updates the status, a session starts on 127.0.0.1 with the chosen tier and a password and receives the file and selection references, Doctor runs. The same suite passed on the minified bundle that goes into the `.vsix`.
 - The real `rafikicode` 0.1.2 (console only build) started from a VS Code terminal: health answered only with the session password, and a reference was accepted.
-- The real 0.1.2 and 0.1.1 binaries driven outside VS Code: password and `Origin` checks answer 401 and 403, the tier shows on screen, and the appended reference shows on 0.1.2 but not on 0.1.1.
+- The real 0.1.2 and 0.1.1 binaries driven outside VS Code: password and `Origin` checks answer 401 and 403, the tier shows on screen, and the appended reference shows on the 0.1.2 console only build but not on 0.1.1.
+- Again on 16 September with the same driver: a local 0.1.3 build showed the reference; the 0.1.2 release candidate (without the console only changes) did not, in two runs. Hence the 0.1.3 minimum.
 - The `.vsix` installs with `code --install-extension`.
 
 Not yet tested: a real device flow sign in from the extension against the Console, macOS, Windows, Remote SSH, VSCodium and other editors built on VS Code.

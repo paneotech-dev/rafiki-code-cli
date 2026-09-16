@@ -12,7 +12,7 @@ Registries:
 - [ ] **Publisher ID.** `package.json` uses the placeholder `paneotech`. The Marketplace publisher ID and the Open VSX namespace must both equal it, and it cannot be renamed later (a new ID means a new extension for every user). Decide the final value, then update `publisher` in `sdks/vscode/package.json` and the identifier in `docs/vscode.md` and in the integration test (`EXTENSION_ID`).
 - [ ] **Extension name** `rafiki-code` and display name `Rafiki Code`. The full identifier is `<publisher>.rafiki-code`.
 - [ ] **Go ahead for D2** (memo `ide-and-console-lock-v1.md`: planned for v1.1).
-- [ ] **Minimum CLI**: references need `rafikicode` 0.1.2 or later, so publish after 0.1.2 is released on get.rafikiai.io.
+- [ ] **Minimum CLI**: references need `rafikicode` 0.1.3 or later (the 0.1.2 candidate did not show them), so publish after 0.1.3 is released on get.rafikiai.io.
 - [ ] **Repository link**: `package.json` points to `github.com/paneotech-dev/rafiki-code-cli`, and the README links to `docs/vscode.md` on its `main` branch. Confirm that repository is public and that the page is on `main` before publishing, or the listing shows broken links.
 - [ ] **Listing content**: `sdks/vscode/README.md` is the listing page. Consider adding one screenshot (hosted on an https URL; the Marketplace refuses SVG images from other hosts).
 - [ ] **Icon**: `images/icon.png` is the Rafiki mark (256 by 256, from the Console brand set). Replace it if brand wants a different one; it must be a PNG of at least 128 by 128.
