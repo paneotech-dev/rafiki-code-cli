@@ -1,84 +1,198 @@
 {
-  "name": "opencode",
-  "displayName": "opencode",
-  "description": "opencode for VS Code",
-  "version": "1.18.30",
-  "publisher": "sst-dev",
+  "name": "rafiki-code",
+  "displayName": "Rafiki Code",
+  "description": "Rafiki Code in VS Code: the rafikicode coding agent in an editor terminal, signed in with your Rafiki Console account.",
+  "version": "0.1.0",
+  "publisher": "paneotech",
+  "author": "PANEOTECH",
   "repository": {
     "type": "git",
-    "url": "https://github.com/anomalyco/opencode"
+    "url": "https://github.com/paneotech-dev/rafiki-code-cli"
   },
+  "bugs": {
+    "url": "https://github.com/paneotech-dev/rafiki-code-cli/issues"
+  },
+  "homepage": "https://github.com/paneotech-dev/rafiki-code-cli/blob/main/docs/vscode.md",
   "license": "MIT",
   "icon": "images/icon.png",
   "galleryBanner": {
-    "color": "#000000",
+    "color": "#241040",
     "theme": "dark"
   },
+  "keywords": [
+    "rafiki",
+    "rafikicode",
+    "ai",
+    "coding agent",
+    "terminal"
+  ],
   "engines": {
     "vscode": "^1.94.0"
   },
   "categories": [
+    "AI",
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "opencode.openTerminal",
-        "title": "Open opencode",
+        "command": "rafikicode.open",
+        "title": "Open",
+        "category": "Rafiki Code",
         "icon": {
           "light": "images/button-dark.svg",
           "dark": "images/button-light.svg"
         }
       },
       {
-        "command": "opencode.openNewTerminal",
-        "title": "Open opencode in new tab",
+        "command": "rafikicode.openNew",
+        "title": "Open in New Tab",
+        "category": "Rafiki Code",
         "icon": {
           "light": "images/button-dark.svg",
           "dark": "images/button-light.svg"
         }
       },
       {
-        "command": "opencode.addFilepathToTerminal",
-        "title": "Add Filepath to Terminal"
+        "command": "rafikicode.sendSelection",
+        "title": "Send Selection or File",
+        "category": "Rafiki Code"
+      },
+      {
+        "command": "rafikicode.sendFile",
+        "title": "Send File",
+        "category": "Rafiki Code"
+      },
+      {
+        "command": "rafikicode.signIn",
+        "title": "Sign In",
+        "category": "Rafiki Code"
+      },
+      {
+        "command": "rafikicode.signOut",
+        "title": "Sign Out",
+        "category": "Rafiki Code"
+      },
+      {
+        "command": "rafikicode.showAccount",
+        "title": "Show Account",
+        "category": "Rafiki Code"
+      },
+      {
+        "command": "rafikicode.doctor",
+        "title": "Doctor",
+        "category": "Rafiki Code"
+      },
+      {
+        "command": "rafikicode.pickTier",
+        "title": "Choose Tier",
+        "category": "Rafiki Code"
+      },
+      {
+        "command": "rafikicode.refreshStatus",
+        "title": "Refresh Status",
+        "category": "Rafiki Code"
+      },
+      {
+        "command": "rafikicode.statusMenu",
+        "title": "Show Menu",
+        "category": "Rafiki Code"
       }
     ],
     "menus": {
       "editor/title": [
         {
-          "command": "opencode.openNewTerminal",
+          "command": "rafikicode.openNew",
           "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "rafikicode.sendSelection",
+          "group": "rafikicode@1"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "rafikicode.sendFile",
+          "when": "!explorerResourceIsFolder",
+          "group": "rafikicode@1"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "rafikicode.sendFile",
+          "when": "editorIsOpen"
         }
       ]
     },
     "keybindings": [
       {
-        "command": "opencode.openTerminal",
-        "title": "Run opencode",
-        "key": "cmd+escape",
-        "mac": "cmd+escape",
-        "win": "ctrl+escape",
-        "linux": "ctrl+escape"
+        "command": "rafikicode.open",
+        "key": "ctrl+escape",
+        "mac": "cmd+escape"
       },
       {
-        "command": "opencode.openNewTerminal",
-        "title": "Run opencode",
-        "key": "cmd+shift+escape",
-        "mac": "cmd+shift+escape",
-        "win": "ctrl+shift+escape",
-        "linux": "ctrl+shift+escape"
+        "command": "rafikicode.openNew",
+        "key": "ctrl+shift+escape",
+        "mac": "cmd+shift+escape"
       },
       {
-        "command": "opencode.addFilepathToTerminal",
-        "title": "opencode: Insert At-Mentioned",
-        "key": "cmd+alt+k",
-        "mac": "cmd+alt+k",
-        "win": "ctrl+alt+K",
-        "linux": "ctrl+alt+K"
+        "command": "rafikicode.sendSelection",
+        "key": "ctrl+alt+k",
+        "mac": "cmd+alt+k"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Rafiki Code",
+      "properties": {
+        "rafikicode.path": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "markdownDescription": "Absolute path of the `rafikicode` command. Empty: search `PATH`, then `~/.rafikicode/bin` (the installer's default), then common install directories."
+        },
+        "rafikicode.tier": {
+          "type": "string",
+          "default": "default",
+          "enum": [
+            "default",
+            "fast",
+            "pro",
+            "max"
+          ],
+          "enumDescriptions": [
+            "The model from your rafikicode configuration (rafiki-fast unless you changed it).",
+            "rafiki-fast: everyday coding at the lowest credit cost (1x).",
+            "rafiki-pro: long agentic tasks (4x credits).",
+            "rafiki-max: frontier models (15x credits)."
+          ],
+          "markdownDescription": "Tier for new Rafiki Code sessions. Change it with **Rafiki Code: Choose Tier**; a running session keeps its model."
+        },
+        "rafikicode.terminalLocation": {
+          "type": "string",
+          "default": "editor",
+          "enum": [
+            "editor",
+            "panel"
+          ],
+          "enumDescriptions": [
+            "Open Rafiki Code in an editor tab beside the current file.",
+            "Open Rafiki Code in the terminal panel."
+          ],
+          "description": "Where Rafiki Code sessions open."
+        },
+        "rafikicode.showStatusBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the Rafiki Code key state and tier in the status bar."
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "bun run package",
@@ -91,18 +205,22 @@
     "pretest": "bun run compile-tests && bun run compile && bun run lint",
     "check-types": "tsc --noEmit",
     "lint": "eslint src",
-    "test": "vscode-test"
+    "test": "vscode-test",
+    "test:unit": "tsc -p . --outDir out && node --test \"out/test/unit/*.test.js\"",
+    "vsix": "vsce package --no-dependencies -o dist/rafiki-code.vsix"
   },
   "devDependencies": {
-    "@types/vscode": "^1.94.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "20.x",
+    "@types/vscode": "^1.94.0",
     "@typescript-eslint/eslint-plugin": "^8.31.1",
     "@typescript-eslint/parser": "^8.31.1",
-    "eslint": "^9.25.1",
-    "esbuild": "^0.25.3",
-    "typescript": "^5.8.3",
     "@vscode/test-cli": "^0.0.11",
-    "@vscode/test-electron": "^2.5.2"
+    "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "3.9.2",
+    "esbuild": "^0.25.3",
+    "eslint": "^9.25.1",
+    "ovsx": "1.1.1",
+    "typescript": "^5.8.3"
   }
 }

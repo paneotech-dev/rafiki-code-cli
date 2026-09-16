@@ -1,34 +1,47 @@
-# opencode VS Code Extension
+# Rafiki Code for VS Code
 
-A Visual Studio Code extension that integrates [opencode](https://opencode.ai) directly into your development workflow.
+Rafiki Code is the PANEOTECH coding agent that runs on your Rafiki Console account and wallet. This extension opens the `rafikicode` terminal interface inside VS Code and connects it to your editor.
 
-## Prerequisites
+## Requirements
 
-This extension requires the [opencode CLI](https://opencode.ai) to be installed on your system. Visit [opencode.ai](https://opencode.ai) for installation instructions.
+- The `rafikicode` command, version 0.1.2 or later. Install it with:
+
+  ```bash
+  curl -fsSL https://get.rafikiai.io | bash
+  ```
+
+- A Rafiki Console account at [console.rafikiai.io](https://console.rafikiai.io).
 
 ## Features
 
-- **Quick Launch**: Use `Cmd+Esc` (Mac) or `Ctrl+Esc` (Windows/Linux) to open opencode in a split terminal view, or focus an existing terminal session if one is already running.
-- **New Session**: Use `Cmd+Shift+Esc` (Mac) or `Ctrl+Shift+Esc` (Windows/Linux) to start a new opencode terminal session, even if one is already open. You can also click the opencode button in the UI.
-- **Context Awareness**: Automatically share your current selection or tab with opencode.
-- **File Reference Shortcuts**: Use `Cmd+Option+K` (Mac) or `Alt+Ctrl+K` (Linux/Windows) to insert file references. For example, `@File#L37-42`.
+- **Open Rafiki Code** (`Ctrl+Esc`, `Cmd+Esc` on macOS): opens a session for the current workspace beside your editor, or focuses the one already open. **Open in New Tab** (`Ctrl+Shift+Esc`, `Cmd+Shift+Esc`) always starts a new one; the Rafiki button in the editor title does the same.
+- **Send Selection or File** (`Ctrl+Alt+K`, `Cmd+Alt+K` on macOS, also in the editor context menu): adds a reference such as `@src/app.ts#L37-42` to the session prompt. **Send File** is in the explorer context menu.
+- **Sign In** and **Sign Out**: sign in runs `rafikicode login` in a terminal (open the link, enter the code, approve in the Console). The editor and your terminals share the same sign in.
+- **Status bar**: shows whether a key is available and the tier for new sessions. Click it for the menu.
+- **Doctor** and **Show Account**: run `rafikicode doctor` and `rafikicode whoami` and show the result in the Rafiki Code output.
+- **Choose Tier**: fast (1x credits), pro (4x) or max (15x) for the next session.
 
-## Support
+## Settings
 
-This is an early release. If you encounter issues or have feedback, please create an issue at https://github.com/anomalyco/opencode/issues.
+| setting | default | meaning |
+|---|---|---|
+| `rafikicode.path` | empty | Absolute path of `rafikicode`. Empty: search `PATH`, then `~/.rafikicode/bin`. |
+| `rafikicode.tier` | `default` | `fast`, `pro`, `max`, or `default` for the model in your rafikicode configuration. |
+| `rafikicode.terminalLocation` | `editor` | `editor` opens sessions in a tab beside the file, `panel` in the terminal panel. |
+| `rafikicode.showStatusBar` | `true` | Show the status bar item. |
+
+## Documentation
+
+Full guide and troubleshooting: [docs/vscode.md](https://github.com/paneotech-dev/rafiki-code-cli/blob/main/docs/vscode.md).
+
+## Attribution and license
+
+MIT. Based on the opencode VS Code extension; see LICENSE and NOTICE.
 
 ## Development
 
-1. `code sdks/vscode` - Open the `sdks/vscode` directory in VS Code. **Do not open from repo root.**
-2. `bun install` - Run inside the `sdks/vscode` directory.
-3. Press `F5` to start debugging - This launches a new VS Code window with the extension loaded.
+1. Open `sdks/vscode` in VS Code (not the repository root).
+2. Run `bun install` inside `sdks/vscode`.
+3. Press `F5` to start a VS Code window with the extension loaded.
 
-#### Making Changes
-
-`tsc` and `esbuild` watchers run automatically during debugging (visible in the Terminal tab). Changes to the extension are automatically rebuilt in the background.
-
-To test your changes:
-
-1. In the debug VS Code window, press `Cmd+Shift+P`
-2. Search for `Developer: Reload Window`
-3. Reload to see your changes without restarting the debug session
+Checks: `bun run check-types`, `bun run lint`, `bun run test:unit`, and `xvfb-run -a bun run test` for the tests inside VS Code. Package with `bun run vsix`.
