@@ -136,7 +136,7 @@ describe("providerScope on the merged config", () => {
     expect(merged.agent.build.model).toBeUndefined()
     expect(merged.agent.plan.model).toBe("rafiki/rafiki-pro")
     expect(merged.mode.review.model).toBeUndefined()
-    expect(warnings.join("\n")).toContain("ignored enabled_providers in your configuration")
+    expect(warnings.join("\n")).toContain("ignored enabled_providers in the configuration")
     expect(warnings.join("\n")).toContain("ignored model openai/gpt-4o, agent.build.model anthropic/claude-x, mode.review.model local/llama")
     expect(warnings.join("\n")).toContain("runs on Rafiki models only")
   })
@@ -190,7 +190,7 @@ describe("models with stub OpenAI and Anthropic keys", () => {
     )
     expect(widened.exitCode).toBe(0)
     expect(providersOf(widened.stdout)).toEqual(["rafiki"])
-    expect(widened.stderr).toContain("ignored enabled_providers in your configuration")
+    expect(widened.stderr).toContain("ignored enabled_providers in the configuration")
   }, 120_000)
 
   test("control: with the scope open the same keys list openai and anthropic models", async () => {

@@ -419,7 +419,7 @@ export function providerScope<T>(data: T): T {
   config.disabled_providers = [...new Set([...disabled, ...Brand.disabledProviders])]
   if (Brand.providers.userOverride && Array.isArray(config.enabled_providers)) return data
   if (config.enabled_providers !== undefined && !sameList(config.enabled_providers, Brand.providers.enabled))
-    Trust.warnOnce("scope:user", scopeWarning("enabled_providers in your configuration"))
+    Trust.warnOnce("scope:user", scopeWarning("enabled_providers in the configuration"))
   config.enabled_providers = [...Brand.providers.enabled]
   // A model setting naming another provider would fail every session with
   // "model not found"; without it the Rafiki default applies.
@@ -438,7 +438,7 @@ export function providerScope<T>(data: T): T {
     if (!isRecord(entries)) continue
     for (const [name, entry] of Object.entries(entries)) if (isRecord(entry)) models(entry, `${kind}.${name}.`)
   }
-  if (outside.length) Trust.warnOnce(`scope:model:${outside.join(",")}`, scopeWarning(`${outside.join(", ")} in your configuration`))
+  if (outside.length) Trust.warnOnce(`scope:model:${outside.join(",")}`, scopeWarning(`${outside.join(", ")} in the configuration`))
   return data
 }
 
