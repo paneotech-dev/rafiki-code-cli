@@ -9,20 +9,29 @@ import { describe, expect } from "bun:test"
 import { Effect } from "effect"
 import { HttpClient } from "effect/unstable/http"
 import { cliIt } from "../../lib/cli-process"
+import path from "path"
+import { Brand } from "@opencode-ai/core/brand/brand"
+import * as ServerFile from "../../../src/rafiki/server-file"
 
 describe("opencode serve (subprocess)", () => {
   // Smoke test: server starts, binds a port, and /global/health responds.
   // If this fails, all other serve tests likely will too — debug here first.
   cliIt.live(
     "starts, binds a port, and serves /global/health",
-    ({ opencode }) =>
+    ({ opencode, home }) =>
       Effect.gen(function* () {
         const server = yield* opencode.serve()
         expect(server.port).toBeGreaterThan(0)
         expect(server.url).toMatch(/^http:\/\//)
 
         const client = yield* HttpClient.HttpClient
-        const res = yield* client.get(`${server.url}/global/health`)
+        // Without a password the server makes one and stores it in its server file.
+        expect((yield* client.get(`${server.url}/global/health`)).status).toBe(401)
+        const found = ServerFile.lookup(server.url, { directory: path.join(home, ".config", Brand.dir, ServerFile.DIR_NAME) })
+        if (found.status !== "found") throw new Error(`no server file: ${found.status}`)
+        const res = yield* client.get(`${server.url}/global/health`, {
+          headers: { authorization: `Basic ${Buffer.from(`${found.info.username}:${found.info.password}`).toString("base64")}` },
+        })
         expect(res.status).toBe(200)
         // GlobalHealth schema is { success: true, ... } | { success: false, error }.
         // We don't lock in further shape here — any 200 with parseable JSON is
