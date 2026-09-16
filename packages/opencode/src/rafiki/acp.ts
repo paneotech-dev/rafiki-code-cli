@@ -4,8 +4,10 @@
 // ACP auth_required error (-32000) with the same message as run and the
 // terminal interface, instead of opening a session that cannot answer.
 import path from "path"
+import { randomBytes } from "crypto"
 import { RequestError } from "@agentclientprotocol/sdk"
 import { Brand } from "@opencode-ai/core/brand/brand"
+import * as BrandServe from "@opencode-ai/core/brand/serve"
 import * as MissingKey from "./missing-key"
 
 export function authRequired() {
@@ -42,4 +44,31 @@ export function loginCommand(execPath: string = process.execPath) {
 // surface ide, so the key list shows where the key is used.
 export function loginArgs() {
   return ["login", "--surface", "ide"]
+}
+
+// rafikicode acp talks to its own local HTTP server, and only this process
+// uses it. Without a password any program or user on the machine could use
+// that server too: read files anywhere (the credentials file included) and
+// open a terminal. So when no password is set, acp makes a random one for
+// this process: the server requires it and the ACP client sends it.
+//
+// serverSecret() applies the listen rule first (an address other machines can
+// reach still needs a password the person chose, BrandServe.refused), then
+// puts the password in the environment for the listener to read; undefined
+// means acp must stop. forget() takes a generated password out of the
+// environment once the listener runs, so tools, terminals and MCP servers
+// started later do not inherit it.
+export function serverSecret(opts: { hostname: string }, env: Record<string, string | undefined> = process.env) {
+  const existing = Brand.server.password(env)
+  if (existing || !BrandServe.loopback(opts.hostname)) {
+    if (BrandServe.refused(opts)) return undefined
+    return { password: existing ?? "", generated: false }
+  }
+  const password = randomBytes(32).toString("base64url")
+  env[Brand.server.env.password] = password
+  return { password, generated: true }
+}
+
+export function forget(secret: { password: string; generated: boolean }, env: Record<string, string | undefined> = process.env) {
+  if (secret.generated && env[Brand.server.env.password] === secret.password) delete env[Brand.server.env.password]
 }
