@@ -46,8 +46,9 @@ import { ProviderV2 } from "@opencode-ai/core/provider"
 import { ModelV2 } from "@opencode-ai/core/model"
 import { Provider } from "@/provider/provider"
 import type { Command } from "@/command"
+import * as RafikiACP from "@/rafiki/acp"
 
-export const AuthMethodID = "opencode-login"
+export const AuthMethodID = Brand.acp.authMethod
 
 export type Error = ACPError.Error
 type ServiceConnection = Pick<AgentSideConnection, "sessionUpdate"> &
@@ -103,7 +104,7 @@ export function make(input: {
     if (params.clientCapabilities?._meta?.["terminal-auth"] === true) {
       authMethod._meta = {
         "terminal-auth": {
-          command: Brand.name,
+          command: RafikiACP.loginCommand(),
           args: ["login"],
           label: `${Brand.product} Login`,
         },
@@ -140,7 +141,7 @@ export function make(input: {
   })
 
   const authenticate = Effect.fn("ACP.authenticate")(function* (params: AuthenticateRequest) {
-    if (params.methodId !== AuthMethodID) {
+    if (!RafikiACP.knownAuthMethod(params.methodId)) {
       return yield* new ACPError.UnknownAuthMethodError({ methodId: params.methodId })
     }
     return {}

@@ -230,6 +230,13 @@ export const Brand = {
       return Brand.providers.userOverride || Brand.providers.testing()
     },
   },
+  // Agent Client Protocol (rafikicode acp). The auth method id is an opaque
+  // string to clients, which echo it back in authenticate; the upstream id is
+  // still accepted there for clients that remembered it.
+  acp: {
+    authMethod: "rafikicode-login",
+    legacyAuthMethods: ["opencode-login"] as readonly string[],
+  },
   env: {
     // Headless and CI key. Takes precedence over the stored credential.
     apiKey: "RAFIKICODE_API_KEY",

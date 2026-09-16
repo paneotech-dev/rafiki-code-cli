@@ -20,6 +20,7 @@ import { Effect } from "effect"
 import type { OpencodeClient } from "@opencode-ai/sdk/v2"
 import * as ACPError from "./error"
 import * as ACPService from "./service"
+import * as RafikiACP from "@/rafiki/acp"
 
 export function init({ sdk: _sdk }: { sdk: OpencodeClient }) {
   return {
@@ -37,11 +38,11 @@ export class Agent implements ACPAgent {
   }
 
   authenticate(params: AuthenticateRequest) {
-    return run(this.service.authenticate(params))
+    return RafikiACP.authenticate(params.methodId, () => run(this.service.authenticate(params)))
   }
 
   newSession(params: NewSessionRequest) {
-    return run(this.service.newSession(params))
+    return RafikiACP.withKey(() => run(this.service.newSession(params)))
   }
 
   loadSession(params: LoadSessionRequest) {
@@ -77,7 +78,7 @@ export class Agent implements ACPAgent {
   }
 
   prompt(params: PromptRequest) {
-    return run(this.service.prompt(params))
+    return RafikiACP.withKey(() => run(this.service.prompt(params)))
   }
 
   cancel(params: CancelNotification) {
