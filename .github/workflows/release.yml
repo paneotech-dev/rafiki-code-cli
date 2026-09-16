@@ -6,7 +6,7 @@ name: release
 #
 # Trigger: push a tag v<version>, for example v0.1.0.
 # Secrets: NPM_TOKEN (optional, npm publish is skipped without it).
-# Signing: not yet, see docs/RELEASE_TODO.md.
+# Signing: release archives are not code signed; SHA256SUMS is the integrity check.
 #
 # Untrusted values (the tag name and the dispatch input) reach scripts only
 # through env variables, always quoted, and the tag is refused unless it is v

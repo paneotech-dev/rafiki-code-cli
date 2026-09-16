@@ -4,11 +4,12 @@
 # .github/workflows/rafikicode-pr-review.yml. On every pull request opened from
 # a branch of the same repository it installs a pinned rafikicode release,
 # checks the key, reviews the diff on rafiki-fast and posts the review as a
-# pull request comment. Every model call is charged to the key's budget in
-# Rafiki Console. The full walkthrough is docs/github-action.md.
+# pull request comment. Every model call uses credits in your Rafiki AI account,
+# within the key's budget. The full walkthrough is docs/github-action.md.
 #
 # Setup, once per repository (Settings, Secrets and variables, Actions):
-#   secret    RAFIKICODE_API_KEY  a server key from console.rafikiai.io/keys
+#   secret    RAFIKICODE_API_KEY  a key from console.rafikiai.io/keys, created
+#                                 with the Rafiki Code option ticked
 #   variable  RAFIKICODE_VERSION  a release number, for example 0.1.1
 #   variable  RAFIKICODE_SHA256   the hash of rafikicode-linux-x64.tar.gz from
 #                                 that release's SHA256SUMS file
@@ -129,13 +130,13 @@ jobs:
             echo
             case "${CODE}" in
               0) cat "${RUNNER_TEMP}/rafikicode-review/review.md" ;;
-              2) echo "The review did not run: the Rafiki key was refused. Check the key in Rafiki Console." ;;
-              3) echo "The review did not run: the key's budget or the wallet is spent. Nothing was charged." ;;
-              4) echo "The review did not run: the Rafiki gateway could not be reached from the runner." ;;
+              2) echo "The review did not run: the Rafiki AI key was refused. Check the key in the Rafiki AI console." ;;
+              3) echo "The review did not run: the key's budget or the account's credits are spent. Nothing was charged." ;;
+              4) echo "The review did not run: the Rafiki AI gateway could not be reached from the runner." ;;
               *) echo "The review did not complete (exit code ${CODE}). See the workflow log." ;;
             esac
             echo
-            echo "_Reviewed on ${MODEL}. Spend is shown on the key's page in Rafiki Console._"
+            echo "_Reviewed on ${MODEL}. Spend is shown on the key's page in the Rafiki AI console._"
           } > "${body}"
           gh pr comment "${PR_NUMBER}" --body-file "${body}"
           # A failed review turns the check red instead of passing silently.

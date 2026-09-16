@@ -1,20 +1,20 @@
 # Quick start
 
-This page takes you from nothing to a first file written by `rafikicode` in about five minutes. Every command below was run as written on 15 September 2026 with `rafikicode` 0.1.0 in clean `ubuntu:24.04` and `debian:12` containers, and the install, key, first task and uninstall steps again with 0.1.1 (published the same day at 08:11 UTC), that had only `curl` and `ca-certificates` installed. On 16 September `rafikicode --version`, `doctor` and `models rafiki` were run again on a local 0.1.3 build.
+This page takes you from nothing to a first file written by `rafikicode` in about five minutes. It describes `rafikicode` 0.1.1. The install, key, first task and uninstall steps were run as written in clean `ubuntu:24.04` and `debian:12` containers that had only `curl` and `ca-certificates` installed.
 
-Terms used here: a **terminal** is the text window where you type commands. **PATH** is the list of folders your shell searches for programs. A **gateway key** (or API key) is a Rafiki issued key with its own spending budget; every model call is charged to it. **Headless** means running where nobody can answer a question, such as a server, a container or a CI (continuous integration) pipeline.
+Terms used here: a **terminal** is the text window where you type commands. **PATH** is the list of folders your shell searches for programs. An **API key** is a key issued by Rafiki AI with its own spending limit; every model call made with it uses credits in your Rafiki AI account. **Headless** means running where nobody can answer a question, such as a server, a container or a CI (continuous integration) pipeline.
 
-You need a Rafiki gateway key. Create a server key at [console.rafikiai.io/keys](https://console.rafikiai.io/keys) or ask the Rafiki team for one.
+You need a Rafiki AI account. Rafiki Code is part of Rafiki AI by PANEOTECH, and the Rafiki AI console at [console.rafikiai.io](https://console.rafikiai.io) is where you sign in, create keys and see your credits.
 
 ## 1. Install
 
-Linux and macOS (Windows through WSL, the Windows Subsystem for Linux). The machine needs `curl`; on a minimal Debian or Ubuntu install it first with `apt-get install -y curl ca-certificates`.
+Linux and macOS (on Windows, use WSL, the Windows Subsystem for Linux). The machine needs `curl`; on a minimal Debian or Ubuntu install it first with `apt-get install -y curl ca-certificates`.
 
 ```bash
 curl -fsSL https://get.rafikiai.io | bash
 ```
 
-Expected output (0.1.1; a later release names its own version):
+Expected output:
 
 ```text
 Installing rafikicode version 0.1.1
@@ -38,46 +38,72 @@ export PATH=$HOME/.rafikicode/bin:$PATH
 rafikicode --version
 ```
 
-This prints the installed version, for example `0.1.3`.
+This prints `0.1.1`.
 
-There is no npm package yet: `npm install -g rafikicode` does not work (the npm registry answers 404 for `rafikicode`). Use the installer.
+`rafikicode` is installed with the installer script; it is not published on npm.
 
-## 2. Give it your key
+## 2. Sign in
+
+On a computer where you can open a browser, sign in with your Rafiki AI account:
 
 ```bash
-export RAFIKICODE_API_KEY=...   # your gateway key
+rafikicode login
+```
+
+`login` prints a code and a link, then waits:
+
+```text
+Open https://console.rafikiai.io/device in a browser and enter this code:
+
+    XXXX-XXXX
+
+Or open https://console.rafikiai.io/device?code=XXXX-XXXX
+Approving as: <label>. The code expires in 10 minutes.
+Waiting for approval...
+```
+
+1. Open https://console.rafikiai.io/device in a browser (the second link fills in the code for you).
+2. Sign in with your Rafiki AI account, check that the code matches the one in your terminal, and approve.
+3. The terminal prints `Signed in` with your account and stores the key in `~/.rafikicode/credentials` (readable only by you).
+
+The code is eight letters shown as `XXXX-XXXX` and expires after 10 minutes; run `rafikicode login` again if it does. `--label NAME` sets the name shown on the approval page and in the key list of the Rafiki AI console, so you can tell your machines apart:
+
+```bash
+rafikicode login --label work-laptop
+```
+
+Then:
+
+```bash
+rafikicode whoami     # the account and key this terminal uses
+rafikicode logout     # sign out and revoke this terminal's key
+```
+
+`login` needs a terminal: in a script, a pipeline or `ssh host "command"` it stops with exit code 2 and points you to an API key.
+
+### Or use an API key
+
+On a server, in CI, or wherever you prefer a key: create a key in the Rafiki AI console at [console.rafikiai.io/keys](https://console.rafikiai.io/keys) and tick the Rafiki Code option. Keys created without that option are not billed through Rafiki Code, so always tick it for keys you use with `rafikicode`. Then:
+
+```bash
+export RAFIKICODE_API_KEY=...   # the key you created
 rafikicode doctor
 ```
 
 In a shared room or on a recorded screen, load the key without showing it: `read -rs RAFIKICODE_API_KEY && export RAFIKICODE_API_KEY`, paste the key, press Enter (nothing is echoed).
 
-`doctor` prints one line per check. The lines that matter for running tasks are `credential`, `gateway`, `key` and `tiers`:
+`RAFIKICODE_API_KEY` takes precedence over a stored sign in. While it is set, `rafikicode login` stops with exit code 2 and says the session already uses a key.
+
+`doctor` prints one line per check. The lines that matter for running tasks are `credential`, `gateway`, `key` and `tiers`, for example:
 
 ```text
 ok    credential  RAFIKICODE_API_KEY from the environment
 ok    gateway     https://gateway.rafikiai.io answered in 181 ms
 ok    key         key rafikicode-..., spent 0.0769 USD of 2.5 USD budget, expires 2026-10-13T12:34:43.455000+00:00
-ok    tiers       rafiki-fast, rafiki-pro, rafiki-max
+ok    tiers       rafiki-fast, rafiki-pro
 ```
 
-With a key created outside Rafiki Console the `console` line reads `WARN ... does not know this key (401)` from 0.1.2 and `doctor` exits 0 (0.1.1: `FAIL`, exit 1; 0.1.0: `does not accept this key`), while tasks still run. See [Troubleshooting](./troubleshooting.md#seen-on-15-september-2026).
-
-`rafikicode models rafiki` lists the tiers the key may use: `rafiki/rafiki-fast`, `rafiki/rafiki-max`, `rafiki/rafiki-pro`.
-
-The browser sign in, `rafikicode login`, is coming soon. Until it is announced, use `RAFIKICODE_API_KEY`.
-
-## 3. Allow file edits and commands
-
-With 0.1.1 this step is optional: the first task below wrote `index.html` with no terminal attached and no configuration. It is still needed in CI (`CI` or `GITHUB_ACTIONS` set) and on 0.1.0, where a run with no terminal attached (a script, `docker run` without `-it`, `ssh host "command"`) rejects every shell command, prints `! permission requested: bash (...); auto-rejecting`, and can end without writing any file while still exiting 0. For those cases, allow edits and commands in your own configuration file, for a folder you do not mind it changing:
-
-```bash
-mkdir -p ~/.rafikicode
-echo '{"permission":{"bash":"allow","edit":"allow","external_directory":"allow"}}' > ~/.rafikicode/config.json
-```
-
-This replaces any existing `~/.rafikicode/config.json`. It lets the agent run any shell command as your user, so use it in a project folder or a disposable machine, not in your home folder with important files. For a single run you can pass `--auto` instead, which approves every permission that is not explicitly denied.
-
-## 4. Run a first task
+## 3. Run a first task
 
 Start in an empty folder:
 
@@ -100,17 +126,18 @@ and `ls -la` shows `index.html` (about 5 to 7 KB). Open it in a browser.
 
 `run` prints the answer and exits. In a script, add `< /dev/null` so `run` does not wait for a message on standard input. `rafikicode` with no command starts the terminal user interface (TUI), a full screen chat on `rafiki-fast`.
 
+By default the agent may edit files and run commands inside the folder it starts in, and asks before it reaches outside it. In CI (`CI` or `GITHUB_ACTIONS` set) it also asks before every shell command, and nobody can answer; see [Headless and CI](./headless-and-ci.md#shell-commands-in-headless-runs) for how to allow commands there.
+
 The agent does not need `git`. Clean Debian and Ubuntu images do not include it; install it with `apt-get install -y git` if your project uses it, and set `git config --global user.name` and `user.email` before your first commit.
 
-## 5. Choose a tier
+## 4. Choose a tier
 
-Every request goes through the Rafiki gateway under one of three aliases. Credits are charged per token with a multiplier per tier:
+Every request goes through the Rafiki AI gateway under a tier name:
 
-| alias | multiplier | good for |
-|---|---|---|
-| `rafiki-fast` | 1x | everyday edits, fixes, questions (default) |
-| `rafiki-pro` | 4x | longer agentic work, larger features |
-| `rafiki-max` | 15x | the hardest problems, when the cheaper tiers stall |
+| tier | good for |
+|---|---|
+| `rafiki-fast` | everyday edits, fixes, questions (default) |
+| `rafiki-pro` | longer agentic work and larger features; uses more credits per token |
 
 Pick a tier for one run with `-m` (or `--model`):
 
@@ -118,23 +145,24 @@ Pick a tier for one run with `-m` (or `--model`):
 rafikicode run -m rafiki/rafiki-pro "Reply with the single word ok and do nothing else" < /dev/null
 ```
 
-The output starts with `> build · rafiki-pro`. To make a tier your default, add `"model": "rafiki/rafiki-pro"` to `~/.rafikicode/config.json`, next to the `permission` entry.
+The output starts with `> build · rafiki-pro`. To make a tier your default, add `"model": "rafiki/rafiki-pro"` to `~/.rafikicode/config.json`.
 
-## 6. Tell it about your project
+## 5. Tell it about your project
 
-Create an `AGENTS.md` at the root of the repository with the conventions you want followed: build and test commands, code style, what not to touch. `rafikicode` reads it into every session. A global `~/.rafikicode/AGENTS.md` applies to every project. Keep it short and factual; it is the single most effective way to get better results from the cheaper tiers.
+Create an `AGENTS.md` at the root of the repository with the conventions you want followed: build and test commands, code style, what not to touch. `rafikicode` reads it into every session. A global `~/.rafikicode/AGENTS.md` applies to every project. Keep it short and factual; it is the most effective way to get better results from `rafiki-fast`.
 
-## 7. Uninstall
+## 6. Uninstall
 
 ```bash
+rafikicode logout
 rafikicode uninstall --force
 ```
 
-It removes `~/.rafikicode` (binary and configuration), `~/.cache/rafikicode`, `~/.local/state/rafikicode`, `~/.local/share/rafikicode` and, from 0.1.1, the two lines the installer added to `~/.bashrc`; without `--force` it asks first, and `--dry-run` only lists what it would remove. On 0.1.0 remove the `~/.bashrc` lines with `sed -i '/^# rafikicode$/d; /\.rafikicode\/bin/d' ~/.bashrc`.
+`logout` revokes the key of a signed in terminal (skip it if you used `RAFIKICODE_API_KEY`). `uninstall` removes `~/.rafikicode` (binary and configuration), `~/.cache/rafikicode`, `~/.local/state/rafikicode`, `~/.local/share/rafikicode` and the two lines the installer added to `~/.bashrc`; without `--force` it asks first, and `--dry-run` only lists what it would remove.
 
 ## Next
 
 - [Configuration](./configuration.md) for every setting the CLI honors.
 - [Headless and CI](./headless-and-ci.md) for servers, pipelines and scripts.
-- [IDE preset](./ide-preset.md) to use the same wallet from an editor.
+- [Editors](./ide.md) to use Rafiki Code from Zed, JetBrains IDEs, Cline or Aider.
 - [Troubleshooting](./troubleshooting.md) when something does not work.
