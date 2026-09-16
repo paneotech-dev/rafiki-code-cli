@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Creates the tag that makes CI build the .vsix (.github/workflows/rafiki-vscode.yml)
 # for the version in package.json, and pushes that one tag only.
-# Run by a person after the version bump is merged (docs/release-vscode.md).
+# Run by a person after the version bump is merged. CI builds the .vsix and
+# publishes nothing; script/publish uploads the checked file.
 set -euo pipefail
 
 version="$(node -p "require('./package.json').version")"

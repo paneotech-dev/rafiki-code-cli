@@ -1,7 +1,7 @@
 {
   "name": "rafiki-code",
   "displayName": "Rafiki Code",
-  "description": "Rafiki Code in VS Code: the rafikicode coding agent in an editor terminal, signed in with your Rafiki Console account.",
+  "description": "Rafiki Code in VS Code: the rafikicode coding agent in an editor terminal, signed in with your Rafiki AI account.",
   "version": "0.1.0",
   "publisher": "paneotech",
   "author": "PANEOTECH",
@@ -12,7 +12,7 @@
   "bugs": {
     "url": "https://github.com/paneotech-dev/rafiki-code-cli/issues"
   },
-  "homepage": "https://github.com/paneotech-dev/rafiki-code-cli/blob/main/docs/vscode.md",
+  "homepage": "https://github.com/paneotech-dev/rafiki-code-cli/blob/v0.1.4/docs/ide.md",
   "license": "MIT",
   "icon": "images/icon.png",
   "galleryBanner": {

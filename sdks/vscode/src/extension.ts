@@ -15,13 +15,14 @@ import { canStart, parseWhoami, statusView, stripAnsi, type KeyState } from "./l
 import { summarizeDoctor } from "./lib/doctor"
 import { fileReference, openingPrompt } from "./lib/prompt"
 import * as Launch from "./lib/launch"
-import { normalizeTier, TIER_INFO, TIERS, type TierSetting } from "./lib/tier"
+import { normalizeTier, offeredTiers, TIER_INFO, type TierSetting } from "./lib/tier"
 
 const TERMINAL_NAME = "Rafiki Code"
 const SIGN_IN_TERMINAL_NAME = "Rafiki Code Sign In"
 const CONSOLE_URL = "https://console.rafikiai.io"
 const KEYS_URL = `${CONSOLE_URL}/keys`
-const DOCS_URL = "https://github.com/paneotech-dev/rafiki-code-cli/blob/main/docs/vscode.md"
+// The editor guide at a release tag: the repository's default branch carries no docs.
+const DOCS_URL = "https://github.com/paneotech-dev/rafiki-code-cli/blob/v0.1.4/docs/ide.md"
 const SECTION = "rafikicode"
 
 export interface RafikiCodeApi {
@@ -217,7 +218,7 @@ export function activate(context: vscode.ExtensionContext): RafikiCodeApi {
     const expired = current.kind === "signed-in" && current.expired
     const message = expired
       ? "Your Rafiki Code key has expired. Sign in again to continue."
-      : "Rafiki Code needs a Rafiki Console account. Sign in to use your Console wallet, or set RAFIKICODE_API_KEY to a server key before starting VS Code."
+      : "Rafiki Code needs a Rafiki AI account. Sign in to use its credits, or set RAFIKICODE_API_KEY to an API key from the Rafiki AI console (console.rafikiai.io) before starting VS Code."
     void vscode.window.showWarningMessage(message, "Sign In", "Create Server Key", "Learn More").then((picked) => {
       if (picked === "Sign In") {
         void vscode.commands.executeCommand("rafikicode.signIn")
@@ -355,8 +356,8 @@ export function activate(context: vscode.ExtensionContext): RafikiCodeApi {
       isTransient: true,
     })
     signInTerminal.show()
-    void vscode.window.showInformationMessage("Follow the steps in the Rafiki Code Sign In terminal: open the link, enter the code, approve.", "Open Console").then((picked) => {
-      if (picked === "Open Console") {
+    void vscode.window.showInformationMessage("Follow the steps in the Rafiki Code Sign In terminal: open the link, enter the code, approve.", "Open Rafiki AI console").then((picked) => {
+      if (picked === "Open Rafiki AI console") {
         vscode.env.openExternal(vscode.Uri.parse(`${CONSOLE_URL}/device`))
       }
     })
@@ -423,7 +424,7 @@ export function activate(context: vscode.ExtensionContext): RafikiCodeApi {
   async function pickTier() {
     const current = tier()
     const items: Array<vscode.QuickPickItem & { value: TierSetting }> = [
-      ...TIERS.map((t) => ({
+      ...offeredTiers(current).map((t) => ({
         value: t as TierSetting,
         label: `${current === t ? "$(check) " : ""}${TIER_INFO[t].label}`,
         description: TIER_INFO[t].multiplier,
@@ -437,7 +438,7 @@ export function activate(context: vscode.ExtensionContext): RafikiCodeApi {
     ]
     const picked = await vscode.window.showQuickPick(items, {
       title: "Rafiki Code tier for the next session",
-      placeHolder: "Credits are debited from your Rafiki Console wallet at the tier's multiplier",
+      placeHolder: "Credits are debited from your Rafiki AI account at the tier's multiplier",
     })
     if (!picked) {
       return

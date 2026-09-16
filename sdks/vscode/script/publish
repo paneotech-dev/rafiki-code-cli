@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Publishes an already built Rafiki Code .vsix to the Microsoft Marketplace
 # and to Open VSX, with the tools pinned in package.json. Run by a person
-# from sdks/vscode, never by CI (docs/release-vscode.md).
+# from sdks/vscode, never by CI, after checking the .vsix and its checksum from
+# the rafiki-vscode workflow (.github/workflows/rafiki-vscode.yml).
 #
 # Usage: VSCE_PAT=... OVSX_PAT=... script/publish dist/rafiki-code-<version>.vsix
 set -euo pipefail

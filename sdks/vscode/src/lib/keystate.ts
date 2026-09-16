@@ -73,7 +73,7 @@ export function statusView(state: KeyState, tierLabel: string): StatusView {
     case "no-key":
       return {
         text: "$(key) Rafiki Code: sign in",
-        tooltip: "No Rafiki key. Click to sign in with your Rafiki Console account.",
+        tooltip: "No Rafiki key. Click to sign in with your Rafiki AI account.",
         warning: true,
       }
     case "server-key":

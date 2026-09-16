@@ -23,6 +23,16 @@ export const TIER_INFO: Record<Tier, { label: string; detail: string; multiplier
   },
 }
 
+// Tiers left out of the tier picker while unavailable, the same switch as
+// Brand.provider.unlisted in the CLI: make the list empty to offer every tier
+// again. A tier set explicitly in the settings still starts sessions on it.
+export const UNLISTED_TIERS: readonly Tier[] = ["max"]
+
+// The tiers the picker offers, plus the current one when it is unlisted.
+export function offeredTiers(current?: TierSetting, unlisted: readonly Tier[] = UNLISTED_TIERS): Tier[] {
+  return TIERS.filter((t) => !unlisted.includes(t) || t === current)
+}
+
 export function isTier(value: unknown): value is Tier {
   return typeof value === "string" && (TIERS as readonly string[]).includes(value)
 }

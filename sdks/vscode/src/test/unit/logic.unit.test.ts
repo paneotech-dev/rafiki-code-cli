@@ -6,7 +6,7 @@ import { canStart, parseWhoami, statusView, stripAnsi } from "../../lib/keystate
 import { summarizeDoctor } from "../../lib/doctor"
 import { fileReference, lineRange, openingPrompt } from "../../lib/prompt"
 import * as Launch from "../../lib/launch"
-import { modelFor, normalizeTier, TIERS } from "../../lib/tier"
+import { modelFor, normalizeTier, offeredTiers, TIERS, UNLISTED_TIERS } from "../../lib/tier"
 
 // Output shapes below are copied from rafikicode 0.1.2-console-only runs.
 test("whoami: no key", () => {
@@ -23,7 +23,7 @@ test("whoami: server key from the environment", () => {
     "Console: https://console.rafikiai.io",
     "Gateway: https://gateway.rafikiai.io/v1",
     "Credential: RAFIKICODE_API_KEY (environment)",
-    "Account: a server key from the environment (details are on the Console key page).",
+    "Account: a server key from the environment (details are on the key page of the Rafiki AI console).",
   ].join("\n")
   const state = parseWhoami(out, 0)
   assert.deepEqual(state, { kind: "server-key" })
@@ -130,6 +130,15 @@ test("tiers map to Rafiki models only", () => {
   assert.equal(modelFor("default"), undefined)
   assert.equal(normalizeTier("gpt-4o"), "default")
   assert.equal(normalizeTier(undefined), "default")
+})
+
+test("the tier picker leaves out unlisted tiers unless one is current", () => {
+  assert.deepEqual([...UNLISTED_TIERS], ["max"])
+  assert.deepEqual(offeredTiers(), ["fast", "pro"])
+  assert.deepEqual(offeredTiers("default"), ["fast", "pro"])
+  assert.deepEqual(offeredTiers("fast"), ["fast", "pro"])
+  assert.deepEqual(offeredTiers("max"), ["fast", "pro", "max"])
+  assert.deepEqual(offeredTiers("default", []), ["fast", "pro", "max"])
 })
 
 test("launch arguments listen on loopback and pass the tier", () => {

@@ -2,8 +2,8 @@ name: rafiki-vscode
 
 # Builds the Rafiki Code VS Code extension (.vsix) from sdks/vscode and keeps
 # it as a workflow artifact. It publishes nothing: publishing to the
-# Microsoft Marketplace and Open VSX is a manual step, see
-# docs/release-vscode.md.
+# Microsoft Marketplace and Open VSX is a manual step with
+# sdks/vscode/script/publish.
 #
 # Trigger: push a tag rafiki-vscode-v<version>, for example
 # rafiki-vscode-v0.1.0. The prefix keeps it apart from the CLI's v* tags and
