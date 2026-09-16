@@ -7,10 +7,13 @@ import * as Credentials from "@opencode-ai/core/brand/credentials"
 import * as Trust from "@opencode-ai/core/brand/trust"
 import { InstallationVersion } from "@opencode-ai/core/installation/version"
 import { effectCmd, fail } from "@/cli/effect-cmd"
+import { cmd } from "@/cli/cmd/cmd"
+import { ProvidersCommand as UpstreamProvidersCommand } from "@/cli/cmd/providers"
 import { UI } from "@/cli/ui"
 import * as Contract from "./contract"
 import * as DeviceFlow from "./device-flow"
 import * as Doctor from "./doctor"
+import * as MissingKey from "./missing-key"
 
 function tryFlow<A>(what: Promise<A>) {
   return Effect.tryPromise({
@@ -40,6 +43,19 @@ export function refuseUnsafeCredential(command: unknown) {
   if (!problem) return
   UI.error(`${problem.message}\nOr set ${Brand.env.apiKey} to use a server key instead.`)
   process.exit(problem.exitCode)
+}
+
+// Runs before every command (src/index.ts), after the credential check: the
+// terminal interface and a local run need a Rafiki key and a Rafiki model, so
+// without a key, or with --model naming another provider, they stop here with
+// one message instead of opening a session that cannot answer.
+export function refuseMissingKey(opts: { _: (string | number)[]; attach?: unknown; model?: unknown; help?: unknown; version?: unknown }) {
+  if (opts.help || opts.version) return
+  if (!MissingKey.needed(opts._[0], opts.attach)) return
+  const message = MissingKey.message(typeof opts.model === "string" ? opts.model : undefined)
+  if (!message) return
+  UI.error(message)
+  process.exit(MissingKey.exitCode)
 }
 
 // The stored credential, or undefined when the file is unsafe and the
@@ -328,6 +344,30 @@ export const TrustCommand = effectCmd({
     }
   }),
 })
+
+// rafikicode providers (alias auth) stores keys for other providers, which the
+// provider scope does not offer (Brand.providers). The command stays out of
+// help and answers every form with where the Rafiki key comes from; the
+// upstream command comes back only with the escape hatch.
+export function providersMessage() {
+  return [
+    `${Brand.name} providers is not available: ${Brand.name} runs on ${Brand.provider.name} models only.`,
+    `Sign in with ${Brand.name} login, or on a server or in CI set ${Brand.env.apiKey} (create a key at ${Brand.consoleURL()}${Contract.PATH.keysPage}).`,
+  ].join("\n")
+}
+
+const ProvidersNotice = cmd({
+  command: "providers [args..]",
+  aliases: ["auth"],
+  describe: false,
+  builder: (yargs: Argv) => yargs.strict(false).help(false),
+  handler() {
+    UI.error(providersMessage())
+    process.exitCode = Contract.EXIT.usage
+  },
+})
+
+export const ProvidersCommand = Brand.providers.open() ? UpstreamProvidersCommand : ProvidersNotice
 
 // One line per check, ok, a warning, or a plain fix hint; exit 0 unless a line failed.
 export const DoctorCommand = effectCmd({

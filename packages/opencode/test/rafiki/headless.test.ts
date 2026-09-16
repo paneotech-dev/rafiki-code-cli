@@ -200,8 +200,9 @@ describe("rafikicode run without a terminal, with a model that asks for the shel
   test("a run with no key and no login says so instead of a server error", async () => {
     const result = await run(["create the marker"], { RAFIKICODE_API_KEY: undefined })
     expect(result.exitCode).toBe(2)
-    expect(result.stderr).toContain("No Rafiki key found. Set RAFIKICODE_API_KEY (create a key at")
-    expect(result.stderr).toContain("or run rafikicode login.")
+    expect(result.stderr).toContain("Rafiki Code needs a Rafiki Console account. Create one at")
+    expect(result.stderr).toContain("then run: rafikicode login")
+    expect(result.stderr).toContain("set RAFIKICODE_API_KEY.")
     expect(result.all).not.toContain("UnknownError")
     expect(shellCalls()).toBe(0)
   }, 120_000)

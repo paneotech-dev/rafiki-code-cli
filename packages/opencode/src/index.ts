@@ -3,7 +3,6 @@ import { hideBin } from "yargs/helpers"
 import { RunCommand } from "./cli/cmd/run"
 import { GenerateCommand } from "./cli/cmd/generate"
 import { ConsoleCommand } from "./cli/cmd/account"
-import { ProvidersCommand } from "./cli/cmd/providers"
 import { AgentCommand } from "./cli/cmd/agent"
 import { UpgradeCommand } from "./cli/cmd/upgrade"
 import { UninstallCommand } from "./cli/cmd/uninstall"
@@ -29,7 +28,7 @@ import { errorMessage } from "./util/error"
 import { PluginCommand } from "./cli/cmd/plug"
 import { Heap } from "./cli/heap"
 import { Brand } from "@opencode-ai/core/brand/brand"
-import { DoctorCommand, LoginCommand, LogoutCommand, TrustCommand, WhoamiCommand, markHeadless, refuseUnsafeCredential } from "./rafiki/cmd"
+import { DoctorCommand, LoginCommand, LogoutCommand, ProvidersCommand, TrustCommand, WhoamiCommand, markHeadless, refuseMissingKey, refuseUnsafeCredential } from "./rafiki/cmd"
 
 const args = hideBin(process.argv)
 
@@ -78,6 +77,7 @@ const cli = yargs(args)
     process.env.OPENCODE_PID = String(process.pid)
     refuseUnsafeCredential(opts._[0])
     markHeadless(opts._[0])
+    refuseMissingKey(opts)
   })
   .usage("")
   .completion("completion", "generate shell completion script")
