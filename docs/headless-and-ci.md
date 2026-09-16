@@ -1,14 +1,14 @@
 # Headless and CI
 
-Headless means running `rafikicode` where no person can open a browser: a build server, a pipeline job, a cron task, a container. This page covers authentication with a server key, non-interactive usage, exit codes, and what happens when the budget runs out.
+Headless means running `rafikicode` where no person can open a browser: a build server, a pipeline job, a cron task, a container. This page covers authentication with an API key, non-interactive usage, exit codes, and what happens when credits run out.
 
-## Server keys
+## API keys
 
-The browser sign in (`rafikicode login`) is coming soon and will be for terminals people sit at. Today every machine, laptops included, uses a key. For machines, create a server key in Rafiki Console:
+`rafikicode login` is the sign in for terminals people sit at: it needs a person to approve a code in a browser. Machines use an API key instead. Create one in the Rafiki AI console:
 
-1. Open [console.rafikiai.io/keys](https://console.rafikiai.io/keys).
-2. Create a key of the kind "server", give it a name that identifies the machine or pipeline, and set a budget. The budget caps what this key can spend from your wallet; a key never spends more than the wallet holds.
-3. Copy the key once. It is shown once and stored hashed.
+1. Open [console.rafikiai.io/keys](https://console.rafikiai.io/keys) and sign in with your Rafiki AI account.
+2. Create a key, tick the Rafiki Code option, give it a name that identifies the machine or pipeline, and set a budget. Keys created without the Rafiki Code option are not billed through Rafiki Code, so always tick it for keys you use with `rafikicode`. The budget caps what this key can spend from the credits in your Rafiki AI account; a key never spends more than the account holds.
+3. Copy the key. It is shown once.
 
 Put it in the environment of the job:
 
@@ -20,7 +20,9 @@ export RAFIKICODE_API_KEY=...
 
 The installer puts `rafikicode` on the PATH through `~/.bashrc`, which non-interactive shells do not read. In cron, CI steps and `ssh host "command"`, call `~/.rafikicode/bin/rafikicode` by its full path or add the directory to the PATH in the job.
 
-Store the key in the secret store of your CI system, never in the repository. Revoke it from the same Console page when the machine is retired; the next request fails immediately with a clear message.
+Store the key in the secret store of your CI system, never in the repository. Revoke it from the same page of the Rafiki AI console when the machine is retired; the next request fails with a clear message.
+
+`rafikicode login` refuses to start where no terminal is attached (exit code 2, `No terminal is attached, so the browser sign-in is not available.`), and while `RAFIKICODE_API_KEY` is set (exit code 2).
 
 ## Non-interactive runs
 
@@ -61,13 +63,13 @@ rafikicode run --attach http://127.0.0.1:4096 "summarize the README" < /dev/null
 curl -u "rafikicode:$(jq -r .password ~/.rafikicode/servers/4096.json)" http://127.0.0.1:4096/doc
 ```
 
-`run --attach` and `attach` read the password from `--password` or `RAFIKICODE_SERVER_PASSWORD` (and the user name from `--username`). When neither is given and the address is a loopback one, they read the server file for that port, if it is yours, private and its server process is running; a file whose server is gone is removed. A wrong or missing password stops the run with `The rafikicode server at <url> needs a password` or `... refused the password` and exit code 2; an address where no server answers stops it with exit code 4. In 0.1.3 and earlier, `run --attach` printed no answer and exited 0, and a missing password was reported as `Session not found`. Up to 0.1.3, `serve` and `web` on `127.0.0.1` had no password unless you set one.
+`run --attach` and `attach` read the password from `--password` or `RAFIKICODE_SERVER_PASSWORD` (and the user name from `--username`). When neither is given and the address is a loopback one, they read the server file for that port, if it is yours, private and its server process is running; a file whose server is gone is removed. A wrong or missing password stops the run with `The rafikicode server at <url> needs a password` or `... refused the password` and exit code 2; an address where no server answers stops it with exit code 4. In 0.1.1, `run --attach` printed no answer and exited 0, and a missing password was reported as `Session not found`. In 0.1.1, `serve` and `web` on `127.0.0.1` had no password unless you set one.
 
 ## Shell commands in headless runs
 
 A run is *headless* when nobody can answer a question: `CI` is set (and not `0` or `false`), `GITHUB_ACTIONS` is `true`, or `rafikicode run` has no terminal on standard input or output.
 
-Your own run without a terminal (a script, a container, `ssh host rafikicode run ...`) keeps the default permissions: tools run inside the directory it was started in, so `rafikicode run "create a calculator web page in index.html"` in an empty directory writes the file. Paths outside that directory still ask, and `rafikicode run` rejects a question nobody can answer. Tested on 15 September 2026: with 0.1.0 that first task in an empty folder, with no terminal attached, ended with no file written and exit code 0; with 0.1.1 the same run wrote the file.
+Your own run without a terminal (a script, a container, `ssh host rafikicode run ...`) keeps the default permissions: tools run inside the directory it was started in, so `rafikicode run "create a calculator web page in index.html"` in an empty directory writes the file. Paths outside that directory still ask, and `rafikicode run` rejects a question nobody can answer.
 
 A CI job is different: a prompt injection in a README, an issue or a diff can ask the model to run a command, and the job's environment holds the key and usually other secrets, so when `CI` or `GITHUB_ACTIONS` is set:
 
@@ -81,29 +83,26 @@ To let a job run commands, say so from a place the repository does not control:
 |---|---|
 | `--auto` on the run | `rafikicode run --auto "refresh the lockfile"` approves every question that is not explicitly denied |
 | `OPENCODE_PERMISSION` in the job | `OPENCODE_PERMISSION='{"bash":{"npm test":"allow","*":"deny"}}'` |
-| your own config | `{"permission":{"bash":"allow","edit":"allow","external_directory":"allow"}}` in `~/.rafikicode/config.json` on the machine (tested on 15 September 2026: the same task then wrote `index.html`) |
+| your own config | `{"permission":{"bash":"allow","edit":"allow","external_directory":"allow"}}` in `~/.rafikicode/config.json` on the machine |
 | trust the workspace | `RAFIKICODE_TRUST_WORKSPACE=1` in the job, or `rafikicode trust` on a long lived machine; the repository's own permission settings then apply |
 
 An untrusted workspace also loads no project plugins, custom tools or provider packages, and in headless runs starts none of its local MCP servers, formatters or language servers. See [workspace trust](security/workspace-trust.md) for the full rules. The pull request review action needs none of these: it denies edits, shell commands and web fetches explicitly and reviews an untrusted checkout.
 
 ## Checking a machine with doctor
 
-`rafikicode doctor` runs the checks a headless job depends on and prints one line each, `ok`, `WARN` with a fix hint and a note (from 0.1.2), `FAIL` with a fix hint, or `skip` when an earlier check makes it moot. It exits 0 when nothing failed, warnings included:
+`rafikicode doctor` runs the checks a headless job depends on and prints one line each: `ok`, `FAIL` with a fix hint, or `skip` when an earlier check makes it moot. With a key created in the Rafiki AI console:
 
 ```text
 ok    config      ~/.rafikicode/config.json not created yet, built in defaults apply
 ok    credential  RAFIKICODE_API_KEY from the environment
 ok    gateway     https://gateway.rafikiai.io answered in 134 ms
 ok    key         key rafikicode-..., spent 0.1568 USD of 2.5 USD budget, expires 2026-10-13T12:34:43.455000+00:00
-ok    tiers       rafiki-fast, rafiki-pro, rafiki-max
-WARN  console     https://console.rafikiai.io does not know this key (401). Fix: This key is valid at the gateway but not registered in Rafiki Console (created outside the Console). Create a key at https://console.rafikiai.io/keys, or run rafikicode login.
-                  Usage still works and is metered at the gateway. Console features such as the wallet view and key management do not apply to this key; create a key at https://console.rafikiai.io/keys to get them.
-ok    version     rafikicode 0.1.2, latest channel, installed elsewhere, update through the channel you installed with
-
-All checks passed, 1 warning, see the line marked WARN.
+ok    tiers       rafiki-fast, rafiki-pro
+ok    console     https://console.rafikiai.io, account ...
+ok    version     rafikicode 0.1.1, ...
 ```
 
-That is output of a local 0.1.2 build on 16 September 2026 (exit code 0), with the home directory shortened to `~`. A copy installed by the installer script reads `installed by the installer script, rafikicode update applies` on the `version` line instead. The `console` line is a warning because that key was created at the gateway, not in Rafiki Console, while every run on it succeeds; see [Troubleshooting](./troubleshooting.md#seen-on-15-september-2026). With 0.1.1 the same key gave `FAIL  console` and exit code 1. With no key at all the `credential` line reads `FAIL  credential  none. Fix: Run rafikicode login, or set RAFIKICODE_API_KEY on servers and in CI.`, the `key` and `tiers` lines are skipped, and `doctor` exits 1.
+The home directory is shortened to `~` and account details to `...`. With no key at all the `credential` line reads `FAIL  credential  none. Fix: Run rafikicode login, or set RAFIKICODE_API_KEY on servers and in CI.`, the `key` and `tiers` lines are skipped, and `doctor` exits 1. A key that works at the gateway but was not created in the Rafiki AI console gives `FAIL  console ... does not know this key (401)`; see [Troubleshooting](./troubleshooting.md#keys-and-credits).
 
 The checks, in order:
 
@@ -113,11 +112,11 @@ The checks, in order:
 | `credential` | which credential a run would use: `RAFIKICODE_API_KEY`, a stored sign-in, or none. A stored browser sign-in is reported as refused when `CI` is set |
 | `gateway` | the gateway answers its liveness probe, with the round trip time |
 | `key` | the gateway knows the key: alias, spend, budget and expiry as numbers and dates. A revoked key, a spent budget or an expired key fail here. A key made in the Rafiki AI console without the Rafiki Code option gives `WARN` (exit code still 0): create one with the option ticked, or run `rafikicode login` |
-| `tiers` | which of `rafiki-fast`, `rafiki-pro`, `rafiki-max` the key may use |
-| `console` | Rafiki Console answers, and with a key, the account and wallet balance |
+| `tiers` | which Rafiki tiers (`rafiki-fast`, `rafiki-pro`) the key may use |
+| `console` | the Rafiki AI console answers, and with a key, the account and its credit balance |
 | `version` | the installed version, its update channel, and how it was installed |
 
-The exit code is 0 when every line is `ok`, 4 when a failed line is a network failure, and 1 otherwise, so a pipeline can run it as a first step and stop before spending anything. When the gateway cannot be reached, the key and tier lines are skipped instead of waiting on the same gateway again. `--timeout N` sets the seconds to wait for each network check (default 8). The key value is never printed. Set `RAFIKICODE_GATEWAY_URL` or `RAFIKICODE_CONSOLE_URL` to check a staging or local mock instead of production; the fix hints name the variable when it is set.
+The exit code is 0 when every line is `ok`, `WARN` or `skip`, 4 when a failed line is a network failure, and 1 otherwise, so a pipeline can run it as a first step and stop before spending anything. When the gateway cannot be reached, the key and tier lines are skipped instead of waiting on the same gateway again. `--timeout N` sets the seconds to wait for each network check (default 8). The key value is never printed. Set `RAFIKICODE_GATEWAY_URL` or `RAFIKICODE_CONSOLE_URL` to check a local test server instead; the fix hints name the variable when it is set.
 
 ## Exit codes
 
@@ -128,25 +127,25 @@ The sign-in commands (`login`, `logout`, `whoami`) use a fixed table so scripts 
 | 0 | success |
 | 1 | the request was refused (for example the sign-in was denied in the browser) |
 | 2 | usage: not signed in, or a browser sign-in was attempted where no terminal is attached |
-| 3 | wallet or budget problem |
-| 4 | network problem reaching the Console |
+| 3 | credits or key budget spent |
+| 4 | network problem reaching the Rafiki AI console or the gateway |
 | 5 | internal error |
 
-`rafikicode run` exits 0 when the task completes and non-zero otherwise.
+`rafikicode run` exits 0 when the task completes. When the gateway refuses a request it uses the same table: 2 for a revoked or expired key or a tier the key may not use, 3 when the key's budget or the account's credits are spent, 4 when the gateway cannot be reached. Other failures exit 1.
 
 ## Budget exhaustion
 
-Every key has a budget, and the wallet has a balance. When either is spent, the gateway refuses the next request with a budget exceeded error and the run stops. Nothing is charged for the refused request. To continue:
+Every key has a budget, and your Rafiki AI account has a credit balance. When either is spent, the gateway refuses the next request with a budget exceeded error and the run stops. Nothing is charged for the refused request. To continue:
 
-- top up the wallet in Rafiki Console, or
+- add credits to your Rafiki AI account in the Rafiki AI console, or
 - raise the key's budget on the key page, or
 - point the job at a different key.
 
-A refused request from a revoked or expired key is reported the same way with a message naming the cause. Server keys do not refresh themselves; give them a long enough lifetime for the job, or rotate them from the Console.
+A refused request from a revoked or expired key is reported the same way with a message naming the cause. API keys do not refresh themselves; give them a long enough lifetime for the job, or replace them from the Rafiki AI console.
 
 ## Examples
 
-The examples below were not run during the 15 September 2026 check. Pull request review in GitHub Actions is packaged as a composite action in this repository, `.github/actions/rafikicode-review`, with an example workflow next to it; see [Pull request review](./review-recipe.md). The hand written job below shows the same idea in plain steps for other CI systems:
+Pull request review in GitHub Actions is packaged as a composite action in this repository, `.github/actions/rafikicode-review`, with an example workflow next to it; see [Pull request review](./review-recipe.md). The hand written job below shows the same idea in plain steps for other CI systems:
 
 ```yaml
 name: rafikicode review

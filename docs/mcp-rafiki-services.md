@@ -57,10 +57,10 @@ With a name and `--url`, `mcp add` writes the entry without prompting and prints
 
 Two different keys are involved, and it helps to keep them apart:
 
-- The Rafiki key (`RAFIKICODE_API_KEY` or the one from `rafikicode login`) authenticates `rafikicode` to the Rafiki gateway for model calls. It is never sent to an MCP server unless you put it in that server's headers yourself.
+- The Rafiki AI key (`RAFIKICODE_API_KEY` or the one from `rafikicode login`) authenticates `rafikicode` to the Rafiki AI gateway for model calls. It is never sent to an MCP server unless you put it in that server's headers yourself.
 - An MCP server has its own credential: the bearer token n8n or Dify shows you when you enable their MCP endpoint.
 
-If your n8n or Dify instance is run by Rafiki for you and you want a single credential, configure their MCP endpoint to accept your Rafiki key as the bearer token (both products let you choose the expected token) and reference it as `{env:RAFIKICODE_API_KEY}` in the headers. Otherwise use the token the service generated and keep the two apart. In both cases the value comes from the environment, not from the file.
+Use the token the service generated and keep the two apart. Reference it from the environment, as in the examples below, not from the file.
 
 ## n8n
 
@@ -124,6 +124,5 @@ Examples, not verified against live instances here:
 
 - The n8n MCP Server Trigger endpoint shape and its bearer authentication.
 - The Dify MCP server URL shape and token.
-- Accepting the Rafiki key as the bearer token on the n8n or Dify side.
 
 When you confirm one of these against your instance, note the exact URL shape and the version in your project's documentation so the next person does not have to rediscover it.

@@ -1,10 +1,8 @@
 # Troubleshooting
 
-Each entry gives the message or symptom, the cause, and what to do. Start with `rafikicode doctor`: it checks the configuration file, the credential, the gateway, the key's budget, the tiers, the Console and the installed version, one line each with a fix hint (details in [Headless and CI](./headless-and-ci.md#checking-a-machine-with-doctor)). Add `--print-logs --log-level DEBUG` to any command to see what it did.
+Each entry gives the message or symptom, the cause, and what to do. The messages are those of `rafikicode` 0.1.1. Start with `rafikicode doctor`: it checks the configuration file, the credential, the gateway, the key's budget, the tiers, the Rafiki AI console and the installed version, one line each with a fix hint (details in [Headless and CI](./headless-and-ci.md#checking-a-machine-with-doctor)). Add `--print-logs --log-level DEBUG` to any command to see what it did.
 
-## Seen on 15 September 2026
-
-These are real messages from `rafikicode` 0.1.0 on clean `ubuntu:24.04` and `debian:12` machines that had only `curl` and `ca-certificates` installed.
+## Installation
 
 **`rafikicode: command not found` right after the installer.** The installer adds `export PATH=$HOME/.rafikicode/bin:$PATH` to `~/.bashrc` (the startup file of interactive bash terminals), and only new terminals read it. In the same terminal run:
 
@@ -12,9 +10,9 @@ These are real messages from `rafikicode` 0.1.0 on clean `ubuntu:24.04` and `deb
 export PATH=$HOME/.rafikicode/bin:$PATH
 ```
 
-or open a new terminal. From 0.1.1 the installer prints this export as its first next step. Shells that are not interactive (`bash -lc`, cron, CI steps, `ssh host "command"`) do not read `~/.bashrc` either: call `~/.rafikicode/bin/rafikicode` by its full path there.
+or open a new terminal. The installer prints this line as its first next step. Shells that are not interactive (`bash -lc`, cron, CI steps, `ssh host "command"`) do not read `~/.bashrc` either: call `~/.rafikicode/bin/rafikicode` by its full path there.
 
-**`curl: (22) The requested URL returned error: 404` from the installer.** Before release 0.1.0 was published on 15 September, the installer had no release to download and stopped with this 404. The same message appears today when you ask for a version that does not exist:
+**`curl: (22) The requested URL returned error: 404` from the installer.** You asked for a version that does not exist:
 
 ```text
 curl: (22) The requested URL returned error: 404
@@ -23,24 +21,56 @@ Error: could not download SHA256SUMS for v0.0.9 from https://github.com/paneotec
 
 Run the installer without `--version` to get the latest release.
 
-**`npm: command not found`, or the npm registry answers 404 for `rafikicode`.** The npm package is not published yet. Use the installer.
+**`npm install -g rafikicode` fails, or the npm registry answers 404 for `rafikicode`.** `rafikicode` is installed with the installer script only.
 
-**`permission requested: bash (...); auto-rejecting`, and no file is written.**
+**Checksum mismatch during install.** The downloaded archive did not match the published `SHA256SUMS`. Nothing was installed. Run the installer again; if it repeats, a proxy or mirror is altering downloads, and you should fetch from the release page directly.
+
+**macOS refuses to open the binary.** Release binaries are not code signed. Right click the binary and choose Open once, or remove the quarantine attribute with `xattr -d com.apple.quarantine ~/.rafikicode/bin/rafikicode`.
+
+## Sign in
+
+**`No terminal is attached, so the browser sign-in is not available.`** You ran `rafikicode login` in a pipeline, over a non-interactive SSH session, or with input redirected. `login` needs a person at a terminal. Run it in an interactive terminal, or use an API key as described in [Headless and CI](./headless-and-ci.md#api-keys). Exit code 2.
+
+**`RAFIKICODE_API_KEY is set, so this session is already authenticated with a server key.`** Signing in is unnecessary while the variable is set, and the variable takes precedence over a stored sign in. Unset it (`unset RAFIKICODE_API_KEY`) if you want to use `login`. Exit code 2.
+
+**The code expired before you approved it.** A code is valid for the time `login` prints (10 minutes). Run `rafikicode login` again for a new code.
+
+**The approval page shows a different code.** Do not approve it. Approve only the code your own terminal printed, then run `rafikicode login` again if in doubt.
+
+**`Missing API key. Run rafikicode login, or set RAFIKICODE_API_KEY.`** Printed by `whoami` when no credential is available (exit code 2). Sign in, or set the variable.
+
+## Keys and credits
+
+**`doctor` shows `FAIL console ... does not know this key (401)`, while tasks run.** The key works at the gateway, but it was not created in the Rafiki AI console, so `doctor` exits 1 and `whoami` says `This key is valid at the gateway but not registered in Rafiki Console (created outside the Console)`. Create a key in the Rafiki AI console at [console.rafikiai.io/keys](https://console.rafikiai.io/keys) with the Rafiki Code option ticked, or run `rafikicode login`. If the `key` line fails too, the key really is revoked or spent, and both commands say `revoked or has expired`.
+
+**`run` stops with `No Rafiki key found. Set RAFIKICODE_API_KEY (create a key at https://console.rafikiai.io/keys), or run rafikicode login.`** No credential is available. Sign in with `rafikicode login`, or set `RAFIKICODE_API_KEY`, and check that `rafikicode doctor` shows `ok credential`. Exit code 2.
+
+**`No models available: not signed in.`** Printed by `rafikicode models rafiki` when no credential is present. Sign in or set the key, then run the command again.
+
+**Budget exceeded.** The key's budget or the credits in your Rafiki AI account are spent. The request was refused and not charged, and `run` exits 3. Add credits in the Rafiki AI console, raise the key's budget on the key page, or use a different key. The `key` line of `rafikicode doctor` shows spend and budget.
+
+**A tier is refused with an access error.** The key was created for fewer tiers than you asked for (`run` exits 2). Check the `tiers` line of `rafikicode doctor` and pick an allowed tier, or create a key with the tiers you need.
+
+## Running tasks
+
+**`run` waits forever in a script.** Standard input is not a terminal, so the CLI reads it as the message. Redirect it: `rafikicode run "task" < /dev/null`.
+
+**`permission requested: bash (...); auto-rejecting`, and no command runs.**
 
 ```text
 ! permission requested: bash (ls -la /root/calc1); auto-rejecting
-✗ ls -la /root/calc1 failed
-Error: The user rejected permission to use this specific tool call.
 ```
 
-In 0.1.0 the run had no terminal attached, so nobody could approve the shell command, and it still exited 0 with nothing created. From 0.1.1 your own run keeps the default permissions inside the folder it starts in, so this only happens in CI (`CI` or `GITHUB_ACTIONS` set) or for paths outside that folder; the rejection prints a hint, and a run whose every tool call was rejected exits 1. To allow edits and commands anyway, in a folder you do not mind it changing:
+Nobody could approve the request: the run is in CI (`CI` or `GITHUB_ACTIONS` set), where the shell tool asks before every command, or the command reaches outside the folder the run started in. The rejection prints a hint, and a run whose every tool call was rejected exits 1. To allow edits and commands, in a folder you do not mind it changing:
 
 ```bash
 mkdir -p ~/.rafikicode
 echo '{"permission":{"bash":"allow","edit":"allow","external_directory":"allow"}}' > ~/.rafikicode/config.json
 ```
 
-or pass `--auto` for one run. Both let the agent run any command as your user.
+or pass `--auto` for one run. Both let the agent run any command as your user. This replaces any existing `~/.rafikicode/config.json`. More ways are listed in [Headless and CI](./headless-and-ci.md#shell-commands-in-headless-runs).
+
+**The reply stops with `The model used its whole output budget reasoning and wrote no answer`.** Run again with `--variant none`, or see [Reasoning and output limits](./configuration.md#reasoning-and-output-limits).
 
 **`git: command not found`.** Clean Debian and Ubuntu images do not include git, so steps such as `git init` fail. `rafikicode` itself does not need git. Install it with `apt-get install -y git` when your project uses it.
 
@@ -51,78 +81,21 @@ git config --global user.name "Your Name"
 git config --global user.email "you@example.com"
 ```
 
-**`doctor` shows `FAIL console ... does not accept this key (401)` and `whoami` says `This key was revoked or has expired`, but tasks run.** Seen with a working gateway key: the `key`, `gateway` and `tiers` lines read `ok` and `run` completes, while the Console does not recognise the key. `doctor` then exits 1. Runs are not affected. If the `key` line fails too, the key really is revoked or spent. From 0.1.1 both commands say `This key is valid at the gateway but not registered in Rafiki Console (created outside the Console)` in this case, and `revoked or has expired` only when the gateway refuses the key too. From 0.1.2 `doctor` marks that `console` line `WARN` instead of `FAIL`, adds a line explaining that usage still works and is metered at the gateway while Console features such as the wallet view and key management do not apply to the key, ends with `All checks passed, 1 warning, see the line marked WARN.` and exits 0. `whoami` prints the same two sentences and still exits 2. Create the key in Rafiki Console to clear the warning.
+**Slow first request.** The first run in a repository indexes the project and starts language servers. Later requests are faster.
 
-**`run` without a key prints `"name": "UnknownError"` and `Unexpected server error. Check server logs for details.`** No credential is set. Set `RAFIKICODE_API_KEY` and check that `rafikicode doctor` shows `ok credential`. From 0.1.1 the run says `No Rafiki key found. Set RAFIKICODE_API_KEY (create a key at https://console.rafikiai.io/keys), or run rafikicode login.` and exits 2. From 0.1.3 `run` and the terminal interface print this before any session starts, and exit 2:
+## Configuration
 
-```text
-Rafiki Code needs a Rafiki Console account. Create one at https://console.rafikiai.io, then run: rafikicode login
-On a server or in CI, create a server key at https://console.rafikiai.io/keys and set RAFIKICODE_API_KEY.
+**Your editor warns that the schema of `~/.rafikicode/config.json` cannot be loaded.** The `$schema` address that 0.1.1 writes into a new configuration file answers 404. Runs are not affected. To get validation in your editor, change that line to:
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/paneotech-dev/rafiki-code-cli/v0.1.1/schema/config.json"
+}
 ```
-
-**`rafikicode runs on Rafiki models only (rafiki-fast, rafiki-pro, rafiki-max)`.** The run named another provider's model (`--model openai/...`), or your configuration did. Use `rafikicode models` to list the models you can use. See [provider scope](security/provider-scope.md).
-
-**`rafikicode providers is not available`.** The `providers` command (alias `auth`) stored keys for other providers and is not part of `rafikicode` from 0.1.3. Sign in with `rafikicode login`, or set `RAFIKICODE_API_KEY` on servers and in CI.
-
-## Seen on 16 September 2026
-
-Found while preparing 0.1.2 and checked with a local 0.1.2 build.
-
-**Your editor warns that the schema of `~/.rafikicode/config.json` cannot be loaded.** Releases 0.1.0 and 0.1.1 wrote a `$schema` address on the repository's main branch, which has no schema files, so it answers 404. Runs are not affected. From 0.1.2 new configuration files point at the schema of the installed release, for example `https://raw.githubusercontent.com/paneotech-dev/rafiki-code-cli/v0.1.2/schema/config.json`, and the first command you run replaces the old address in an existing file, changing nothing else in it. On 0.1.1 you can edit the `$schema` line by hand to the `v0.1.1` address.
-
-**`doctor` shows `WARN  console ... does not know this key (401)`.** See the `doctor` entry above: the key works for runs but was not created in Rafiki Console. `doctor` exits 0.
-
-## New in 0.1.3
-
-Checked with a local 0.1.3 build on 16 September 2026.
-
-**`Warning: ignored enabled_providers in the configuration` or `Warning: ignored model openai/gpt-4o in the configuration`.** From 0.1.3 `rafikicode` offers only the Rafiki models (`rafiki/rafiki-fast`, `rafiki/rafiki-pro`, `rafiki/rafiki-max`), whatever your configuration, a project, or other providers' keys in the environment (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) ask for. Settings that name another provider are ignored with this warning, and the command goes on. Remove those lines to silence it. `rafikicode run -m openai/gpt-4o ...` stops with `rafikicode runs on Rafiki models only` and exit code 2. See [provider scope](security/provider-scope.md).
-
-**`rafikicode providers` or `rafikicode auth` answers `rafikicode providers is not available`.** The command was removed in 0.1.3 (exit code 2). Sign in with `rafikicode login`, or set `RAFIKICODE_API_KEY` on servers and in CI.
-
-**`run` or the terminal interface exits 2 at once with `Rafiki Code needs a Rafiki Console account`.** No key is available (see the `run` entry above). Before 0.1.3 the run failed later with `No Rafiki key found`, and the terminal interface opened with no models. `--help` and `--version` work without a key.
-
-**The editor shows `Authentication required: Rafiki Code needs a Rafiki Console account` (ACP error `auth_required`, code -32000).** From 0.1.3 `rafikicode acp` answers `initialize` without a key, so the editor can offer the sign in method, and answers `authenticate`, `session/new` and `session/prompt` with this error until a key exists. Before 0.1.3 a new thread opened with an empty model list and prompts failed with `Internal error`. The sign in method is now called `rafikicode-login` (editors that remembered `opencode-login` still work), and it runs `rafikicode login --surface ide` through the full path of the binary. Sign in, or give the agent a key, then start a new thread. See [Using Rafiki Code from your editor](./ide.md#signing-in-from-the-editor).
-
-**`Unknown sign in surface "...". Use --surface cli or --surface ide.`** `rafikicode login --surface` takes `cli` (the default, a terminal) or `ide` (an editor), exit code 2 otherwise. `ide` only changes how the key is listed in Rafiki Console; the stored key works for the terminal and the editor alike. Versions before 0.1.3 do not know the option and print the `login` help instead.
-
-**The VS Code extension opens a session, but files and selections sent to it do not appear in the prompt.** References need `rafikicode` 0.1.3 or later. With 0.1.1 and 0.1.2 sessions open and sign in works, but the reference is accepted and never shown. Update with `rafikicode update`. Sign in from the extension adds `--surface ide` only when the installed `rafikicode` lists that option.
-
-## Installation
-
-**Checksum mismatch during install.** The downloaded archive did not match the published `SHA256SUMS`. Nothing was installed. Run the installer again; if it repeats, a proxy or mirror is altering downloads, and you should fetch from the release page directly.
-
-**macOS refuses to open the binary.** Release binaries are not yet signed. Right click the binary and choose Open once, or remove the quarantine attribute with `xattr -d com.apple.quarantine ~/.rafikicode/bin/rafikicode`.
-
-## Sign-in
-
-The browser sign in, `rafikicode login`, is coming soon. Until it is announced, use `RAFIKICODE_API_KEY`. The messages below are what 0.1.0 prints today when `login` is not possible.
-
-**`No terminal is attached, so the browser sign-in is not available.`** You ran `rafikicode login` in a pipeline, over a non-interactive SSH session, or with input redirected. Set `RAFIKICODE_API_KEY` as described in [Headless and CI](./headless-and-ci.md). Exit code 2.
-
-**`RAFIKICODE_API_KEY is set, so this session is already authenticated with a server key.`** Login is unnecessary while the variable is set. Exit code 2.
-
-## Keys and budget
-
-**Budget exceeded.** The key's budget or the wallet balance is spent. The request was refused and not charged. Top up the wallet in Rafiki Console, raise the key's budget on the key page, or use a different key. The `key` line of `rafikicode doctor` shows spend and budget.
-
-**`Missing API key. Run rafikicode login, or set RAFIKICODE_API_KEY.`** Printed by `whoami` when no credential is available. Set the variable.
-
-**`No models available: not signed in.`** Printed by `rafikicode models rafiki` when no credential is present. Set the key, then run the command again.
-
-**A model is refused with an access error.** The key was minted for fewer tiers than you asked for. Check the `tiers` line of `rafikicode doctor` and pick an allowed alias.
-
-## Running tasks
-
-**`run` waits forever in a script.** Standard input is not a terminal, so the CLI reads it as the message. Redirect it: `rafikicode run "task" < /dev/null`.
-
-**The task does nothing in CI or a container.** See the `auto-rejecting` entry above: allow permissions in your own configuration or pass `--auto`, only in a disposable checkout.
-
-**Slow or stalled first request.** The first run in a repository indexes the project and starts language servers. Later requests are faster.
 
 ## Updating
 
-**`rafikicode upgrade skipped: 0.1.0 is already installed`.** `rafikicode update` (or `upgrade`) found nothing newer; nothing to do.
+**`rafikicode upgrade skipped: 0.1.1 is already installed`.** `rafikicode update` (or `upgrade`) found nothing newer; nothing to do.
 
 **`update` fails with a checksum error.** The downloaded binary did not match `SHA256SUMS`; the installed binary was left untouched. Retry, or install the release with the installer script.
 

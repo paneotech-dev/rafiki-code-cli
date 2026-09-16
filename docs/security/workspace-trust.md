@@ -1,7 +1,5 @@
 # Workspace trust
 
-Status: implemented in release candidate 4 as an interim default, pending the product decision by the Rafiki Code owners and the security reviewer (see [Decision still open](#decision-still-open)).
-
 A *workspace* is the directory you start `rafikicode` in, up to the root of its git repository. *Workspace trust* means deciding, per workspace, whether the files inside it may make `rafikicode` run programs on your machine or read your secrets.
 
 ## What a repository can declare
@@ -20,7 +18,7 @@ A *workspace* is the directory you start `rafikicode` in, up to the root of its 
 | Substitution | `{env:NAME}` and `{file:path}` anywhere in project config, including `tui.json` | when the config loads; the value can be sent to any URL the config names (a remote MCP server, an instructions URL, another provider) |
 | Spend | a `rafiki` model's `id`, `options`, `variants` or `limit`, and any agent or mode `options` field other than `temperature`, `top_p`, `top_k`, `reasoningEffort`, `textVerbosity`, `timeout`, `chunkTimeout` and `headerTimeout` (compared without case, `_` or `-`), whether or not the file also configures a provider | on every request: agent and mode options are merged into the request body, so a tier can call another model or raise its output limit while its name stays the same |
 
-## What rafikicode does (release candidate 4)
+## What rafikicode does
 
 A workspace is **trusted** when you said so:
 
@@ -48,37 +46,20 @@ Your own configuration keeps full behaviour: `~/.rafikicode/` (or `$XDG_CONFIG_H
 
 The background dependency install that prepares plugin directories runs only for directories whose code may load (your own configuration and trusted workspaces).
 
-The key has one more guard that trust does not relax: any provider request that carries the Rafiki key to a host other than the gateway (the built in one, `RAFIKICODE_GATEWAY_URL`, the URL the Console returned at login, or a base URL in your own configuration) is refused.
+The key has one more guard that trust does not relax: any provider request that carries the Rafiki AI key to a host other than the gateway (the built in one, `RAFIKICODE_GATEWAY_URL`, the URL the Console returned at login, or a base URL in your own configuration) is refused.
 
 `OPENCODE_DISABLE_PROJECT_CONFIG=1` (alias `RAFIKICODE_DISABLE_PROJECT_CONFIG=1`) still loads nothing at all from the working tree, trusted or not.
 
-## What stays open
+## Limits
 
 - A trusted workspace can run code, and code can read the key from the environment or the credential file. Trust only repositories whose contents you would run as a script.
-- At a terminal, an untrusted workspace still starts its local MCP servers, formatters and language servers, as upstream does. Only headless runs remove them.
-- The key guard reads string, byte and form request bodies; a streamed body is not inspected (provider packages send JSON strings).
+- At a terminal, an untrusted workspace still starts its local MCP servers, formatters and language servers. Only headless runs remove them.
+- The key guard reads string, byte and form request bodies; a streamed body is not inspected.
 - A home directory that is an unpacked archive rather than a git checkout is not detected as part of the repository.
-- There is no interactive trust prompt in the terminal interface yet; the warning line names the `rafikicode trust` command.
+- The terminal interface does not ask whether to trust a workspace; the warning line names the `rafikicode trust` command.
 
 ## What to do
 
 - For a repository you do not trust, run `rafikicode` without trusting it, or set `RAFIKICODE_DISABLE_PROJECT_CONFIG=1` to ignore its configuration entirely.
 - In CI, run `rafikicode` on code that has already been reviewed, such as the base branch of a pull request. The review action in [the review recipe](../review-recipe.md) checks out the base commit for this reason and denies edits, shell commands and web fetches. Never run it on the head of a pull request from a fork with a key available.
-- Use a server key with a small budget for CI, so a leaked key has a small reach.
-
-## Decision still open
-
-The shipped behaviour is controlled by one value in the Rafiki layer, `PROJECT_CODE` in `packages/core/src/brand/trust.ts`:
-
-- `"trusted"` (shipped): project plugins, custom tools, TUI plugins and provider packages load only from trusted workspaces, at a terminal and in headless runs.
-- `"interactive"`: upstream loading for a person at a terminal; headless runs still load project code only from trusted workspaces.
-
-The options that were under review:
-
-- **Option A, a trust prompt per workspace.** Release candidate 4 implements this option without the prompt itself: the decision is stored per workspace with `rafikicode trust`, headless runs treat every workspace as untrusted unless trusted by the store or `RAFIKICODE_TRUST_WORKSPACE`, and untrusted headless runs lose the program starting features and shell permissions. A prompt in the terminal interface, and a hash of the declaring files so a change asks again, are not built.
-- **Option B, project features off by default, allowed from user configuration.** Close to the headless column above; release candidate 4 does not remove MCP servers, formatters and language servers at a terminal.
-- **Option C, keep upstream behaviour and document it.** Available by setting `PROJECT_CODE` to `"interactive"` for the terminal part only.
-
-Questions for the owners and the security reviewer: keep `"trusted"` as the default; also remove local MCP servers, formatters and language servers at a terminal for untrusted workspaces; add the interactive prompt and the file hash; whether `rafikicode serve` should also refuse to start on `127.0.0.1` without a password (release candidate 5 refuses every other address and warns on loopback).
-
-The sandboxed builder engine is a separate question: it runs generated code inside an isolated container, and the key placed there is covered by the builder's own security review.
+- Use a dedicated API key with a small budget for CI, so a leaked key has a small reach.
