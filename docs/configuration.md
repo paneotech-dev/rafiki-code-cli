@@ -30,6 +30,8 @@ Two defaults are seeded by the product and can be overridden in the global file:
 - `autoupdate` is `false`. The CLI never replaces itself unless you run `rafikicode update`. Set it to `true` or `"notify"` to change that.
 - The `rafiki` provider is registered automatically once a credential exists (a stored login or `RAFIKICODE_API_KEY`), pointing at the gateway with the three aliases `rafiki-fast`, `rafiki-pro` and `rafiki-max`. Without a credential no provider is registered and the CLI tells you to sign in.
 
+One setting is not a default you can change: `rafikicode` offers only the `rafiki` provider. An `enabled_providers` list, or a `model`, `small_model` or agent `model` naming another provider, is ignored with a one line warning, in every configuration file. See [provider scope](security/provider-scope.md).
+
 ## Keys
 
 Every top-level key the CLI honors, with the meaning from the configuration schema. Keys not listed here are ignored.
@@ -58,7 +60,7 @@ Every top-level key the CLI honors, with the meaning from the configuration sche
 | `compaction` | conversation compaction behavior for long sessions |
 | `attachment` | attachment processing settings |
 | `tool_output` | truncation thresholds for tool output |
-| `provider` | provider definitions. The `rafiki` entry is seeded for you; add others only if you have your own keys, they are not metered by the wallet |
+| `provider` | provider definitions. The `rafiki` entry is seeded for you; its `whitelist`, `blacklist` and model settings apply. Entries for other providers are not offered (see [provider scope](security/provider-scope.md)) |
 | `enterprise` | enterprise sharing service settings |
 | `experimental` | switches that may change between releases |
 

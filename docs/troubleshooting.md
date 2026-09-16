@@ -53,7 +53,16 @@ git config --global user.email "you@example.com"
 
 **`doctor` shows `FAIL console ... does not accept this key (401)` and `whoami` says `This key was revoked or has expired`, but tasks run.** Seen with a working gateway key: the `key`, `gateway` and `tiers` lines read `ok` and `run` completes, while the Console does not recognise the key. `doctor` then exits 1. Runs are not affected. If the `key` line fails too, the key really is revoked or spent. From 0.1.1 both commands say `This key is valid at the gateway but not registered in Rafiki Console (created outside the Console)` in this case, and `revoked or has expired` only when the gateway refuses the key too.
 
-**`run` without a key prints `"name": "UnknownError"` and `Unexpected server error. Check server logs for details.`** No credential is set. Set `RAFIKICODE_API_KEY` and check that `rafikicode doctor` shows `ok credential`. From 0.1.1 the run says `No Rafiki key found. Set RAFIKICODE_API_KEY (create a key at https://console.rafikiai.io/keys), or run rafikicode login.` and exits 2.
+**`run` without a key prints `"name": "UnknownError"` and `Unexpected server error. Check server logs for details.`** No credential is set. Set `RAFIKICODE_API_KEY` and check that `rafikicode doctor` shows `ok credential`. From 0.1.1 the run says `No Rafiki key found. Set RAFIKICODE_API_KEY (create a key at https://console.rafikiai.io/keys), or run rafikicode login.` and exits 2. Newer builds print, before any session starts, in `run` and in the terminal interface:
+
+```text
+Rafiki Code needs a Rafiki Console account. Create one at https://console.rafikiai.io, then run: rafikicode login
+On a server or in CI, create a server key at https://console.rafikiai.io/keys and set RAFIKICODE_API_KEY.
+```
+
+**`rafikicode runs on Rafiki models only (rafiki-fast, rafiki-pro, rafiki-max)`.** The run named another provider's model (`--model openai/...`), or your configuration did. Use `rafikicode models` to list the models you can use. See [provider scope](security/provider-scope.md).
+
+**`rafikicode providers is not available`.** The `providers` command (alias `auth`) stored keys for other providers and is not part of `rafikicode`. Sign in with `rafikicode login`, or set `RAFIKICODE_API_KEY` on servers and in CI.
 
 ## Installation
 
