@@ -4,6 +4,7 @@ import { UI } from "@/cli/ui"
 import { errorMessage } from "@opencode-ai/tui/util/error"
 import { validateSession } from "../tui/validate-session"
 import { ServerAuth } from "@/server/auth"
+import * as ServerFile from "@/rafiki/server-file"
 
 export const AttachCommand = cmd({
   command: "attach <url>",
@@ -112,7 +113,7 @@ export const AttachCommand = cmd({
       return
     }
 
-    const headers = ServerAuth.headers({ password: args.password, username: args.username })
+    const headers = ServerAuth.headers(ServerFile.credentials(args.url, { password: args.password, username: args.username }))
     const config = await TuiConfig.get()
 
     try {

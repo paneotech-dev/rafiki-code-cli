@@ -29,6 +29,7 @@ import * as RafikiGateway from "@/rafiki/gateway-errors"
 import * as RafikiPermission from "@/rafiki/permission-hint"
 import * as RafikiMissingKey from "@/rafiki/missing-key"
 import * as RafikiAttach from "@/rafiki/attach"
+import * as ServerFile from "@/rafiki/server-file"
 import { INTERACTIVE_INPUT_ERROR, resolveInteractiveStdin } from "./run/runtime.stdin"
 
 type ModelInput = Parameters<OpencodeClient["session"]["prompt"]>[0]["model"]
@@ -349,7 +350,7 @@ export const RunCommand = effectCmd({
         }
       })()
       const attachHeaders = args.attach
-        ? ServerAuth.headers({ password: args.password, username: args.username })
+        ? ServerAuth.headers(ServerFile.credentials(args.attach, { password: args.password, username: args.username }))
         : undefined
       const attachSDK = (dir?: string) => {
         return createOpencodeClient({

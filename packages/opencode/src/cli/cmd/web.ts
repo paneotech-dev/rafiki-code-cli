@@ -3,7 +3,7 @@ import { Effect } from "effect"
 import { UI } from "../ui"
 import { effectCmd } from "../effect-cmd"
 import { withNetworkOptions, resolveNetworkOptions } from "../network"
-import * as BrandServe from "@opencode-ai/core/brand/serve"
+import * as ServerFile from "@/rafiki/server-file"
 import open from "open"
 import { networkInterfaces } from "os"
 
@@ -39,8 +39,10 @@ export const WebCommand = effectCmd({
   handler: Effect.fn("Cli.web")(function* (args) {
     const { Server } = yield* Effect.promise(() => import("../../server/server"))
     const opts = yield* resolveNetworkOptions(args)
-    if (BrandServe.refused(opts)) return
+    const secret = ServerFile.prepare(opts)
+    if (!secret) return
     const server = yield* Effect.promise(() => Server.listen(opts))
+    ServerFile.publish(secret, server)
     UI.empty()
     UI.println(UI.logo("  "))
     UI.empty()

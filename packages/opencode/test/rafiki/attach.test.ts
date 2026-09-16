@@ -195,7 +195,7 @@ describe("run --attach against rafikicode serve", () => {
     return { exitCode, stdout, stderr }
   }
 
-  test("a server without a password: the answer is printed, JSON has a text event", async () => {
+  test("a server started without a password (it stores one in a server file): the answer is printed, JSON has a text event", async () => {
     const server = await serve({})
     try {
       const plain = await run(["--attach", server.url, "say it"])
