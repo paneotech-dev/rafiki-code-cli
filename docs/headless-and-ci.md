@@ -44,7 +44,7 @@ Flags that matter in automation, all listed by `rafikicode run --help`:
 
 Standard input is read as the message when it is not a terminal, so a script that pipes nothing should redirect `< /dev/null` or pass the message as arguments.
 
-`rafikicode serve --port 4096` starts the HTTP server for editor integrations and long lived automation on the same machine; `rafikicode attach` and `rafikicode run --attach` talk to it. The server can run commands and read files as you, including the key, so give it a password with `RAFIKICODE_SERVER_PASSWORD`: without one it prints a warning, and it refuses to listen on any address other than `127.0.0.1`, `::1` or `localhost` (exit code 2). The server uses basic authentication with the user name `rafikicode` (change it with `RAFIKICODE_SERVER_USERNAME`). The upstream names `OPENCODE_SERVER_PASSWORD` and `OPENCODE_SERVER_USERNAME` still work.
+`rafikicode serve --port 4096` starts the HTTP server for editor integrations and long lived automation on the same machine; `rafikicode attach` and `rafikicode run --attach` talk to it. The server can run commands and read files as you, including the key, so it always requires a password. Set one with `RAFIKICODE_SERVER_PASSWORD`. Without one, a server on `127.0.0.1`, `::1` or `localhost` makes a random password and stores it in `~/.rafikicode/servers/<port>.json` (mode 0600, removed when the server exits), and any other address is refused (exit code 2). See [Server files](./configuration.md#server-files). The server uses basic authentication with the user name `rafikicode` (change it with `RAFIKICODE_SERVER_USERNAME`). The upstream names `OPENCODE_SERVER_PASSWORD` and `OPENCODE_SERVER_USERNAME` still work.
 
 ```bash
 export RAFIKICODE_SERVER_PASSWORD="$(openssl rand -hex 24)"
@@ -53,7 +53,15 @@ rafikicode run --attach http://127.0.0.1:4096 "summarize the README" < /dev/null
 curl -u "rafikicode:$RAFIKICODE_SERVER_PASSWORD" http://127.0.0.1:4096/doc
 ```
 
-`run --attach` reads the password from `RAFIKICODE_SERVER_PASSWORD`, or from `--password` (and the user name from `--username`). A wrong or missing password stops the run with `The rafikicode server at <url> needs a password` or `... refused the password` and exit code 2; an address where no server answers stops it with exit code 4. In 0.1.3 and earlier, `run --attach` printed no answer and exited 0, and a missing password was reported as `Session not found`.
+Without a password of your own, on the same machine and as the same user (the `curl` line uses `jq`):
+
+```bash
+rafikicode serve --port 4096 &
+rafikicode run --attach http://127.0.0.1:4096 "summarize the README" < /dev/null
+curl -u "rafikicode:$(jq -r .password ~/.rafikicode/servers/4096.json)" http://127.0.0.1:4096/doc
+```
+
+`run --attach` and `attach` read the password from `--password` or `RAFIKICODE_SERVER_PASSWORD` (and the user name from `--username`). When neither is given and the address is a loopback one, they read the server file for that port, if it is yours, private and its server process is running; a file whose server is gone is removed. A wrong or missing password stops the run with `The rafikicode server at <url> needs a password` or `... refused the password` and exit code 2; an address where no server answers stops it with exit code 4. In 0.1.3 and earlier, `run --attach` printed no answer and exited 0, and a missing password was reported as `Session not found`. Up to 0.1.3, `serve` and `web` on `127.0.0.1` had no password unless you set one.
 
 ## Shell commands in headless runs
 
