@@ -43,6 +43,15 @@ const requestDefaults: Record<(typeof models)[number], { output: number; effort?
   "rafiki-pro": { output: 32_000, variants: false },
   "rafiki-max": { output: 32_000, variants: true },
 }
+// Tiers kept out of the model lists people choose from: the terminal
+// interface picker (/models), rafikicode models, and the model option an
+// editor gets over ACP. rafiki-max is listed here while its provider is
+// unavailable. This is the one switch: make the list empty to offer every
+// tier again. A tier listed here stays registered with the gateway provider,
+// so a model set explicitly (config "model", --model, a session already on
+// it) keeps working and stays visible as the current choice.
+const unlistedModels: readonly string[] = ["rafiki-max"]
+
 const outputFloor = 1_024
 const outputCeiling = 128_000
 
@@ -493,6 +502,17 @@ export const Brand = {
     id: providerID,
     name: "Rafiki",
     reasoningEfforts,
+    // The tiers kept out of the model lists (see unlistedModels).
+    unlisted: unlistedModels,
+    // True when a model may be offered in a model list. Models of other
+    // providers are not this switch's business.
+    listed(provider: string, model: string) {
+      return provider !== providerID || !Brand.provider.unlisted.includes(model)
+    },
+    // The tiers offered to people, in tier order.
+    offered(): string[] {
+      return models.filter((id) => Brand.provider.listed(providerID, id))
+    },
     // The request defaults for one model after the env overrides; invalid values fall back to the defaults.
     request(id: (typeof models)[number]) {
       const base = requestDefaults[id]

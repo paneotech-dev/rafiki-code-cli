@@ -8,6 +8,7 @@ import { DialogVariant } from "./dialog-variant"
 import * as fuzzysort from "fuzzysort"
 import { useConnected } from "./use-connected"
 import { useSync } from "../context/sync"
+import { Brand } from "@opencode-ai/core/brand/brand"
 
 export function DialogModel(props: { providerID?: string }) {
   const local = useLocal()
@@ -25,6 +26,9 @@ export function DialogModel(props: { providerID?: string }) {
     const showSections = showExtra() && needle.length === 0
     const favorites = connected() ? local.model.favorite() : []
     const recents = local.model.recent()
+    const current = local.model.current()
+    const listed = (providerID: string, modelID: string) =>
+      Brand.provider.listed(providerID, modelID) || (current?.providerID === providerID && current.modelID === modelID)
 
     function toOptions(items: typeof favorites, category: string) {
       if (!showSections) return []
@@ -32,7 +36,7 @@ export function DialogModel(props: { providerID?: string }) {
         const provider = sync.data.provider.find((provider) => provider.id === item.providerID)
         if (!provider) return []
         const model = provider.models[item.modelID]
-        if (!model) return []
+        if (!model || !listed(provider.id, model.id)) return []
         return [
           {
             key: item,
@@ -69,6 +73,7 @@ export function DialogModel(props: { providerID?: string }) {
           provider.models,
           entries(),
           filter(([_, info]) => info.status !== "deprecated"),
+          filter(([model]) => listed(provider.id, model)),
           filter(([_, info]) => (props.providerID ? info.providerID === props.providerID : true)),
           map(([model, info]) => ({
             value: { providerID: provider.id, modelID: model },

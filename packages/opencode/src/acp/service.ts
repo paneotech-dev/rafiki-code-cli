@@ -936,7 +936,7 @@ function hasVariant(variants: Directory.ModelVariants, variant: string) {
 
 function configOptions(snapshot: Directory.Snapshot, session: ConfigState) {
   return buildConfigOptions({
-    providers: Object.values(snapshot.providers),
+    providers: RafikiACP.listedProviders(Object.values(snapshot.providers), session.model),
     currentModel: session.model,
     currentVariant: session.variant,
     modes: snapshot.availableModes,

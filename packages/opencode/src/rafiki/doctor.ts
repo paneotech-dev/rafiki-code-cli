@@ -346,10 +346,12 @@ export async function checkTiers(root: string, key: string, info: KeyInfo, conso
       return unreachable("tiers", `could not list models (${detailOf(cause)})`, "Check the network and run the command again.")
     }
   }
-  const allowed = Brand.models.filter((m) => listed!.includes(m))
-  const missing = Brand.models.filter((m) => !listed!.includes(m))
+  // Only the tiers offered to people are checked (Brand.provider.unlisted).
+  const tiers = Brand.provider.offered()
+  const allowed = tiers.filter((m) => listed!.includes(m))
+  const missing = tiers.filter((m) => !listed!.includes(m))
   if (allowed.length === 0) {
-    return fail("tiers", `none of ${Brand.models.join(", ")} is on this key`, `Create a key with the tiers you need at ${keysPage(consoleURL)}.`)
+    return fail("tiers", `none of ${tiers.join(", ")} is on this key`, `Create a key with the tiers you need at ${keysPage(consoleURL)}.`)
   }
   const note = missing.length ? ` (not on this key: ${missing.join(", ")})` : ""
   return ok("tiers", `${allowed.join(", ")}${note}`)

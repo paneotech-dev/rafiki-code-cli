@@ -20,7 +20,7 @@ export function noKey() {
 }
 
 export function outOfScope() {
-  return `${Brand.name} runs on ${Brand.provider.name} models only (${Brand.models.join(", ")}). Run ${Brand.name} models to see them.`
+  return `${Brand.name} runs on ${Brand.provider.name} models only (${Brand.provider.offered().join(", ")}). Run ${Brand.name} models to see them.`
 }
 
 function rafikiModel(model: string | undefined) {

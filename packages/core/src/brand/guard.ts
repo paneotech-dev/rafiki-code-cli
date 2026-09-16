@@ -404,7 +404,7 @@ function sameList(value: unknown, list: readonly string[]) {
 }
 
 function scopeWarning(what: string) {
-  return `Warning: ignored ${what}: ${Brand.name} runs on ${Brand.provider.name} models only (${Brand.models.join(", ")}). Run ${Brand.name} models to see them.`
+  return `Warning: ignored ${what}: ${Brand.name} runs on ${Brand.provider.name} models only (${Brand.provider.offered().join(", ")}). Run ${Brand.name} models to see them.`
 }
 
 // Applied once to the fully merged config (config.ts), after every source:

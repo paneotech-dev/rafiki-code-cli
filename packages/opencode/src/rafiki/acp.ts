@@ -72,3 +72,21 @@ export function serverSecret(opts: { hostname: string }, env: Record<string, str
 export function forget(secret: { password: string; generated: boolean }, env: Record<string, string | undefined> = process.env) {
   if (secret.generated && env[Brand.server.env.password] === secret.password) delete env[Brand.server.env.password]
 }
+
+// The providers as an editor's model list shows them: tiers the brand layer
+// keeps unlisted (Brand.provider.unlisted) are left out, unless the session
+// already uses one, which stays listed as the current choice. Model lookups
+// use the full provider list, so an explicit unlisted model still works.
+export function listedProviders<P extends { id: string; models: Record<string, unknown> }>(
+  providers: readonly P[],
+  current?: { providerID: string; modelID: string },
+): P[] {
+  return providers.map((provider) => ({
+    ...provider,
+    models: Object.fromEntries(
+      Object.entries(provider.models).filter(
+        ([id]) => Brand.provider.listed(provider.id, id) || (current?.providerID === provider.id && current.modelID === id),
+      ),
+    ),
+  }))
+}
