@@ -36,6 +36,8 @@ Keep an eye on `rafikicode whoami` for the key's spend, and cap large diffs with
 
 ## In CI with the GitHub Action
 
+For a single workflow file with no action to reference, see the [GitHub Action recipe](./github-action.md).
+
 The repository ships a composite action at `.github/actions/rafikicode-review` and an example workflow at `.github/workflows/rafikicode-review.example.yml`. The example is inert until copied: GitHub only runs files named `*.yml` directly under `.github/workflows`, and the example's name ends in `.example.yml`.
 
 Setup, once per repository:
