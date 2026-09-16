@@ -14,7 +14,7 @@ curl -fsSL https://get.rafikiai.io | bash
 
 Options, passed after `bash -s --`: `--version 1.2.3` pins a release, `--prefix DIR` chooses another directory, `--no-modify-path` leaves your shell files alone, `--dry-run` only shows what would happen. The script is `install/install.sh` in this repository.
 
-The installer detects your platform, downloads the release archive, verifies it against the published `SHA256SUMS`, installs the binary into `~/.rafikicode/bin`, and adds that directory to your PATH in `~/.bashrc` for new terminals. In the terminal you installed from, run `export PATH=$HOME/.rafikicode/bin:$PATH` (or open a new terminal), then `rafikicode --version` prints `0.1.1`.
+The installer detects your platform, downloads the release archive, verifies it against the published `SHA256SUMS`, installs the binary into `~/.rafikicode/bin`, and adds that directory to your PATH in `~/.bashrc` for new terminals. In the terminal you installed from, run `export PATH=$HOME/.rafikicode/bin:$PATH` (or open a new terminal), then `rafikicode --version` prints the release it installed, for example `0.1.3`.
 
 There is no npm package yet: `npm install -g rafikicode` does not work. Use the installer.
 

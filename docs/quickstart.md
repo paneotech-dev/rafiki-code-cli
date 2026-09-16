@@ -1,6 +1,6 @@
 # Quick start
 
-This page takes you from nothing to a first file written by `rafikicode` in about five minutes. Every command below was run as written on 15 September 2026 with `rafikicode` 0.1.0 in clean `ubuntu:24.04` and `debian:12` containers, and the install, key, first task and uninstall steps again with 0.1.1 (published the same day at 08:11 UTC), that had only `curl` and `ca-certificates` installed.
+This page takes you from nothing to a first file written by `rafikicode` in about five minutes. Every command below was run as written on 15 September 2026 with `rafikicode` 0.1.0 in clean `ubuntu:24.04` and `debian:12` containers, and the install, key, first task and uninstall steps again with 0.1.1 (published the same day at 08:11 UTC), that had only `curl` and `ca-certificates` installed. On 16 September `rafikicode --version`, `doctor` and `models rafiki` were run again on a local 0.1.3 build.
 
 Terms used here: a **terminal** is the text window where you type commands. **PATH** is the list of folders your shell searches for programs. A **gateway key** (or API key) is a Rafiki issued key with its own spending budget; every model call is charged to it. **Headless** means running where nobody can answer a question, such as a server, a container or a CI (continuous integration) pipeline.
 
@@ -14,7 +14,7 @@ Linux and macOS (Windows through WSL, the Windows Subsystem for Linux). The mach
 curl -fsSL https://get.rafikiai.io | bash
 ```
 
-Expected output (0.1.1):
+Expected output (0.1.1; a later release names its own version):
 
 ```text
 Installing rafikicode version 0.1.1
@@ -38,7 +38,7 @@ export PATH=$HOME/.rafikicode/bin:$PATH
 rafikicode --version
 ```
 
-This prints `0.1.1`.
+This prints the installed version, for example `0.1.3`.
 
 There is no npm package yet: `npm install -g rafikicode` does not work (the npm registry answers 404 for `rafikicode`). Use the installer.
 
@@ -60,7 +60,7 @@ ok    key         key rafikicode-..., spent 0.0769 USD of 2.5 USD budget, expire
 ok    tiers       rafiki-fast, rafiki-pro, rafiki-max
 ```
 
-With a key created outside Rafiki Console the `console` line reads `FAIL ... does not know this key (401)` (0.1.0: `does not accept this key`) and `doctor` exits 1, while tasks still run. See [Troubleshooting](./troubleshooting.md#seen-on-15-september-2026).
+With a key created outside Rafiki Console the `console` line reads `WARN ... does not know this key (401)` from 0.1.2 and `doctor` exits 0 (0.1.1: `FAIL`, exit 1; 0.1.0: `does not accept this key`), while tasks still run. See [Troubleshooting](./troubleshooting.md#seen-on-15-september-2026).
 
 `rafikicode models rafiki` lists the tiers the key may use: `rafiki/rafiki-fast`, `rafiki/rafiki-max`, `rafiki/rafiki-pro`.
 

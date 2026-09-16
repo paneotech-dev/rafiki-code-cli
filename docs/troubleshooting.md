@@ -53,7 +53,7 @@ git config --global user.email "you@example.com"
 
 **`doctor` shows `FAIL console ... does not accept this key (401)` and `whoami` says `This key was revoked or has expired`, but tasks run.** Seen with a working gateway key: the `key`, `gateway` and `tiers` lines read `ok` and `run` completes, while the Console does not recognise the key. `doctor` then exits 1. Runs are not affected. If the `key` line fails too, the key really is revoked or spent. From 0.1.1 both commands say `This key is valid at the gateway but not registered in Rafiki Console (created outside the Console)` in this case, and `revoked or has expired` only when the gateway refuses the key too. From 0.1.2 `doctor` marks that `console` line `WARN` instead of `FAIL`, adds a line explaining that usage still works and is metered at the gateway while Console features such as the wallet view and key management do not apply to the key, ends with `All checks passed, 1 warning, see the line marked WARN.` and exits 0. `whoami` prints the same two sentences and still exits 2. Create the key in Rafiki Console to clear the warning.
 
-**`run` without a key prints `"name": "UnknownError"` and `Unexpected server error. Check server logs for details.`** No credential is set. Set `RAFIKICODE_API_KEY` and check that `rafikicode doctor` shows `ok credential`. From 0.1.1 the run says `No Rafiki key found. Set RAFIKICODE_API_KEY (create a key at https://console.rafikiai.io/keys), or run rafikicode login.` and exits 2. Newer builds print, before any session starts, in `run` and in the terminal interface:
+**`run` without a key prints `"name": "UnknownError"` and `Unexpected server error. Check server logs for details.`** No credential is set. Set `RAFIKICODE_API_KEY` and check that `rafikicode doctor` shows `ok credential`. From 0.1.1 the run says `No Rafiki key found. Set RAFIKICODE_API_KEY (create a key at https://console.rafikiai.io/keys), or run rafikicode login.` and exits 2. From 0.1.3 `run` and the terminal interface print this before any session starts, and exit 2:
 
 ```text
 Rafiki Code needs a Rafiki Console account. Create one at https://console.rafikiai.io, then run: rafikicode login
@@ -62,7 +62,7 @@ On a server or in CI, create a server key at https://console.rafikiai.io/keys an
 
 **`rafikicode runs on Rafiki models only (rafiki-fast, rafiki-pro, rafiki-max)`.** The run named another provider's model (`--model openai/...`), or your configuration did. Use `rafikicode models` to list the models you can use. See [provider scope](security/provider-scope.md).
 
-**`rafikicode providers is not available`.** The `providers` command (alias `auth`) stored keys for other providers and is not part of `rafikicode`. Sign in with `rafikicode login`, or set `RAFIKICODE_API_KEY` on servers and in CI.
+**`rafikicode providers is not available`.** The `providers` command (alias `auth`) stored keys for other providers and is not part of `rafikicode` from 0.1.3. Sign in with `rafikicode login`, or set `RAFIKICODE_API_KEY` on servers and in CI.
 
 ## Seen on 16 September 2026
 
@@ -71,6 +71,22 @@ Found while preparing 0.1.2 and checked with a local 0.1.2 build.
 **Your editor warns that the schema of `~/.rafikicode/config.json` cannot be loaded.** Releases 0.1.0 and 0.1.1 wrote a `$schema` address on the repository's main branch, which has no schema files, so it answers 404. Runs are not affected. From 0.1.2 new configuration files point at the schema of the installed release, for example `https://raw.githubusercontent.com/paneotech-dev/rafiki-code-cli/v0.1.2/schema/config.json`, and the first command you run replaces the old address in an existing file, changing nothing else in it. On 0.1.1 you can edit the `$schema` line by hand to the `v0.1.1` address.
 
 **`doctor` shows `WARN  console ... does not know this key (401)`.** See the `doctor` entry above: the key works for runs but was not created in Rafiki Console. `doctor` exits 0.
+
+## New in 0.1.3
+
+Checked with a local 0.1.3 build on 16 September 2026.
+
+**`Warning: ignored enabled_providers in the configuration` or `Warning: ignored model openai/gpt-4o in the configuration`.** From 0.1.3 `rafikicode` offers only the Rafiki models (`rafiki/rafiki-fast`, `rafiki/rafiki-pro`, `rafiki/rafiki-max`), whatever your configuration, a project, or other providers' keys in the environment (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) ask for. Settings that name another provider are ignored with this warning, and the command goes on. Remove those lines to silence it. `rafikicode run -m openai/gpt-4o ...` stops with `rafikicode runs on Rafiki models only` and exit code 2. See [provider scope](security/provider-scope.md).
+
+**`rafikicode providers` or `rafikicode auth` answers `rafikicode providers is not available`.** The command was removed in 0.1.3 (exit code 2). Sign in with `rafikicode login`, or set `RAFIKICODE_API_KEY` on servers and in CI.
+
+**`run` or the terminal interface exits 2 at once with `Rafiki Code needs a Rafiki Console account`.** No key is available (see the `run` entry above). Before 0.1.3 the run failed later with `No Rafiki key found`, and the terminal interface opened with no models. `--help` and `--version` work without a key.
+
+**The editor shows `Authentication required: Rafiki Code needs a Rafiki Console account` (ACP error `auth_required`, code -32000).** From 0.1.3 `rafikicode acp` answers `initialize` without a key, so the editor can offer the sign in method, and answers `authenticate`, `session/new` and `session/prompt` with this error until a key exists. Before 0.1.3 a new thread opened with an empty model list and prompts failed with `Internal error`. The sign in method is now called `rafikicode-login` (editors that remembered `opencode-login` still work), and it runs `rafikicode login --surface ide` through the full path of the binary. Sign in, or give the agent a key, then start a new thread. See [Using Rafiki Code from your editor](./ide.md#signing-in-from-the-editor).
+
+**`Unknown sign in surface "...". Use --surface cli or --surface ide.`** `rafikicode login --surface` takes `cli` (the default, a terminal) or `ide` (an editor), exit code 2 otherwise. `ide` only changes how the key is listed in Rafiki Console; the stored key works for the terminal and the editor alike. Versions before 0.1.3 do not know the option and print the `login` help instead.
+
+**The VS Code extension opens a session, but files and selections sent to it do not appear in the prompt.** References need `rafikicode` 0.1.3 or later. With 0.1.1 and 0.1.2 sessions open and sign in works, but the reference is accepted and never shown. Update with `rafikicode update`. Sign in from the extension adds `--surface ide` only when the installed `rafikicode` lists that option.
 
 ## Installation
 

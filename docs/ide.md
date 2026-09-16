@@ -95,9 +95,11 @@ Status: not yet tested in a JetBrains IDE; the minimum IDE version for custom ag
 
 ## Signing in from the editor
 
-When the editor supports terminal sign in, Rafiki Code offers one sign in method, "Login with Rafiki Code". Choosing it runs `rafikicode login` in a terminal: the command prints a code and a link, you approve the code at console.rafikiai.io/device, and the key is stored in `~/.rafikicode/credentials`. The editor finds `rafikicode` for this through its `PATH`, so if sign in reports that the command is missing, run `rafikicode login` yourself in any terminal instead; the agent picks the stored key up on its next start.
+When the editor supports terminal sign in, Rafiki Code offers one sign in method, "Login with Rafiki Code" (method id `rafikicode-login` from 0.1.3; earlier releases used `opencode-login`, which is still accepted). Choosing it runs `rafikicode login --surface ide` in a terminal: the command prints a code and a link, you approve the code at console.rafikiai.io/device, and the key is stored in `~/.rafikicode/credentials`. `--surface ide` makes the Console list the key as an editor sign in; the same stored key serves your terminals too. From 0.1.3 the sign in method names `rafikicode` by the full path of the running binary, so it works when the editor's `PATH` lacks `~/.rafikicode/bin`; with 0.1.2 and earlier it runs plain `rafikicode login`, found through the editor's `PATH`. If sign in reports that the command is missing, run `rafikicode login` yourself in any terminal instead; the agent picks the stored key up on its next start.
 
-Until you sign in, the agent starts but offers no models: the model selector stays empty (the agent reports `unknown/unknown`) and prompts cannot run. Sign in, or give it a key, then start a new thread.
+Always write the full path of the binary in the `command` field of `agent_servers` (the output of `command -v rafikicode`, for example `/home/you/.rafikicode/bin/rafikicode`): a bare `rafikicode` fails in an editor started from a desktop menu, whose `PATH` usually lacks `~/.rafikicode/bin`.
+
+Until you sign in, the agent starts but cannot open a thread. From 0.1.3 it answers with `Authentication required: Rafiki Code needs a Rafiki Console account. ...` (ACP error `auth_required`), which editors show as a prompt to sign in. With 0.1.2 and earlier the thread opened with an empty model selector (the agent reports `unknown/unknown`) and prompts could not run. Sign in, or give it a key, then start a new thread.
 
 If browser sign in is not available to you yet, give the agent a server key through the environment instead:
 
@@ -171,6 +173,7 @@ On 16 September 2026, with `rafikicode` 0.1.1 and a test key, on Linux:
 
 - ACP without an editor: a small script started `rafikicode acp`, sent `initialize` announcing terminal sign in, then `session/new`, then one prompt. The agent answered as `Rafiki Code` 0.1.1 with the sign in method above, listed `rafiki/rafiki-fast`, `rafiki/rafiki-pro` and `rafiki/rafiki-max` with `rafiki/rafiki-fast` selected, and replied to the prompt (stop reason `end_turn`). Without a key, `session/new` still succeeded but listed no models.
 - The gateway: `GET /v1/models` listed the three tiers, and one chat completion on `rafiki-fast` answered.
+- With a local 0.1.3 build, the same script without a key: `initialize` offered `rafikicode-login` with the terminal sign in command set to the full path of the binary and the arguments `login --surface ide`, and `authenticate` answered `auth_required`. `rafikicode login --surface ide` against a stand in Console asked for the device code as surface `ide`, with the label `rafikicode 0.1.3 in an editor on <host>`. The live Console accepts `ide` for this request; a sign in with it against the live Console was not run.
 - Aider, as described above.
 
 A note for any preset: `rafiki-fast` reasons before it answers (56 of 58 output tokens in our one word test), and that reasoning counts as output tokens. With a very small output limit (5 tokens in our test) the answer came back empty. Keep the tool's output limit at its default or at least a few hundred tokens.
