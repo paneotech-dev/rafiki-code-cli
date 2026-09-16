@@ -345,10 +345,12 @@ export function activate(context: vscode.ExtensionContext): RafikiCodeApi {
       signInTerminal.show()
       return
     }
+    const help = await run(bin, ["login", "--help"], 15_000)
+    const surface = help.code === 0 && Launch.supportsSurface(stripAnsi(help.output))
     signInTerminal = vscode.window.createTerminal({
       name: SIGN_IN_TERMINAL_NAME,
       shellPath: bin,
-      shellArgs: Launch.loginArgs(Launch.deviceLabel(String(context.extension.packageJSON.version ?? ""), os.hostname())),
+      shellArgs: Launch.loginArgs(Launch.deviceLabel(String(context.extension.packageJSON.version ?? ""), os.hostname()), surface),
       location: vscode.TerminalLocation.Panel,
       isTransient: true,
     })

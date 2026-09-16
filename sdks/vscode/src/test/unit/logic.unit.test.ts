@@ -138,8 +138,18 @@ test("launch arguments listen on loopback and pass the tier", () => {
   const env = Launch.terminalEnv({ port: 1, password: "p" })
   assert.deepEqual(env, { OPENCODE_SERVER_PASSWORD: "p", OPENCODE_SERVER_USERNAME: "rafikicode" })
   assert.deepEqual(Launch.loginArgs("x"), ["login", "--label", "x"])
+  assert.deepEqual(Launch.loginArgs("x", true), ["login", "--label", "x", "--surface", "ide"])
   assert.equal(Launch.deviceLabel("0.1.0", "box"), "Rafiki Code for VS Code 0.1.0 on box")
   assert.equal(Launch.deviceLabel("0.1.0", "h".repeat(300)).length, 120)
+})
+
+// login --help lines copied from rafikicode 0.1.2 and the 0.1.3 candidate.
+test("the surface option is used only when login --help lists it", () => {
+  const v012 = "      --refresh     rotate the stored key instead of starting a new sign-in\n                                                                          [boolean] [default: false]\n"
+  const v013 = v012 + '      --surface     where the key is used: cli for a terminal, ide for an editor       [string] [default: "cli"]\n'
+  assert.equal(Launch.supportsSurface(v012), false)
+  assert.equal(Launch.supportsSurface(v013), true)
+  assert.equal(Launch.supportsSurface(""), false)
 })
 
 test("append prompt talks to the control server with the terminal's password", async () => {

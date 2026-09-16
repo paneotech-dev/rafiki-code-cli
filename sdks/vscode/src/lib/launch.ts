@@ -39,8 +39,19 @@ export function url(session: Session, route: string) {
   return `http://${LOOPBACK}:${session.port}${route}`
 }
 
-export function loginArgs(label: string) {
-  return ["login", "--label", label]
+// rafikicode 0.1.3 and later can tell the Console that a sign in comes from
+// an editor (surface ide). Older versions refuse the unknown option, so the
+// extension asks `rafikicode login --help` first and adds it only when listed.
+export function supportsSurface(loginHelp: string) {
+  return /--surface\b/.test(loginHelp) && /\bide\b/.test(loginHelp)
+}
+
+export function loginArgs(label: string, surface = false) {
+  const args = ["login", "--label", label]
+  if (surface) {
+    args.push("--surface", "ide")
+  }
+  return args
 }
 
 // The device label shown on the Console approval page and key list.

@@ -73,7 +73,7 @@ All commands are in the command palette under **Rafiki Code**.
 | Open in New Tab | `Ctrl+Shift+Esc`, macOS `Cmd+Shift+Esc`; the Rafiki button in the editor title | Always starts a new session. |
 | Send Selection or File | `Ctrl+Alt+K`, macOS `Cmd+Alt+K`; editor context menu | Adds `@path` or `@path#L3-7` to the prompt of the active session (or the last one opened). Starts a session if none is open. For an unsaved file, sends the selected text itself. |
 | Send File | explorer context menu | Adds `@path` for the chosen file. |
-| Sign In | | Runs `rafikicode login` in a terminal (device flow). |
+| Sign In | | Runs `rafikicode login` in a terminal (device flow). With rafikicode 0.1.3 or later it adds `--surface ide`, so the Console key list shows the key as an editor sign in. |
 | Sign Out | | After a confirmation, runs `rafikicode logout`, which revokes the stored key at the Console and removes it from this computer, for terminals too. |
 | Show Account | | Runs `rafikicode whoami` (asks the Console) and shows the answer in the **Rafiki Code** output. |
 | Doctor | | Runs `rafikicode doctor` and shows the report in the **Rafiki Code** output, with a one line summary. |

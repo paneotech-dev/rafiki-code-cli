@@ -27,6 +27,9 @@ if (args[0] === "whoami") {
   }
   console.log("Error: Missing API key. Run rafikicode login, or set RAFIKICODE_API_KEY.")
   process.exit(2)
+} else if (args[0] === "login" && args.includes("--help")) {
+  console.log("rafikicode login\\n\\nOptions:\\n      --label  name\\n      --surface  where the key is used: cli for a terminal, ide for an editor")
+  process.exit(0)
 } else if (args[0] === "login") {
   fs.writeFileSync(${JSON.stringify(mode)}, "signed-in")
   console.log("Signed in as Stub User.")
@@ -137,10 +140,11 @@ suite("Rafiki Code extension", () => {
       return s.kind === "signed-in" ? s : undefined
     })
     assert.equal(state.kind, "signed-in")
-    const login = requests(dir).find((r) => Array.isArray(r.args) && r.args[0] === "login")
+    const login = requests(dir).find((r) => Array.isArray(r.args) && r.args[0] === "login" && !(r.args as string[]).includes("--help"))
     assert.ok(login)
     assert.equal((login.args as string[])[1], "--label")
     assert.match((login.args as string[])[2], /^Rafiki Code for VS Code 0\.1\.0 on /)
+    assert.deepEqual((login.args as string[]).slice(3), ["--surface", "ide"])
   })
 
   test("open starts the terminal interface on loopback with the tier and a password, and sends the file", async () => {
