@@ -113,6 +113,12 @@ Always write the full path of the binary in the `command` field of `agent_server
 
 Until you sign in, the agent starts but cannot open a thread. From 0.1.3 it answers with `Authentication required: Rafiki Code needs a Rafiki Console account. ...` (ACP error `auth_required`), which editors show as a prompt to sign in. With 0.1.2 and earlier the thread opened with an empty model selector (the agent reports `unknown/unknown`) and prompts could not run. Sign in, or give it a key, then start a new thread.
 
+How the agent reports and protects itself (changed after 0.1.3; 0.1.3 and earlier behave as noted):
+
+- Model calls from `rafikicode acp` carry the surface `ide` (header `X-Rafiki-Surface`), so the gateway and the Console can tell editor spend from terminal spend. In 0.1.3 and earlier they carried `cli`. Calls send the user agent `rafikicode/<version>`; 0.1.3 and earlier sent the upstream name.
+- `rafikicode acp` runs a small HTTP server on `127.0.0.1` that only the agent itself uses. When you have not set `RAFIKICODE_SERVER_PASSWORD`, the agent protects that server with a random password for that process, so other programs and other users on the machine cannot use it to read your files or open a terminal. 0.1.3 and earlier left it without a password and printed `Warning: OPENCODE_SERVER_PASSWORD is not set ...` to the editor's log; on a shared machine, use a newer release, or with 0.1.3 set `OPENCODE_SERVER_PASSWORD` (the name 0.1.3 reads) to a long random value in the `env` block of the agent entry.
+- The upstream `customize-opencode` command is no longer offered in the editor's command list: it described upstream configuration files, not `~/.rafikicode/config.json`.
+
 If browser sign in is not available to you yet, give the agent a server key through the environment instead:
 
 - Start the editor from a terminal where `RAFIKICODE_API_KEY` is exported (for example `zed .`); the agent inherits it.
