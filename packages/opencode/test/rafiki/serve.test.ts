@@ -1,6 +1,7 @@
 // rafikicode serve, web, acp and the terminal interface server (L-R2-8): the
 // server answers with the configuration, which carries the stored key, so an
-// address other machines can reach needs OPENCODE_SERVER_PASSWORD, and a
+// address other machines can reach needs RAFIKICODE_SERVER_PASSWORD (or the
+// upstream OPENCODE_SERVER_PASSWORD), and a
 // loopback server without one gets a warning.
 //
 // RP-3: every listener checks the Host header (DNS rebinding), refuses
@@ -30,11 +31,11 @@ describe("server password rule", () => {
 
   test("another address without a password is refused, loopback warns, a password is enough", () => {
     expect(Serve.check({ hostname: "0.0.0.0" }).refuse).toContain("Refusing to listen on 0.0.0.0 without a password")
-    expect(Serve.check({ hostname: "192.168.1.10", password: "" }).refuse).toContain("Set OPENCODE_SERVER_PASSWORD")
+    expect(Serve.check({ hostname: "192.168.1.10", password: "" }).refuse).toContain("Set RAFIKICODE_SERVER_PASSWORD")
     expect(Serve.check({ hostname: "" }).refuse).toContain("every address")
     const loop = Serve.check({ hostname: "127.0.0.1" })
     expect(loop.refuse).toBeUndefined()
-    expect(loop.warn).toContain("OPENCODE_SERVER_PASSWORD is not set")
+    expect(loop.warn).toContain("RAFIKICODE_SERVER_PASSWORD is not set")
     expect(Serve.check({ hostname: "0.0.0.0", password: "stub-password" })).toEqual({})
     expect(Serve.check({ hostname: "127.0.0.1", password: "stub-password" })).toEqual({})
   })
@@ -71,6 +72,7 @@ describe("server password rule", () => {
         OPENCODE_DISABLE_MODELS_FETCH: "1",
       }
       delete env[Serve.passwordEnv]
+      delete env[Serve.legacyPasswordEnv]
       // A port inside the project range; nothing listens on it when the rule holds.
       const proc = Bun.spawn(["bun", "run", path.join(root, "src/index.ts"), ...args, "--port", "4114"], {
         cwd: home,

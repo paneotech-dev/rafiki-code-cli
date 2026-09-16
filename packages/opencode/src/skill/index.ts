@@ -284,6 +284,7 @@ const layer = Layer.effect(
           location: "<built-in>",
           content: CUSTOMIZE_OPENCODE_SKILL_BODY,
         }
+        for (const name of Brand.hiddenSkills) delete s.skills[name]
         yield* loadSkills(s, yield* InstanceState.get(discovered), events)
         return s
       }),

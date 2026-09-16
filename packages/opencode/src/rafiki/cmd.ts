@@ -313,7 +313,12 @@ export const WhoamiCommand = effectCmd({
   }),
 })
 
-export { markHeadless } from "@opencode-ai/core/brand/trust"
+// Runs before every command (src/index.ts): marks a headless run and records
+// the command, so rafikicode acp labels its model calls with surface ide.
+export function markHeadless(command: unknown) {
+  Trust.markHeadless(command)
+  Brand.markCommand(command)
+}
 
 // rafikicode trust: the workspace trust store (docs/security/workspace-trust.md).
 export const TrustCommand = effectCmd({

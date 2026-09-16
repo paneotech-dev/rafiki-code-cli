@@ -36,12 +36,12 @@ export const AttachCommand = cmd({
       .option("password", {
         alias: ["p"],
         type: "string",
-        describe: "basic auth password (defaults to OPENCODE_SERVER_PASSWORD)",
+        describe: `basic auth password (defaults to ${Brand.server.env.password})`,
       })
       .option("username", {
         alias: ["u"],
         type: "string",
-        describe: `basic auth username (defaults to OPENCODE_SERVER_USERNAME or '${Brand.name}')`,
+        describe: `basic auth username (defaults to ${Brand.server.env.username} or '${Brand.name}')`,
       })
       .option("mini", {
         type: "boolean",

@@ -59,8 +59,8 @@ Options:
   -c, --continue      continue the last session                                            [boolean]
   -s, --session       session id to continue                                                [string]
       --fork          fork the session when continuing (use with --continue or --session)  [boolean]
-  -p, --password      basic auth password (defaults to OPENCODE_SERVER_PASSWORD)            [string]
-  -u, --username      basic auth username (defaults to OPENCODE_SERVER_USERNAME or 'rafikicode')
+  -p, --password      basic auth password (defaults to RAFIKICODE_SERVER_PASSWORD)          [string]
+  -u, --username      basic auth username (defaults to RAFIKICODE_SERVER_USERNAME or 'rafikicode')
                                                                                             [string]
       --mini          start the minimal interactive interface             [boolean] [default: false]
       --no-replay     disable mini session history replay on resume and after resize       [boolean]
@@ -93,8 +93,8 @@ Options:
   -f, --file         file(s) to attach to message                                            [array]
       --title        title for the session (uses truncated prompt if no value provided)     [string]
       --attach       attach to a running rafikicode server (e.g., http://localhost:4096)    [string]
-  -p, --password     basic auth password (defaults to OPENCODE_SERVER_PASSWORD)             [string]
-  -u, --username     basic auth username (defaults to OPENCODE_SERVER_USERNAME or 'rafikicode')
+  -p, --password     basic auth password (defaults to RAFIKICODE_SERVER_PASSWORD)           [string]
+  -u, --username     basic auth username (defaults to RAFIKICODE_SERVER_USERNAME or 'rafikicode')
                                                                                             [string]
       --dir          directory to run in, path on remote server if attaching                [string]
       --port         port for the local server (defaults to random port if no value provided)

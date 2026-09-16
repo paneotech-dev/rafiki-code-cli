@@ -46,6 +46,9 @@ const requestDefaults: Record<(typeof models)[number], { output: number; effort?
 const outputFloor = 1_024
 const outputCeiling = 128_000
 
+// The command this process runs, set by Brand.markCommand before the handler.
+let surfaceCommand: string | undefined
+
 const warned = new Set<string>()
 function warnOnce(message: string) {
   if (warned.has(message)) return
@@ -236,6 +239,37 @@ export const Brand = {
   acp: {
     authMethod: "rafikicode-login",
     legacyAuthMethods: ["opencode-login"] as readonly string[],
+  },
+  // The local HTTP server (serve, web, acp, attach): basic auth password and
+  // user name. The RAFIKICODE_ names are the documented ones; the upstream
+  // names still work when the RAFIKICODE_ one is not set.
+  server: {
+    env: { password: "RAFIKICODE_SERVER_PASSWORD", username: "RAFIKICODE_SERVER_USERNAME" },
+    legacyEnv: { password: "OPENCODE_SERVER_PASSWORD", username: "OPENCODE_SERVER_USERNAME" },
+    password(env: Record<string, string | undefined> = process.env) {
+      return env[Brand.server.env.password] ?? env[Brand.server.legacyEnv.password]
+    },
+    username(env: Record<string, string | undefined> = process.env) {
+      return env[Brand.server.env.username] ?? env[Brand.server.legacyEnv.username]
+    },
+  },
+  // Surfaces the gateway accepts in X-Rafiki-Surface (contract, Gateway
+  // usage). This process is cli unless it runs as rafikicode acp, whose
+  // model calls come from an editor (Zed, JetBrains).
+  surfaces: ["cli", "ide", "builder", "server"] as const,
+  surface(): "cli" | "ide" {
+    return surfaceCommand === "acp" ? "ide" : "cli"
+  },
+  // Called before every command (src/index.ts, through rafiki/cmd.ts) with the command name.
+  markCommand(command: unknown) {
+    surfaceCommand = typeof command === "string" ? command : undefined
+  },
+  // Built-in upstream skills not offered here: customize-opencode teaches the
+  // upstream config file names and schema URL, which are wrong for rafikicode.
+  hiddenSkills: ["customize-opencode"] as readonly string[],
+  // User agent of model calls: the gateway sees rafikicode/<version>.
+  userAgent() {
+    return `${Brand.name}/${InstallationVersion}`
   },
   env: {
     // Headless and CI key. Takes precedence over the stored credential.
@@ -487,7 +521,7 @@ export const Brand = {
           options: {
             baseURL: Brand.gatewayURL(),
             // Every gateway call names its surface (contract, Gateway usage).
-            headers: { "X-Rafiki-Surface": "cli" },
+            headers: { "X-Rafiki-Surface": Brand.surface() },
             ...(stored ? { apiKey: stored.key } : {}),
           },
           models: Object.fromEntries(

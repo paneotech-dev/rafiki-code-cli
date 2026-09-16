@@ -15,6 +15,7 @@ export const Plugin = define({
   id: "skill",
   effect: Effect.fn(function* (ctx) {
     yield* ctx.skill.transform((draft) => {
+      if (Brand.hiddenSkills.includes("customize-opencode")) return
       draft.source(
         SkillV2.EmbeddedSource.make({
           type: "embedded",

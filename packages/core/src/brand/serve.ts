@@ -2,7 +2,8 @@
 // interface's --port or --hostname option. It answers with the merged
 // configuration, which carries the stored Rafiki key, and runs tools, so a
 // server that other machines can reach must have a password
-// (OPENCODE_SERVER_PASSWORD, sent as basic auth).
+// (RAFIKICODE_SERVER_PASSWORD, or the upstream OPENCODE_SERVER_PASSWORD,
+// sent as basic auth with the user name rafikicode).
 //
 // check() refuses any address other than this machine without a password,
 // and warns when a loopback server has none (any local program can still
@@ -27,7 +28,12 @@ import { Headers, HttpBody, HttpServerRequest, HttpServerResponse } from "effect
 import { Brand } from "./brand"
 import { secretEnvName } from "./guard"
 
-export const passwordEnv = "OPENCODE_SERVER_PASSWORD"
+export const passwordEnv = Brand.server.env.password
+export const legacyPasswordEnv = Brand.server.legacyEnv.password
+// The basic auth user name clients send and the server expects.
+export function username(env: Record<string, string | undefined> = process.env) {
+  return Brand.server.username(env) ?? Brand.name
+}
 // The contract's usage exit code: the command line asked for something refused.
 export const EXIT_REFUSED = 2
 
@@ -48,14 +54,14 @@ export function check(input: { hostname: string; password?: string }): { refuse?
     }
   }
   return {
-    warn: `Warning: ${passwordEnv} is not set, so the server on ${input.hostname} has no password. Any program on this machine can use it and read the ${Brand.product} key.`,
+    warn: `Warning: ${passwordEnv} is not set, so the server on ${input.hostname} has no password. Any program or user on this machine can use it to run commands as you and read your files, including the ${Brand.product} key. Set ${passwordEnv} (user name ${username()}) to require a password.`,
   }
 }
 
 // Prints the refusal or the warning to stderr. True when the command must
 // stop (exit code EXIT_REFUSED is set).
 export function refused(input: { hostname: string }, write: (line: string) => void = (line) => process.stderr.write(line + "\n")) {
-  const result = check({ hostname: input.hostname, password: process.env[passwordEnv] })
+  const result = check({ hostname: input.hostname, password: Brand.server.password() })
   if (result.refuse) {
     write(result.refuse)
     process.exitCode = EXIT_REFUSED
@@ -184,7 +190,7 @@ function storedKey() {
 export function knownSecrets(env: Record<string, string | undefined> = process.env, stored: string | undefined = storedKey()) {
   const values = new Set<string>()
   for (const [name, value] of Object.entries(env)) {
-    if (value && value.length >= 8 && (secretEnvName(name) || name === passwordEnv)) values.add(value)
+    if (value && value.length >= 8 && (secretEnvName(name) || name === passwordEnv || name === legacyPasswordEnv)) values.add(value)
   }
   if (stored && stored.length >= 8) values.add(stored)
   return [...values]

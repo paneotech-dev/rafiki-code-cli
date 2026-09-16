@@ -201,6 +201,7 @@ export function createMockGateway(options = {}) {
         authorization: auth,
         key_alias: token && keys.get(token)?.alias,
         surface,
+        ua: req.headers["user-agent"],
         model,
         stream: body.stream === true,
         messages: messages.length,
