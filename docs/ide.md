@@ -5,7 +5,7 @@ Rafiki Code reaches editors in two ways, and both use the credits in your Rafiki
 - **The full agent through ACP.** ACP (Agent Client Protocol) is an open protocol that lets an editor drive an external coding agent: the editor starts the agent as a child process and they exchange JSON-RPC messages (small JSON requests and answers) over its standard input and output. `rafikicode acp` is such an agent. Zed and JetBrains IDEs speak ACP, so you get the Rafiki Code agent (tiers, your `AGENTS.md`, permissions, clear credit errors) inside the editor's own agent panel.
 - **Settings for other tools.** Any tool that accepts an OpenAI compatible endpoint can use the Rafiki AI gateway with a Rafiki AI key and a tier name. Nothing is installed by Rafiki AI. This page covers Cline and Aider.
 
-This page describes `rafikicode` 0.1.1.
+This page describes `rafikicode` 0.1.4.
 
 ## At a glance
 
@@ -49,15 +49,11 @@ command -v rafikicode
 
 It prints the full path, for example `/home/you/.rafikicode/bin/rafikicode` on Linux or `/Users/you/.rafikicode/bin/rafikicode` on macOS. Copy that line into the `command` field exactly. If it prints nothing, the installer's `PATH` change has not reached this terminal: open a new terminal, or write out the installer's location with your own home folder, for example `/home/you/.rafikicode/bin/rafikicode`. Write the path in full, without `~` or `$HOME`.
 
-## Protect the agent's local server
+## The agent's local server
 
-`rafikicode acp` runs a small HTTP server on `127.0.0.1` that the agent itself uses. Give it a password so that other programs and other users on the machine cannot use it to read your files or run commands: put `OPENCODE_SERVER_PASSWORD` with a long random value in the `env` block of the agent entry, as in the examples below. Generate a value with:
+`rafikicode acp` runs a small HTTP server on `127.0.0.1` that only the agent itself uses. The agent protects it with a random password made for that process, so other programs and other users on the machine cannot use it to read your files or run commands. You do not need to set anything. The password is taken out of the agent's environment once the server runs, so commands and tools the agent starts do not inherit it.
 
-```bash
-openssl rand -hex 24
-```
-
-Without it, the agent still works, and the editor's log shows `Warning: OPENCODE_SERVER_PASSWORD is not set ...`. The password is used only between the agent and its own server; you never type it.
+If you set `RAFIKICODE_SERVER_PASSWORD` in the `env` block of the agent entry, the agent uses that value instead. The upstream name `OPENCODE_SERVER_PASSWORD` still works when `RAFIKICODE_SERVER_PASSWORD` is not set. Releases up to 0.1.1 had no automatic password and printed `Warning: OPENCODE_SERVER_PASSWORD is not set ...` in the editor's log.
 
 ## Zed with the Rafiki Code agent (ACP)
 
@@ -65,7 +61,7 @@ Requirements: `rafikicode` installed and signed in (see [Quick start](./quicksta
 
 1. Find the full path of the binary with `command -v rafikicode`, see [Find the full path of rafikicode](#find-the-full-path-of-rafikicode).
 
-2. In Zed, run the command `agent: open settings`, open the External Agents page, choose Add Agent, then Add Custom Agent. Or add the entry to your user `settings.json` directly (on Linux `~/.config/zed/settings.json`), with the path from step 1 and your own random password:
+2. In Zed, run the command `agent: open settings`, open the External Agents page, choose Add Agent, then Add Custom Agent. Or add the entry to your user `settings.json` directly (on Linux `~/.config/zed/settings.json`), with the path from step 1:
 
    ```json
    {
@@ -73,8 +69,7 @@ Requirements: `rafikicode` installed and signed in (see [Quick start](./quicksta
        "Rafiki Code": {
          "type": "custom",
          "command": "/home/you/.rafikicode/bin/rafikicode",
-         "args": ["acp"],
-         "env": { "OPENCODE_SERVER_PASSWORD": "replace-with-a-long-random-value" }
+         "args": ["acp"]
        }
      }
    }
@@ -91,15 +86,14 @@ Checked with Zed 1.19.2 on Linux: Zed read the entry above from the user setting
 ACP agents work in JetBrains IDEs (IntelliJ IDEA, PyCharm, WebStorm and the others) without a JetBrains AI subscription.
 
 1. Open the AI Chat tool window, open the menu in its upper right corner and choose Add Custom Agent. The IDE creates `~/.jetbrains/acp.json`.
-2. Add Rafiki Code to that file, with the full path from `command -v rafikicode` (see [Find the full path of rafikicode](#find-the-full-path-of-rafikicode)) and your own random password:
+2. Add Rafiki Code to that file, with the full path from `command -v rafikicode` (see [Find the full path of rafikicode](#find-the-full-path-of-rafikicode)):
 
    ```json
    {
      "agent_servers": {
        "Rafiki Code": {
          "command": "/home/you/.rafikicode/bin/rafikicode",
-         "args": ["acp"],
-         "env": { "OPENCODE_SERVER_PASSWORD": "replace-with-a-long-random-value" }
+         "args": ["acp"]
        }
      }
    }
@@ -121,14 +115,14 @@ rafikicode login
 
 The command prints a code and a link; approve the code at https://console.rafikiai.io/device with your Rafiki AI account. Then start a new thread in the editor. The same stored key serves your terminals and your editors.
 
-Editors that support terminal sign in also offer a "Login with Rafiki Code" action, which runs `rafikicode login` in a terminal. It finds `rafikicode` through the editor's `PATH`; if the action reports that the command is missing, run `rafikicode login` yourself in a terminal instead.
+Editors that support terminal sign in also offer a "Login with Rafiki Code" action (ACP method id `rafikicode-login`; the older id `opencode-login` is still accepted). It runs `rafikicode login --surface ide` in a terminal, naming `rafikicode` by the full path of the running binary, so it works when the editor's `PATH` lacks `~/.rafikicode/bin`. `--surface ide` makes the key list of the Rafiki AI console show the key as an editor sign in; the same stored key serves your terminals too. If the action reports a problem, run `rafikicode login` yourself in a terminal instead.
 
-Until you sign in, the agent starts but a new thread shows no models and prompts cannot run. Sign in, or give the agent a key, then start a new thread.
+Until you sign in, the agent starts but cannot open a thread: it answers `Authentication required: Rafiki Code needs a Rafiki Console account. ...` (ACP error `auth_required`, code -32000), which editors show as a prompt to sign in. Sign in, or give the agent a key, then start a new thread.
 
 To give the agent an API key instead of a sign in:
 
 - Start the editor from a terminal where `RAFIKICODE_API_KEY` is exported (for example `zed .`); the agent inherits it.
-- Or add it to the `env` block of the agent entry, next to the password: `"RAFIKICODE_API_KEY": "sk-..."`. The settings file then holds the key in plain text, so use a dedicated key with a small budget, keep the file readable only by you, and never commit it.
+- Or add it to the `env` block of the agent entry: `"env": { "RAFIKICODE_API_KEY": "sk-..." }`. The settings file then holds the key in plain text, so use a dedicated key with a small budget, keep the file readable only by you, and never commit it.
 
 ## Cline
 
@@ -161,6 +155,12 @@ Checked with Aider 0.86.2: one edit request on `rafiki-fast` changed the request
 ## Output limits
 
 `rafiki-fast` reasons before it answers, and that reasoning counts as output tokens. With a very small output limit (5 tokens in our test) the answer came back empty. Keep the tool's output limit at its default or at least a few hundred tokens.
+
+## How editor usage is labelled
+
+Model calls from `rafikicode acp` carry the surface `ide` (header `X-Rafiki-Surface`), so the gateway and the Rafiki AI console can tell editor spend from terminal spend. Calls from `rafikicode` send the user agent `rafikicode/<version>`. Up to 0.1.1, calls from editors were labelled `cli` and sent the upstream user agent.
+
+The editor's command list does not include the upstream `customize-opencode` command: it described upstream configuration files, not `~/.rafikicode/config.json`.
 
 ## Cost and spend
 

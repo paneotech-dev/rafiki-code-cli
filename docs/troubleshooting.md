@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Each entry gives the message or symptom, the cause, and what to do. The messages are those of `rafikicode` 0.1.1. Start with `rafikicode doctor`: it checks the configuration file, the credential, the gateway, the key's budget, the tiers, the Rafiki AI console and the installed version, one line each with a fix hint (details in [Headless and CI](./headless-and-ci.md#checking-a-machine-with-doctor)). Add `--print-logs --log-level DEBUG` to any command to see what it did.
+Each entry gives the message or symptom, the cause, and what to do. The messages are those of `rafikicode` 0.1.4. Start with `rafikicode doctor`: it checks the configuration file, the credential, the gateway, the key's budget, the tiers, the Rafiki AI console and the installed version, one line each with a fix hint (details in [Headless and CI](./headless-and-ci.md#checking-a-machine-with-doctor)). Add `--print-logs --log-level DEBUG` to any command to see what it did.
 
 ## Installation
 
@@ -37,19 +37,50 @@ Run the installer without `--version` to get the latest release.
 
 **The approval page shows a different code.** Do not approve it. Approve only the code your own terminal printed, then run `rafikicode login` again if in doubt.
 
+**`Unknown sign in surface "...". Use --surface cli or --surface ide.`** `rafikicode login --surface` takes `cli` (the default, a terminal) or `ide` (an editor). Nothing was sent. Exit code 2.
+
 **`Missing API key. Run rafikicode login, or set RAFIKICODE_API_KEY.`** Printed by `whoami` when no credential is available (exit code 2). Sign in, or set the variable.
 
 ## Keys and credits
 
-**`doctor` shows `FAIL console ... does not know this key (401)`, while tasks run.** The key works at the gateway, but it was not created in the Rafiki AI console, so `doctor` exits 1 and `whoami` says `This key is valid at the gateway but not registered in Rafiki Console (created outside the Console)`. Create a key in the Rafiki AI console at [console.rafikiai.io/keys](https://console.rafikiai.io/keys) with the Rafiki Code option ticked, or run `rafikicode login`. If the `key` line fails too, the key really is revoked or spent, and both commands say `revoked or has expired`.
+**`doctor` shows `WARN  key ...` with `This key was not created for Rafiki Code`.** The key is a general key from the Rafiki AI console, created without the Rafiki Code option. Runs still work, but Rafiki Code tracks usage only on keys created for it. Create a key at [console.rafikiai.io/keys](https://console.rafikiai.io/keys) with the Rafiki Code option ticked, or run `rafikicode login`. `doctor` still exits 0.
 
-**`run` stops with `No Rafiki key found. Set RAFIKICODE_API_KEY (create a key at https://console.rafikiai.io/keys), or run rafikicode login.`** No credential is available. Sign in with `rafikicode login`, or set `RAFIKICODE_API_KEY`, and check that `rafikicode doctor` shows `ok credential`. Exit code 2.
+**`doctor` shows `WARN  console ... does not know this key (401)`, while tasks run.** The key works at the gateway, but the Rafiki AI console does not know it (it was created outside the console). `doctor` adds that usage still works and is metered at the gateway, ends with `All checks passed, 1 warning, see the line marked WARN.` and exits 0. `whoami` prints the same explanation and exits 2. Create a key in the Rafiki AI console at [console.rafikiai.io/keys](https://console.rafikiai.io/keys) with the Rafiki Code option ticked, or run `rafikicode login`. If the `key` line fails too, the key really is revoked or spent, and both commands say `revoked or has expired`.
+
+**`run` or the terminal interface stops at once with `Rafiki Code needs a Rafiki Console account.`** No credential is available:
+
+```text
+Error: Rafiki Code needs a Rafiki Console account. Create one at https://console.rafikiai.io, then run: rafikicode login
+On a server or in CI, create a server key at https://console.rafikiai.io/keys and set RAFIKICODE_API_KEY.
+```
+
+Sign in with `rafikicode login`, or set `RAFIKICODE_API_KEY`, and check that `rafikicode doctor` shows `ok credential`. Exit code 2.
 
 **`No models available: not signed in.`** Printed by `rafikicode models rafiki` when no credential is present. Sign in or set the key, then run the command again.
 
 **Budget exceeded.** The key's budget or the credits in your Rafiki AI account are spent. The request was refused and not charged, and `run` exits 3. Add credits in the Rafiki AI console, raise the key's budget on the key page, or use a different key. The `key` line of `rafikicode doctor` shows spend and budget.
 
 **A tier is refused with an access error.** The key was created for fewer tiers than you asked for (`run` exits 2). Check the `tiers` line of `rafikicode doctor` and pick an allowed tier, or create a key with the tiers you need.
+
+## Models and providers
+
+`rafikicode` runs on the Rafiki tiers only.
+
+**`Warning: ignored enabled_providers in the configuration` or `Warning: ignored model openai/gpt-4o in the configuration`.** A configuration file asks for another provider or model. `rafikicode` ignores that setting, prints the warning, and carries on with the Rafiki tiers. Remove the setting to silence the warning.
+
+**`Error: rafikicode runs on Rafiki models only (...)`.** `run -m` named a model outside the Rafiki tiers. Use `-m rafiki/rafiki-fast` or `-m rafiki/rafiki-pro`. Exit code 2.
+
+**`rafikicode providers` or `rafikicode auth` answers `rafikicode providers is not available: rafikicode runs on Rafiki models only.`** These commands stored keys for other providers and were removed. Sign in with `rafikicode login`, or set `RAFIKICODE_API_KEY`. Exit code 2.
+
+## Local server
+
+**A script that calls `rafikicode serve` or `rafikicode web` gets `401 Unauthorized`.** From 0.1.4 the local server always requires a password. Set `RAFIKICODE_SERVER_PASSWORD` for both the server and the script, or read the password from the server file the server names when it starts (`~/.rafikicode/servers/<port>.json`). See [Server files](./configuration.md#server-files).
+
+**`The rafikicode server at <url> needs a password` or `... refused the password`.** `rafikicode run --attach` or `attach` sent no password, or the wrong one. Pass `--password`, or set `RAFIKICODE_SERVER_PASSWORD` to the value the server was started with. Exit code 2. When no server answers at the address, the exit code is 4.
+
+**`Warning: not using the server file ...`.** The client found a server file for that port but did not trust it: the file or its folder can be read by another user, belongs to someone else, or its server process is no longer running. The warning gives the reason. Start the server again, or pass the password yourself.
+
+**`rafikicode serve` refuses to start with exit code 2.** It was asked to listen on an address other machines can reach (`--hostname` other than `127.0.0.1`, `::1` or `localhost`, or `--mdns`) without a password you chose, or the `servers` folder cannot be used safely. Set `RAFIKICODE_SERVER_PASSWORD`, or fix the folder the message names.
 
 ## Running tasks
 
@@ -85,17 +116,11 @@ git config --global user.email "you@example.com"
 
 ## Configuration
 
-**Your editor warns that the schema of `~/.rafikicode/config.json` cannot be loaded.** The `$schema` address that 0.1.1 writes into a new configuration file answers 404. Runs are not affected. To get validation in your editor, change that line to:
-
-```json
-{
-  "$schema": "https://raw.githubusercontent.com/paneotech-dev/rafiki-code-cli/v0.1.1/schema/config.json"
-}
-```
+**Your editor warns that the schema of `~/.rafikicode/config.json` cannot be loaded.** Releases 0.1.0 and 0.1.1 wrote a `$schema` address that answers 404. Runs are not affected. From 0.1.4, new configuration files point at the schema of the installed release, for example `https://raw.githubusercontent.com/paneotech-dev/rafiki-code-cli/v0.1.4/schema/config.json`, and the first command you run replaces the old address in an existing file, changing nothing else in it.
 
 ## Updating
 
-**`rafikicode upgrade skipped: 0.1.1 is already installed`.** `rafikicode update` (or `upgrade`) found nothing newer; nothing to do.
+**`rafikicode upgrade skipped: 0.1.4 is already installed`.** `rafikicode update` (or `upgrade`) found nothing newer; nothing to do.
 
 **`update` fails with a checksum error.** The downloaded binary did not match `SHA256SUMS`; the installed binary was left untouched. Retry, or install the release with the installer script.
 

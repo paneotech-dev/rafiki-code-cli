@@ -12,9 +12,9 @@ One line installer for Linux and macOS (on Windows, use WSL, the Windows Subsyst
 curl -fsSL https://get.rafikiai.io | bash
 ```
 
-Options, passed after `bash -s --`: `--version 0.1.1` installs a given release, `--prefix DIR` chooses another directory, `--no-modify-path` leaves your shell files alone, `--dry-run` only shows what would happen. The script is `install/install.sh` in this repository.
+Options, passed after `bash -s --`: `--version 0.1.4` installs a given release, `--prefix DIR` chooses another directory, `--no-modify-path` leaves your shell files alone, `--dry-run` only shows what would happen. The script is `install/install.sh` in this repository.
 
-The installer detects your platform, downloads the release archive, verifies it against the published `SHA256SUMS` file, installs the binary into `~/.rafikicode/bin`, and adds that directory to your PATH in `~/.bashrc` for new terminals. In the terminal you installed from, run `export PATH=$HOME/.rafikicode/bin:$PATH` (or open a new terminal); `rafikicode --version` then prints `0.1.1`.
+The installer detects your platform, downloads the release archive, verifies it against the published `SHA256SUMS` file, installs the binary into `~/.rafikicode/bin`, and adds that directory to your PATH in `~/.bashrc` for new terminals. In the terminal you installed from, run `export PATH=$HOME/.rafikicode/bin:$PATH` (or open a new terminal); `rafikicode --version` then prints `0.1.4`.
 
 `rafikicode` is installed with the installer script. It is not published on npm.
 

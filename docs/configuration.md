@@ -29,6 +29,7 @@ Two defaults are seeded by the product and can be overridden in the global file:
 
 - `autoupdate` is `false`. The CLI never replaces itself unless you run `rafikicode update`. Set it to `true` or `"notify"` to change that.
 - The `rafiki` provider is registered automatically once a credential exists (a stored sign in or `RAFIKICODE_API_KEY`), pointing at the Rafiki AI gateway with the Rafiki tiers (`rafiki-fast`, `rafiki-pro`). Without a credential no provider is registered and the CLI tells you to sign in.
+- `rafikicode` offers the Rafiki tiers only. Keys for other providers in the environment are not used. `enabled_providers`, and a `model`, `small_model`, `agent.<name>.model` or `mode.<name>.model` naming another provider, are ignored with one warning line each; `provider` entries for other providers are loaded but never offered. `--model` naming another provider stops `run` and the terminal interface with exit code 2.
 
 ## Keys
 

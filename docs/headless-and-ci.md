@@ -90,7 +90,7 @@ An untrusted workspace also loads no project plugins, custom tools or provider p
 
 ## Checking a machine with doctor
 
-`rafikicode doctor` runs the checks a headless job depends on and prints one line each: `ok`, `FAIL` with a fix hint, or `skip` when an earlier check makes it moot. With a key created in the Rafiki AI console:
+`rafikicode doctor` runs the checks a headless job depends on and prints one line each: `ok`, `WARN` with a fix hint and a note, `FAIL` with a fix hint, or `skip` when an earlier check makes it moot. With a key created in the Rafiki AI console:
 
 ```text
 ok    config      ~/.rafikicode/config.json not created yet, built in defaults apply
@@ -99,10 +99,10 @@ ok    gateway     https://gateway.rafikiai.io answered in 134 ms
 ok    key         key rafikicode-..., spent 0.1568 USD of 2.5 USD budget, expires 2026-10-13T12:34:43.455000+00:00
 ok    tiers       rafiki-fast, rafiki-pro
 ok    console     https://console.rafikiai.io, account ...
-ok    version     rafikicode 0.1.1, ...
+ok    version     rafikicode 0.1.4, ...
 ```
 
-The home directory is shortened to `~` and account details to `...`. With no key at all the `credential` line reads `FAIL  credential  none. Fix: Run rafikicode login, or set RAFIKICODE_API_KEY on servers and in CI.`, the `key` and `tiers` lines are skipped, and `doctor` exits 1. A key that works at the gateway but was not created in the Rafiki AI console gives `FAIL  console ... does not know this key (401)`; see [Troubleshooting](./troubleshooting.md#keys-and-credits).
+The home directory is shortened to `~` and account details to `...`. With no key at all the `credential` line reads `FAIL  credential  none. Fix: Run rafikicode login, or set RAFIKICODE_API_KEY on servers and in CI.`, the `key` and `tiers` lines are skipped, and `doctor` exits 1. A key that works at the gateway but was not created in the Rafiki AI console gives `WARN  console ... does not know this key (401)`, and `doctor` still exits 0; see [Troubleshooting](./troubleshooting.md#keys-and-credits).
 
 The checks, in order:
 
