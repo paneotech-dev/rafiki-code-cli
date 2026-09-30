@@ -2,8 +2,10 @@
 # Exercises install/install.sh against a local mock release server. Builds a
 # fake release (a shell script standing in for the binary), serves it with
 # python3's http.server, and checks: dry run, install, version pin, an already
-# installed short circuit, and a checksum mismatch that must fail without
-# touching the installed binary.
+# installed short circuit, a checksum mismatch that must fail without touching
+# the installed binary, the wording of the next steps when no shell startup file
+# was written, and the post-install smoke test that must fail loudly when the
+# installed binary cannot run.
 set -euo pipefail
 
 PORT="${PORT:-4150}"
@@ -78,6 +80,14 @@ fail=0
 check() {
     if [ "$1" = "0" ]; then pass=$((pass + 1)); echo "ok   $2"; else fail=$((fail + 1)); echo "FAIL $2"; fi
 }
+# The installer colours its output, and the escapes land between the words of a
+# single message, so assertions on whole lines read the plain text.
+plain() { sed $'s/\033\[[0-9;]*m//g'; }
+# The installer links into /usr/local/bin when it is on PATH and writable, which
+# it is for root. Cases below run with a PATH from which it is removed, so the
+# machine's own /usr/local/bin is never a candidate and nothing outside $WORK is
+# written.
+safe_path=$(printf '%s' "$PATH" | tr ':' '\n' | grep -v '^/usr/local/bin/*$' | paste -sd: -)
 
 out=$(bash "$INSTALLER" --dry-run --no-modify-path 2>&1)
 [[ "$out" == *"dry run: rafikicode 1.2.3 for ${target}"* ]] && [ ! -e "$RAFIKICODE_INSTALL_DIR/rafikicode" ]; check $? "dry run resolves latest and installs nothing"
@@ -106,6 +116,49 @@ out=$(bash "$INSTALLER" --no-modify-path --binary "$WORK/build-1.2.3/rafikicode"
 
 out=$(bash "$INSTALLER" --no-modify-path --prefix "$WORK/other/bin" --version 1.2.2 2>&1)
 [ "$("$WORK/other/bin/rafikicode" --version)" = "1.2.2" ] && [[ "$out" == *"Add $WORK/other/bin to your PATH"* ]]; check $? "prefix option and PATH note"
+
+# --no-modify-path writes no startup file, so the next steps must not claim that
+# new terminals find the command on their own. No writable directory on PATH
+# here either, so there is no link to make the claim true another way.
+nomodwords="$WORK/nomodwords"
+mkdir -p "$nomodwords"
+: > "$nomodwords/.bashrc"
+out=$(env HOME="$nomodwords" SHELL=/bin/bash PATH="$safe_path" \
+    RAFIKICODE_INSTALL_DIR="$nomodwords/.rafikicode/bin" \
+    bash "$INSTALLER" --no-modify-path --version 1.2.2 2>&1 | plain)
+[[ "$out" != *"New terminals find rafikicode on their own"* ]] \
+    && [[ "$out" == *"Nothing was added to your shell startup files"* ]] \
+    && [[ "$out" == *"       export PATH=$nomodwords/.rafikicode/bin:\$PATH"* ]] \
+    && [ ! -s "$nomodwords/.bashrc" ] \
+    && [[ "$out" == *"       $nomodwords/.rafikicode/bin/rafikicode login"* ]]; check $? "--no-modify-path next steps promise nothing about new terminals"
+
+# The same wording is earned once the entry really is in a startup file.
+modwords="$WORK/modwords"
+mkdir -p "$modwords"
+: > "$modwords/.bashrc"
+out=$(env HOME="$modwords" SHELL=/bin/bash PATH="$safe_path" \
+    RAFIKICODE_INSTALL_DIR="$modwords/.rafikicode/bin" \
+    bash "$INSTALLER" --version 1.2.2 2>&1 | plain)
+[[ "$out" == *"New terminals find rafikicode on their own"* ]] \
+    && grep -Fq "export PATH=$modwords/.rafikicode/bin:\$PATH" "$modwords/.bashrc"; check $? "next steps promise new terminals only once the startup file is written"
+
+# The post-install smoke test: a binary that installs but cannot run must fail
+# the install, with the exit status, what it said, and what to look at.
+mkdir -p "$WORK/bad"
+cat > "$WORK/bad/rafikicode" <<'EOF'
+#!/bin/sh
+echo "cannot execute binary file" >&2
+exit 126
+EOF
+chmod 755 "$WORK/bad/rafikicode"
+raw=$(bash "$INSTALLER" --no-modify-path --prefix "$WORK/badprefix/bin" --binary "$WORK/bad/rafikicode" 2>&1) && rc=0 || rc=$?
+out=$(printf '%s\n' "$raw" | plain)
+[ "$rc" != "0" ] \
+    && [[ "$out" == *"was installed to $WORK/badprefix/bin/rafikicode but does not run"* ]] \
+    && [[ "$out" == *"--version exited with status 126"* ]] \
+    && [[ "$out" == *"it said: cannot execute binary file"* ]] \
+    && [[ "$out" == *"xattr -d com.apple.quarantine"* ]] \
+    && [[ "$out" != *"Next steps"* ]]; check $? "post-install version check fails loudly when the binary cannot run"
 
 echo "install tests: ${pass} passed, ${fail} failed"
 [ "$fail" = "0" ]

@@ -331,15 +331,21 @@ install_from_binary() {
     mv -f "${INSTALL_DIR}/${APP}.new" "${INSTALL_DIR}/${APP}"
 }
 
+# Set to the startup file that carries the PATH entry, and only then: the next
+# steps promise new terminals find the command on their own, and that promise is
+# true only when a file on disk says so.
+path_written=""
 add_to_path() {
     local config_file=$1
     local command=$2
     if grep -Fxq "$command" "$config_file" 2>/dev/null; then
         print_message info "${MUTED}PATH entry already present in ${NC}$config_file"
+        path_written="$config_file"
     elif [[ -w $config_file ]]; then
         echo -e "\n# ${APP}" >> "$config_file"
         echo "$command" >> "$config_file"
         print_message info "${MUTED}Added ${NC}${INSTALL_DIR}${MUTED} to PATH in ${NC}$config_file"
+        path_written="$config_file"
     else
         print_message warning "Add the directory to your PATH in $config_file (or similar):"
         print_message info "  $command"
@@ -437,6 +443,33 @@ link_into_path() {
     return 0
 }
 
+# Post-install smoke test. check_installed only runs --version when an older
+# version is already there, so on a fresh install a binary for the wrong
+# architecture, one built against a newer C library, or one macOS has
+# quarantined is written to disk and reported as a success; the user meets the
+# failure later, as an opaque error from their first real command. Run it here,
+# while the install is still the thing in front of them, and say what to look at.
+verify_runs() {
+    local bin="${INSTALL_DIR}/${BIN_NAME}" out status=0
+    out=$("$bin" --version 2>&1) || status=$?
+    if [ "$status" = "0" ] && [ -n "$out" ]; then
+        return 0
+    fi
+    print_message error "Error: ${APP} was installed to ${bin} but does not run." >&2
+    {
+        printf '  %s --version exited with status %s\n' "$bin" "$status"
+        if [ -n "$out" ]; then printf '  it said: %s\n' "$out"; fi
+        printf '  Usual causes:\n'
+        printf '    - a build for another machine (installed %s, this is %s/%s)\n' \
+            "${target:-${binary_path:-unknown}}" "$(uname -s)" "$(uname -m)"
+        printf '    - a C library older than the build needs; check with: ldd --version\n'
+        printf '    - on macOS, quarantine; clear it with: xattr -d com.apple.quarantine %s\n' "$bin"
+        printf '  The binary was left in place so you can look at it. Remove it with: rm %s\n' "$bin"
+        printf '  If none of that explains it, report it at https://github.com/%s/%s/issues\n' "$OWNER" "$REPO"
+    } >&2
+    exit 1
+}
+
 if [ -n "$binary_path" ]; then
     if [ "$dry_run" = "true" ]; then
         echo "dry run: would install ${binary_path} to ${INSTALL_DIR}/${APP}"
@@ -457,6 +490,7 @@ else
     download_and_install
 fi
 
+verify_runs
 print_message info "${MUTED}Installed ${NC}${APP}${MUTED} at ${NC}${INSTALL_DIR}/${BIN_NAME}"
 link_into_path
 path_note
@@ -504,9 +538,20 @@ fi
 
 print_message info "\nNext steps:"
 step=1
+# Three cases, three true messages. Linked: the bare name already works here and
+# everywhere, so there is nothing to say. Not linked but a startup file now
+# carries the entry: new terminals are set, this one needs the export. Not linked
+# and nothing written (--no-modify-path, no startup file found, or one we cannot
+# write): no terminal finds it until the user puts the line somewhere themselves.
 if [ -n "${path_hint:-}" ] && [ -z "$linked_path" ]; then
-    print_message info "  ${step}. New terminals find ${APP} on their own. To use this one:"
-    print_message info "       $path_hint"
+    if [ -n "${path_written:-}" ]; then
+        print_message info "  ${step}. New terminals find ${APP} on their own. To use this one:"
+        print_message info "       $path_hint"
+    else
+        print_message info "  ${step}. Nothing was added to your shell startup files. To use ${APP} in this terminal:"
+        print_message info "       $path_hint"
+        print_message info "     ${MUTED}Put the same line in your shell startup file so new terminals find it too.${NC}"
+    fi
     step=$((step + 1))
 fi
 print_message info "  ${step}. Sign in to your Rafiki AI account:"
