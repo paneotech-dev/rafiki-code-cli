@@ -59,6 +59,7 @@ const TOP_LEVEL = [
   "export",
   "import",
   "pr",
+  "gh",
   "session",
   "plugin",
   "db",
@@ -80,6 +81,19 @@ const SUBCOMMANDS = [
   ["session", "list"],
   ["session", "delete"],
   ["db", "path"],
+  // The gh group, whose surface docs/github.md describes: which subcommands
+  // exist and which flags they take is the thing that page promises.
+  ["gh", "status"],
+  ["gh", "branch"],
+  ["gh", "commit"],
+  ["gh", "push"],
+  ["gh", "pr"],
+  ["gh", "pr", "create"],
+  ["gh", "pr", "comment"],
+  ["gh", "issue"],
+  ["gh", "issue", "list"],
+  ["gh", "issue", "view"],
+  ["gh", "issue", "comment"],
 ] as const
 
 // Fixed wrap width so a developer's terminal doesn't affect snapshots.

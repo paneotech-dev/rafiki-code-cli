@@ -576,3 +576,202 @@ Options:
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]"
 `;
+
+exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode gh --help 1`] = `
+"rafikicode gh
+
+work with GitHub through your own git and gh
+
+Commands:
+  rafikicode gh status         show the git repository and GitHub CLI status
+  rafikicode gh branch <name>  create or switch to a branch
+  rafikicode gh commit         stage the work tree and commit
+  rafikicode gh push           push the current branch and set its upstream
+  rafikicode gh pr             open and comment on pull requests
+  rafikicode gh issue          read and comment on issues
+
+Options:
+  -h, --help        show help                                                              [boolean]
+  -v, --version     show version number                                                    [boolean]
+      --print-logs  print logs to stderr                                                   [boolean]
+      --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
+      --pure        run without external plugins                                           [boolean]"
+`;
+
+exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode gh status --help 1`] = `
+"rafikicode gh status
+
+show the git repository and GitHub CLI status
+
+Options:
+  -h, --help        show help                                                              [boolean]
+  -v, --version     show version number                                                    [boolean]
+      --print-logs  print logs to stderr                                                   [boolean]
+      --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
+      --pure        run without external plugins                                           [boolean]"
+`;
+
+exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode gh branch --help 1`] = `
+"rafikicode gh branch <name>
+
+create or switch to a branch
+
+Positionals:
+  name  branch name                                                              [string] [required]
+
+Options:
+  -h, --help        show help                                                              [boolean]
+  -v, --version     show version number                                                    [boolean]
+      --print-logs  print logs to stderr                                                   [boolean]
+      --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
+      --pure        run without external plugins                                           [boolean]"
+`;
+
+exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode gh commit --help 1`] = `
+"rafikicode gh commit
+
+stage the work tree and commit
+
+Options:
+  -h, --help        show help                                                              [boolean]
+  -v, --version     show version number                                                    [boolean]
+      --print-logs  print logs to stderr                                                   [boolean]
+      --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
+      --pure        run without external plugins                                           [boolean]
+  -m, --message     commit message                                               [string] [required]
+      --stage       stage every change first (--no-stage commits only what is already staged)
+                                                                           [boolean] [default: true]"
+`;
+
+exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode gh push --help 1`] = `
+"rafikicode gh push
+
+push the current branch and set its upstream
+
+Options:
+  -h, --help              show help                                                        [boolean]
+  -v, --version           show version number                                              [boolean]
+      --print-logs        print logs to stderr                                             [boolean]
+      --log-level         log level             [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
+      --pure              run without external plugins                                     [boolean]
+      --remote            remote to push to                             [string] [default: "origin"]
+      --force-with-lease  overwrite the remote branch only if it has not moved since you fetched
+                                                                          [boolean] [default: false]"
+`;
+
+exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode gh pr --help 1`] = `
+"rafikicode gh pr
+
+open and comment on pull requests
+
+Commands:
+  rafikicode gh pr create            open a pull request for the current branch
+  rafikicode gh pr comment <number>  comment on a pull request
+
+Options:
+  -h, --help        show help                                                              [boolean]
+  -v, --version     show version number                                                    [boolean]
+      --print-logs  print logs to stderr                                                   [boolean]
+      --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
+      --pure        run without external plugins                                           [boolean]"
+`;
+
+exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode gh pr create --help 1`] = `
+"rafikicode gh pr create
+
+open a pull request for the current branch
+
+Options:
+  -h, --help        show help                                                              [boolean]
+  -v, --version     show version number                                                    [boolean]
+      --print-logs  print logs to stderr                                                   [boolean]
+      --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
+      --pure        run without external plugins                                           [boolean]
+      --title       pull request title                                           [string] [required]
+      --body        pull request body                                         [string] [default: ""]
+      --base        branch to merge into (defaults to the repository default)               [string]
+      --draft       open as a draft                                       [boolean] [default: false]"
+`;
+
+exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode gh pr comment --help 1`] = `
+"rafikicode gh pr comment <number>
+
+comment on a pull request
+
+Positionals:
+  number  pull request number                                                    [number] [required]
+
+Options:
+  -h, --help        show help                                                              [boolean]
+  -v, --version     show version number                                                    [boolean]
+      --print-logs  print logs to stderr                                                   [boolean]
+      --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
+      --pure        run without external plugins                                           [boolean]
+      --body        comment body                                                 [string] [required]"
+`;
+
+exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode gh issue --help 1`] = `
+"rafikicode gh issue
+
+read and comment on issues
+
+Commands:
+  rafikicode gh issue list              list issues
+  rafikicode gh issue view <number>     read an issue and its comments
+  rafikicode gh issue comment <number>  comment on an issue
+
+Options:
+  -h, --help        show help                                                              [boolean]
+  -v, --version     show version number                                                    [boolean]
+      --print-logs  print logs to stderr                                                   [boolean]
+      --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
+      --pure        run without external plugins                                           [boolean]"
+`;
+
+exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode gh issue list --help 1`] = `
+"rafikicode gh issue list
+
+list issues
+
+Options:
+  -h, --help        show help                                                              [boolean]
+  -v, --version     show version number                                                    [boolean]
+      --print-logs  print logs to stderr                                                   [boolean]
+      --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
+      --pure        run without external plugins                                           [boolean]
+      --limit       how many issues to list                                   [number] [default: 20]
+      --state       filter by state                      [string] [choices: "open", "closed", "all"]"
+`;
+
+exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode gh issue view --help 1`] = `
+"rafikicode gh issue view <number>
+
+read an issue and its comments
+
+Positionals:
+  number  issue number                                                           [number] [required]
+
+Options:
+  -h, --help        show help                                                              [boolean]
+  -v, --version     show version number                                                    [boolean]
+      --print-logs  print logs to stderr                                                   [boolean]
+      --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
+      --pure        run without external plugins                                           [boolean]"
+`;
+
+exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode gh issue comment --help 1`] = `
+"rafikicode gh issue comment <number>
+
+comment on an issue
+
+Positionals:
+  number  issue number                                                           [number] [required]
+
+Options:
+  -h, --help        show help                                                              [boolean]
+  -v, --version     show version number                                                    [boolean]
+      --print-logs  print logs to stderr                                                   [boolean]
+      --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
+      --pure        run without external plugins                                           [boolean]
+      --body        comment body                                                 [string] [required]"
+`;
