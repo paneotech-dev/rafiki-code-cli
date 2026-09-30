@@ -109,7 +109,7 @@ export function ErrorComponent(props: { error: Error; reset: () => void; mode?: 
         {/* Headline */}
         <box flexDirection="column" alignItems="center" flexShrink={0}>
           <text attributes={TextAttributes.BOLD} fg={colors.text}>
-            opencode crashed
+            {Brand.name} crashed
           </text>
           <Show when={showSubtext()}>
             <text fg={colors.muted}>An unexpected error stopped the session.</text>
@@ -207,7 +207,7 @@ function buildIssueURL(message: string, stack: string) {
   // the contributing-guidelines compliance check, which pushes for system info.
   const url = new URL(`${Brand.issues}?template=bug-report.yml`)
   url.searchParams.set("title", `TUI crash: ${message}`)
-  url.searchParams.set("opencode-version", InstallationVersion)
+  url.searchParams.set("rafikicode-version", InstallationVersion)
   url.searchParams.set("os", describeOS())
   url.searchParams.set("terminal", describeTerminal())
   url.searchParams.set(
