@@ -265,7 +265,7 @@ check_installed() {
             print_message info "${MUTED}Version ${NC}$specific_version${MUTED} is already installed at ${NC}${INSTALL_DIR}/${BIN_NAME}"
             exit 0
         elif [[ -n "$installed_version" ]]; then
-            print_message info "${MUTED}Installed version: ${NC}$installed_version"
+            print_message info "${MUTED}Upgrading ${NC}${APP}${MUTED} from ${NC}$installed_version${MUTED} to ${NC}$specific_version"
         fi
     fi
 }
@@ -388,11 +388,47 @@ path_note() {
         fi
     done
     if [[ -z $config_file ]]; then
-        print_message info "\nNo shell startup file found. Add ${INSTALL_DIR} to your PATH for ${current_shell}:"
-        print_message info "  $command"
+        if [ -z "$linked_path" ]; then
+            print_message info "\nNo shell startup file found. Add ${INSTALL_DIR} to your PATH for ${current_shell}:"
+            print_message info "  $command"
+        fi
         return
     fi
     add_to_path "$config_file" "$command"
+}
+
+# Make the command usable in the terminal that ran the installer.
+#
+# `curl ... | bash` runs in a child process, so a PATH line appended to a shell
+# startup file cannot reach the shell the user is sitting in. Until they open a
+# new terminal or re-export PATH by hand, `rafikicode login` answers "command
+# not found" straight after a successful install, which is the first thing every
+# new user meets.
+#
+# A symlink from a directory that is already on PATH is the only thing that
+# takes effect in the shell that is already open. Only directories that are
+# themselves already on PATH and writable are used, so this never widens where
+# the shell looks for commands; and a file that is not one of our own symlinks
+# is never replaced.
+linked_path=""
+link_into_path() {
+    if [ "$no_modify_path" = "true" ]; then return 0; fi
+    local target="${INSTALL_DIR}/${BIN_NAME}" dir link
+    for dir in /usr/local/bin "$HOME/.local/bin"; do
+        case ":$PATH:" in
+            *":$dir:"*) ;;
+            *) continue ;;
+        esac
+        [ -d "$dir" ] && [ -w "$dir" ] || continue
+        link="${dir}/${BIN_NAME}"
+        if [ -e "$link" ] && [ ! -L "$link" ]; then continue; fi
+        if ln -sfn "$target" "$link" 2>/dev/null; then
+            linked_path="$link"
+            print_message info "${MUTED}Linked ${NC}${link}${MUTED} so ${NC}${APP}${MUTED} runs in this terminal${NC}"
+            return 0
+        fi
+    done
+    return 0
 }
 
 if [ -n "$binary_path" ]; then
@@ -416,15 +452,26 @@ else
 fi
 
 print_message info "${MUTED}Installed ${NC}${APP}${MUTED} at ${NC}${INSTALL_DIR}/${BIN_NAME}"
+link_into_path
 path_note
-step=1
+
+# What to tell the user to type. Whatever happened above, this is a command that
+# works in the terminal they already have open: the bare name once it resolves,
+# the absolute path when it does not. Printing `rafikicode login` to someone for
+# whom it cannot yet resolve is what made the install look broken.
+run_cmd="$APP"
+if [ -z "$linked_path" ] && [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
+    run_cmd="${INSTALL_DIR}/${BIN_NAME}"
+fi
+
 print_message info "\nNext steps:"
-if [ -n "${path_hint:-}" ]; then
-    print_message info "  ${step}. Make ${APP} available in this terminal:"
+step=1
+if [ -n "${path_hint:-}" ] && [ -z "$linked_path" ]; then
+    print_message info "  ${step}. New terminals find ${APP} on their own. To use this one:"
     print_message info "       $path_hint"
     step=$((step + 1))
 fi
-print_message info "  ${step}. Connect your Rafiki AI account with a key:"
-print_message info "       export RAFIKICODE_API_KEY=sk-...   ${MUTED}(create one at https://console.rafikiai.io/keys, tick the Rafiki Code option)${NC}"
-print_message info "     or sign in from a browser:"
-print_message info "       ${APP} login"
+print_message info "  ${step}. Sign in to your Rafiki AI account:"
+print_message info "       ${run_cmd} login"
+print_message info "     ${MUTED}On a server with no browser, use a key from https://console.rafikiai.io/keys (tick the Rafiki Code option):${NC}"
+print_message info "       export RAFIKICODE_API_KEY=sk-..."
