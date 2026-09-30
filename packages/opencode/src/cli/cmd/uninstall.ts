@@ -21,6 +21,8 @@ interface UninstallArgs {
 interface RemovalTargets {
   directories: Array<{ path: string; label: string; keep: boolean }>
   shellConfigs: string[]
+  // Symlinks on PATH that point at the binary below, and nothing else.
+  links: string[]
   binary: string | null
 }
 
@@ -99,8 +101,9 @@ async function collectRemovalTargets(args: UninstallArgs, method: Installation.M
 
   const binary = method === "curl" ? process.execPath : null
   const shellConfigs = binary ? await RafikiShell.configsWithPath(path.dirname(binary)) : []
+  const links = binary ? await RafikiShell.ownedLinks(binary) : []
 
-  return { directories, shellConfigs, binary }
+  return { directories, shellConfigs, links, binary }
 }
 
 async function showRemovalSummary(targets: RemovalTargets, method: Installation.Method) {
@@ -127,6 +130,10 @@ async function showRemovalSummary(targets: RemovalTargets, method: Installation.
 
   for (const file of targets.shellConfigs) {
     prompts.log.info(`  ✓ Shell PATH in ${shortenPath(file)}`)
+  }
+
+  for (const link of targets.links) {
+    prompts.log.info(`  ✓ Link on PATH: ${shortenPath(link)}`)
   }
 
   if (method !== "curl" && method !== "unknown") {
@@ -178,6 +185,32 @@ async function executeUninstall(method: Installation.Method, targets: RemovalTar
     } else {
       spinner.stop("Cleaned shell config")
     }
+  }
+
+  /*
+   * The installer's symlink from a directory on PATH. Left behind it becomes a
+   * dangling link: the bare name still resolves and the shell reports an opaque
+   * OS error instead of "command not found". Removed the same way the PATH
+   * lines are: RafikiShell.removeLink checks again, at the moment of removal,
+   * that the name is still a symlink to this binary, so a regular file or a
+   * link someone else owns is never touched.
+   */
+  for (const link of targets.binary ? targets.links : []) {
+    spinner.start(`Removing the link ${shortenPath(link)}...`)
+    const removed = await RafikiShell.removeLink(link, targets.binary!).then(
+      (done) => done,
+      (e) => e as Error,
+    )
+    if (removed instanceof Error) {
+      spinner.stop(`Failed to remove ${shortenPath(link)}`, 1)
+      errors.push(`Link ${shortenPath(link)}: ${removed.message}. Remove it with: rm "${link}"`)
+      continue
+    }
+    if (!removed) {
+      spinner.stop(`Left ${shortenPath(link)} alone: it is no longer a link to ${shortenPath(targets.binary!)}`)
+      continue
+    }
+    spinner.stop(`Removed the link ${shortenPath(link)}`)
   }
 
   if (method !== "curl" && method !== "unknown") {

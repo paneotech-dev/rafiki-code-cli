@@ -1,4 +1,5 @@
-// The PATH entry install/install.sh writes and its exact removal on uninstall.
+// The PATH entry install/install.sh writes, the symlink it drops into a
+// directory already on PATH, and the exact removal of both on uninstall.
 import { describe, expect, test } from "bun:test"
 import fs from "fs"
 import os from "os"
@@ -43,5 +44,97 @@ describe("installer PATH entry", () => {
     } finally {
       fs.rmSync(home, { recursive: true, force: true })
     }
+  })
+})
+
+describe("installer symlink on PATH", () => {
+  // install.sh (link_into_path) links from the first of these that is on PATH
+  // and writable; uninstall has to look in the same two places.
+  test("the directories match what install.sh links from", () => {
+    expect(installer).toContain('for dir in /usr/local/bin "$HOME/.local/bin"; do')
+    expect(installer).toContain('link="${dir}/${BIN_NAME}"')
+    expect(Shell.linkDirs("/home/jane")).toEqual(["/usr/local/bin", "/home/jane/.local/bin"])
+    expect(Shell.linkCandidates(`${dir}/rafikicode`, "/home/jane")).toEqual([
+      "/usr/local/bin/rafikicode",
+      "/home/jane/.local/bin/rafikicode",
+    ])
+  })
+
+  // A throwaway home, so only files this test made are ever looked at.
+  const withHome = async (fn: (home: string, binary: string, link: string) => Promise<void>) => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "rafikicode-link-"))
+    const binary = path.join(home, ".rafikicode", "bin", "rafikicode")
+    const link = path.join(home, ".local", "bin", "rafikicode")
+    fs.mkdirSync(path.dirname(binary), { recursive: true })
+    fs.mkdirSync(path.dirname(link), { recursive: true })
+    fs.writeFileSync(binary, "#!/bin/sh\n")
+    try {
+      await fn(home, binary, link)
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true })
+    }
+  }
+
+  test("our own link is found and removed, even once the binary is gone", async () => {
+    await withHome(async (home, binary, link) => {
+      fs.symlinkSync(binary, link)
+      expect(await Shell.ownedLinks(binary, home)).toEqual([link])
+      // Uninstall removes the install directory first: the link is dangling by
+      // the time it is removed, which is exactly the state that has to go.
+      fs.rmSync(path.dirname(binary), { recursive: true, force: true })
+      expect(await Shell.ownsLink(link, binary)).toBe(true)
+      expect(await Shell.removeLink(link, binary)).toBe(true)
+      expect(fs.existsSync(link)).toBe(false)
+      expect(fs.lstatSync(path.dirname(link)).isDirectory()).toBe(true)
+      // Nothing left to do the second time.
+      expect(await Shell.removeLink(link, binary)).toBe(false)
+    })
+  })
+
+  test("a regular file at that name is someone else's and is left alone", async () => {
+    await withHome(async (home, binary, link) => {
+      fs.writeFileSync(link, "not ours\n")
+      expect(await Shell.ownedLinks(binary, home)).toEqual([])
+      expect(await Shell.ownsLink(link, binary)).toBe(false)
+      expect(await Shell.removeLink(link, binary)).toBe(false)
+      expect(fs.readFileSync(link, "utf8")).toBe("not ours\n")
+    })
+  })
+
+  test("a symlink pointing somewhere else is left alone", async () => {
+    await withHome(async (home, binary, link) => {
+      const other = path.join(home, "other", "rafikicode")
+      fs.mkdirSync(path.dirname(other), { recursive: true })
+      fs.writeFileSync(other, "#!/bin/sh\n")
+      fs.symlinkSync(other, link)
+      expect(await Shell.ownedLinks(binary, home)).toEqual([])
+      expect(await Shell.removeLink(link, binary)).toBe(false)
+      expect(fs.readlinkSync(link)).toBe(other)
+    })
+  })
+
+  test("a relative link target is resolved against the link's own directory", async () => {
+    await withHome(async (home, binary, link) => {
+      fs.symlinkSync(path.relative(path.dirname(link), binary), link)
+      expect(await Shell.ownedLinks(binary, home)).toEqual([link])
+      expect(await Shell.removeLink(link, binary)).toBe(true)
+    })
+  })
+
+  test("a link is ours when it points at the binary through another link", async () => {
+    await withHome(async (home, binary, link) => {
+      fs.symlinkSync(binary, link)
+      // process.execPath can be the link rather than its target, and a second
+      // link then points at the same real binary: still ours.
+      const elsewhere = path.join(home, "bin2", "rafikicode")
+      fs.mkdirSync(path.dirname(elsewhere), { recursive: true })
+      fs.symlinkSync(binary, elsewhere)
+      expect(await Shell.ownsLink(elsewhere, link)).toBe(true)
+      // The path the command reports as the binary is never removed as a link,
+      // whether it is the real file or the link the user ran.
+      expect(await Shell.ownsLink(link, link)).toBe(false)
+      expect(await Shell.ownsLink(binary, binary)).toBe(false)
+      expect(fs.existsSync(link)).toBe(true)
+    })
   })
 })

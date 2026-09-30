@@ -158,7 +158,7 @@ rafikicode logout
 rafikicode uninstall --force
 ```
 
-`logout` revokes the key of a signed in terminal (skip it if you used `RAFIKICODE_API_KEY`). `uninstall` removes `~/.rafikicode` (binary and configuration), `~/.cache/rafikicode`, `~/.local/state/rafikicode`, `~/.local/share/rafikicode` and the two lines the installer added to `~/.bashrc`; without `--force` it asks first, and `--dry-run` only lists what it would remove.
+`logout` revokes the key of a signed in terminal (skip it if you used `RAFIKICODE_API_KEY`). `uninstall` removes `~/.rafikicode` (binary and configuration), `~/.cache/rafikicode`, `~/.local/state/rafikicode`, `~/.local/share/rafikicode`, the two lines the installer added to `~/.bashrc` and the `rafikicode` symlink the installer placed in a directory on your `PATH` (only when it is still a link to the binary being removed); without `--force` it asks first, and `--dry-run` only lists what it would remove.
 
 ## Next
 
