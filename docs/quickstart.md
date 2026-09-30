@@ -1,6 +1,6 @@
 # Quick start
 
-This page takes you from nothing to a first file written by `rafikicode` in about five minutes. It describes `rafikicode` 0.1.5. The install, key, first task and uninstall steps were run as written in clean `ubuntu:24.04` and `debian:12` containers that had only `curl` and `ca-certificates` installed.
+This page takes you from nothing to a first file written by `rafikicode` in about five minutes. It describes `rafikicode` 0.1.5. The key, first task and uninstall steps were run as written in clean `ubuntu:24.04` and `debian:12` containers that had only `curl` and `ca-certificates` installed. The install output below is that of the 0.1.5 installer and has not been run again in those containers.
 
 Terms used here: a **terminal** is the text window where you type commands. **PATH** is the list of folders your shell searches for programs. An **API key** is a key issued by Rafiki AI with its own spending limit; every model call made with it uses credits in your Rafiki AI account. **Headless** means running where nobody can answer a question, such as a server, a container or a CI (continuous integration) pipeline.
 
@@ -20,25 +20,46 @@ Expected output:
 Installing rafikicode version 0.1.5
 Checksum verified
 Installed rafikicode at /root/.rafikicode/bin/rafikicode
+Linked /usr/local/bin/rafikicode so rafikicode runs in this terminal
 Added /root/.rafikicode/bin to PATH in /root/.bashrc
 
 Next steps:
-  1. Make rafikicode available in this terminal:
-       export PATH=/root/.rafikicode/bin:$PATH
-  2. Connect your Rafiki AI account with a key:
-       export RAFIKICODE_API_KEY=sk-...   (create one at https://console.rafikiai.io/keys, tick the Rafiki Code option)
-     or sign in from a browser:
+  1. Sign in to your Rafiki AI account:
        rafikicode login
+     On a server with no browser, use a key from https://console.rafikiai.io/keys (tick the Rafiki Code option):
+       export RAFIKICODE_API_KEY=sk-...
 ```
 
-The installer changes `~/.bashrc` for new terminals only. In the terminal you installed from, `rafikicode` is not found yet. Either open a new terminal, or run:
+The `Linked` line is the one that matters for the terminal you are sitting in. A line added to `~/.bashrc` is read by new terminals only, so the installer also puts a link to the binary in a directory that is already on your PATH: `/usr/local/bin`, or `~/.local/bin`. It uses such a directory only when it is already on your PATH and you can write to it, and it never replaces a file that is not one of its own links. When you see that line, the command works straight away:
 
 ```bash
-export PATH=$HOME/.rafikicode/bin:$PATH
 rafikicode --version
 ```
 
 This prints `0.1.5`.
+
+When the line is absent, neither directory was on your PATH and writable. The next steps then open with the PATH line, and every command they show uses the binary's full path:
+
+```text
+Next steps:
+  1. New terminals find rafikicode on their own. To use this one:
+       export PATH=/root/.rafikicode/bin:$PATH
+  2. Sign in to your Rafiki AI account:
+       /root/.rafikicode/bin/rafikicode login
+```
+
+Run that `export` line, open a new terminal, or call the binary by the full path the installer printed.
+
+With `--no-modify-path` there is no link and nothing is written to `~/.bashrc`, so no terminal finds the command by name until you place the line yourself. The installer says only what is true in that case:
+
+```text
+Next steps:
+  1. Nothing was added to your shell startup files. To use rafikicode in this terminal:
+       export PATH=/root/.rafikicode/bin:$PATH
+     Put the same line in your shell startup file so new terminals find it too.
+  2. Sign in to your Rafiki AI account:
+       /root/.rafikicode/bin/rafikicode login
+```
 
 `rafikicode` is installed with the installer script; it is not published on npm.
 
