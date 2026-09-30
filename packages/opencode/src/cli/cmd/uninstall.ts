@@ -131,15 +131,12 @@ async function showRemovalSummary(targets: RemovalTargets, method: Installation.
 
   if (method !== "curl" && method !== "unknown") {
     const cmds: Record<string, string> = {
-      npm: "npm uninstall -g opencode-ai",
-      pnpm: "pnpm uninstall -g opencode-ai",
-      bun: "bun remove -g opencode-ai",
-      yarn: "yarn global remove opencode-ai",
-      brew: "brew uninstall opencode",
-      choco: "choco uninstall opencode",
-      scoop: "scoop uninstall opencode",
+      npm: `npm uninstall -g ${Brand.npm.meta}`,
+      pnpm: `pnpm uninstall -g ${Brand.npm.meta}`,
+      bun: `bun remove -g ${Brand.npm.meta}`,
+      yarn: `yarn global remove ${Brand.npm.meta}`,
     }
-    prompts.log.info(`  ✓ Package: ${cmds[method] || method}`)
+    if (cmds[method]) prompts.log.info(`  ✓ Package: ${cmds[method]}`)
   }
 }
 
@@ -184,30 +181,28 @@ async function executeUninstall(method: Installation.Method, targets: RemovalTar
   }
 
   if (method !== "curl" && method !== "unknown") {
+    /*
+     * Only the package managers this product is published through. Running
+     * `brew uninstall` or `choco uninstall` here would remove the upstream
+     * project's package of the same name, which is someone else's software and
+     * was never what the user installed.
+     */
     const cmds: Record<string, string[]> = {
-      npm: ["npm", "uninstall", "-g", "opencode-ai"],
-      pnpm: ["pnpm", "uninstall", "-g", "opencode-ai"],
-      bun: ["bun", "remove", "-g", "opencode-ai"],
-      yarn: ["yarn", "global", "remove", "opencode-ai"],
-      brew: ["brew", "uninstall", "opencode"],
-      choco: ["choco", "uninstall", "opencode"],
-      scoop: ["scoop", "uninstall", "opencode"],
+      npm: ["npm", "uninstall", "-g", Brand.npm.meta],
+      pnpm: ["pnpm", "uninstall", "-g", Brand.npm.meta],
+      bun: ["bun", "remove", "-g", Brand.npm.meta],
+      yarn: ["yarn", "global", "remove", Brand.npm.meta],
     }
 
     const cmd = cmds[method]
     if (cmd) {
       spinner.start(`Running ${cmd.join(" ")}...`)
-      const result = await Process.run(method === "choco" ? ["choco", "uninstall", "opencode", "-y", "-r"] : cmd, {
-        nothrow: true,
-      })
+      // No special case for choco: it is not a channel this product publishes
+      // through, so it never reaches here and its command must not be built.
+      const result = await Process.run(cmd, { nothrow: true })
       if (result.code !== 0) {
         spinner.stop(`Package manager uninstall failed: exit code ${result.code}`, 1)
-        const text = `${result.stdout.toString("utf8")}\n${result.stderr.toString("utf8")}`
-        if (method === "choco" && text.includes("not running from an elevated command shell")) {
-          prompts.log.warn(`You may need to run '${cmd.join(" ")}' from an elevated command shell`)
-        } else {
-          prompts.log.warn(`You may need to run manually: ${cmd.join(" ")}`)
-        }
+        prompts.log.warn(`You may need to run manually: ${cmd.join(" ")}`)
       } else {
         spinner.stop("Package removed")
       }

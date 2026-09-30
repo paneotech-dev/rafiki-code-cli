@@ -358,6 +358,23 @@ export const Brand = {
     meta: "rafikicode",
     registry: "https://registry.npmjs.org",
   },
+  /*
+   * Package managers this product is actually published through.
+   *
+   * There is no Homebrew tap, Chocolatey package or Scoop bucket yet, so
+   * `upgrade` and `uninstall` must refuse those methods rather than run them:
+   * the upstream project publishes packages under its own name through all
+   * three, and a command built from that name would upgrade or remove someone
+   * else's software. Refusing is the safe answer, and naming a package we do
+   * not publish would only fail further along with a worse message.
+   */
+  packageManagers: ["npm", "pnpm", "bun", "yarn"] as readonly string[],
+  published(method: string) {
+    return Brand.packageManagers.includes(method)
+  },
+  unpublishedHint(method: string) {
+    return `${Brand.product} is not published through ${method}. Reinstall with the installer at ${Brand.release.installer}, or use npm, pnpm, bun or yarn.`
+  },
   gateway: { url: gatewayDefault },
   console: { url: consoleDefault },
   models,
