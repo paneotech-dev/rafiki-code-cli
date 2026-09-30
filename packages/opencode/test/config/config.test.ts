@@ -576,8 +576,13 @@ it.effect("rejects native project permissions even with inherited V1 rules", () 
           data: {
             path: expect.stringContaining(path.join("project", "opencode.json")),
             issues: [
-              { path: ["permissions"], message: expect.stringContaining('Use V1 "permission" rules or run opencode2') },
-              { path: ["agents", "reviewer", "permissions"], message: expect.stringContaining("not supported") },
+              // Both issues carry the one message v2-compat raises for this key.
+              // It names the key to use instead of naming other products.
+              { path: ["permissions"], message: expect.stringContaining('Use "permission" for access rules') },
+              {
+                path: ["agents", "reviewer", "permissions"],
+                message: expect.stringContaining('Unsupported key "permissions"'),
+              },
             ],
           },
         })
