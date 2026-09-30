@@ -76,6 +76,7 @@ Options:
     -p, --prefix <dir>       Install into <dir> instead of ${INSTALL_DIR}
     -b, --binary <path>      Install from a local binary instead of downloading
         --no-modify-path     Do not edit shell startup files, only print the PATH note
+        --no-login           Do not start the sign in after installing, only print how to
         --dry-run            Resolve the version and print what would happen, download nothing
         --allow-http-loopback  Accept http release overrides on 127.0.0.1 or [::1] (local tests only)
 
@@ -94,6 +95,7 @@ EOF
 
 requested_version=${VERSION:-}
 no_modify_path=false
+no_login=false
 dry_run=false
 binary_path=""
 
@@ -129,6 +131,10 @@ while [[ $# -gt 0 ]]; do
                 echo -e "${RED}Error: --binary requires a path argument${NC}" >&2
                 exit 1
             fi
+            ;;
+        --no-login)
+            no_login=true
+            shift
             ;;
         --no-modify-path)
             no_modify_path=true
@@ -462,6 +468,38 @@ path_note
 run_cmd="$APP"
 if [ -z "$linked_path" ] && [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
     run_cmd="${INSTALL_DIR}/${BIN_NAME}"
+fi
+
+# Finish by signing in, instead of printing a command for someone to type.
+#
+# `login` is an OAuth device flow: it prints a short code and a link and then
+# polls, so it needs no browser on this machine. The person can approve from a
+# laptop or a phone. That is what makes running it here safe over ssh, inside a
+# jailshell and in a container, where opening a browser would not be.
+#
+# Two things decide whether to start it. `curl ... | bash` binds stdin to the
+# script itself, so the flow has to read the terminal directly through /dev/tty;
+# and where there is no terminal there is nobody to enter a code, so a Dockerfile
+# or a provisioning script would wait for one forever. It therefore runs only
+# with a usable terminal, only outside CI, and never when a key is already set.
+can_sign_in() {
+    if [ "$no_login" = "true" ]; then return 1; fi
+    if [ -n "${RAFIKICODE_API_KEY:-}" ]; then return 1; fi
+    if [ -n "${CI:-}" ]; then return 1; fi
+    if [ ! -e /dev/tty ]; then return 1; fi
+    (exec 3<>/dev/tty) 2>/dev/null || return 1
+    return 0
+}
+
+if can_sign_in; then
+    print_message info "\n${MUTED}Signing you in. Open the link below on any device and enter the code.${NC}"
+    # The install has already succeeded, so a sign in that is declined or fails
+    # must not fail the installer. Fall through to the written instructions.
+    if "$run_cmd" login </dev/tty; then
+        print_message info "\n${MUTED}Signed in. Run ${NC}${run_cmd}${MUTED} to start.${NC}"
+        exit 0
+    fi
+    print_message warning "Sign in did not finish. You can do it whenever you like:"
 fi
 
 print_message info "\nNext steps:"
