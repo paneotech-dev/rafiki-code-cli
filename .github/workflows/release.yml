@@ -106,10 +106,17 @@ jobs:
           TAG: ${{ steps.meta.outputs.tag }}
         run: |
           set -euo pipefail
+          # install.sh ships as a release asset so that
+          # releases/latest/download/install.sh always serves the installer of the
+          # newest release. get.rafikiai.io can then point at that one URL forever
+          # instead of a tag that has to be repointed by hand at every release --
+          # which it was, and the redirect spent two weeks serving an installer with
+          # a known bug because nobody remembered to move it.
+          cp "$GITHUB_WORKSPACE/install/install.sh" install.sh
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" rafikicode-*.tar.gz rafikicode-*.zip SHA256SUMS --clobber
+            gh release upload "$TAG" rafikicode-*.tar.gz rafikicode-*.zip SHA256SUMS install.sh --clobber
           else
-            gh release create "$TAG" rafikicode-*.tar.gz rafikicode-*.zip SHA256SUMS \
+            gh release create "$TAG" rafikicode-*.tar.gz rafikicode-*.zip SHA256SUMS install.sh \
               --title "$TAG" --generate-notes --verify-tag
           fi
 
