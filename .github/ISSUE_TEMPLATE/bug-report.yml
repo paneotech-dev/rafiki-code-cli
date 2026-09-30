@@ -19,9 +19,9 @@ body:
       required: false
 
   - type: input
-    id: opencode-version
+    id: rafikicode-version
     attributes:
-      label: OpenCode version
+      label: Rafiki Code version
       description: What version of OpenCode are you using?
     validations:
       required: false

@@ -1,3 +1,4 @@
+import { Brand } from "@opencode-ai/core/brand/brand"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
@@ -314,7 +315,7 @@ const layer = Layer.effect(
                 return events
                   .publish(TuiEvent.ToastShow, {
                     title: "MCP Authentication Required",
-                    message: `Server "${key}" requires authentication. Run: opencode mcp auth ${key}`,
+                    message: `Server "${key}" requires authentication. Run: ${Brand.name} mcp auth ${key}`,
                     variant: "warning",
                     duration: 8000,
                   })
