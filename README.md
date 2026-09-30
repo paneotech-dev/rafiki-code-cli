@@ -14,7 +14,9 @@ curl -fsSL https://get.rafikiai.io | bash
 
 Options, passed after `bash -s --`: `--version 0.1.4` installs a given release, `--prefix DIR` chooses another directory, `--no-modify-path` leaves your shell files alone, `--dry-run` only shows what would happen. The script is `install/install.sh` in this repository.
 
-The installer detects your platform, downloads the release archive, verifies it against the published `SHA256SUMS` file, installs the binary into `~/.rafikicode/bin`, and adds that directory to your PATH in `~/.bashrc` for new terminals. In the terminal you installed from, run `export PATH=$HOME/.rafikicode/bin:$PATH` (or open a new terminal); `rafikicode --version` then prints `0.1.5`.
+The installer detects your platform, downloads the release archive, verifies it against the published `SHA256SUMS` file and installs the binary into `~/.rafikicode/bin`. It then adds that directory to your PATH in `~/.bashrc` for new terminals, and links the binary from a directory that is already on your PATH (`/usr/local/bin`, or `~/.local/bin`, when the directory is writable) so that `rafikicode --version` prints `0.1.5` in the terminal you installed from. It says which directory it linked.
+
+When it could not link, its next steps open with `export PATH=$HOME/.rafikicode/bin:$PATH` for this terminal and show the binary's full path, `~/.rafikicode/bin/rafikicode`, which works without touching PATH at all.
 
 `rafikicode` is installed with the installer script. It is not published on npm.
 
@@ -29,12 +31,13 @@ rafikicode update            # latest release, checksum verified, binary replace
 ## Quick start
 
 ```bash
-export PATH=$HOME/.rafikicode/bin:$PATH
 rafikicode login                       # sign in with your Rafiki AI account
 mkdir -p ~/calc && cd ~/calc
 rafikicode run "Create a calculator web page in index.html with basic styling"
 rafikicode                             # the interactive terminal interface
 ```
+
+If the shell answers `rafikicode: command not found`, the installer could not link the binary into a PATH directory: run `export PATH=$HOME/.rafikicode/bin:$PATH` first, or open a new terminal.
 
 `rafikicode login` prints a code and a link. Open https://console.rafikiai.io/device, sign in with your Rafiki AI account, enter the code and approve. The terminal then stores its key in `~/.rafikicode/credentials`. `rafikicode whoami` shows the account in use, and `rafikicode logout` signs out and revokes the key.
 

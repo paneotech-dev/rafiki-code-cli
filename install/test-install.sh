@@ -2,8 +2,9 @@
 # Exercises install/install.sh against a local mock release server. Builds a
 # fake release (a shell script standing in for the binary), serves it with
 # python3's http.server, and checks: dry run, install, version pin, an already
-# installed short circuit, and a checksum mismatch that must fail without
-# touching the installed binary.
+# installed short circuit, a checksum mismatch that must fail without touching
+# the installed binary, and the symlink the installer places in a directory that
+# is already on PATH.
 set -euo pipefail
 
 PORT="${PORT:-4150}"
@@ -78,6 +79,9 @@ fail=0
 check() {
     if [ "$1" = "0" ]; then pass=$((pass + 1)); echo "ok   $2"; else fail=$((fail + 1)); echo "FAIL $2"; fi
 }
+# The installer colours its output, and the escapes land between the words of a
+# single message, so assertions on whole lines read the plain text.
+plain() { sed $'s/\033\[[0-9;]*m//g'; }
 
 out=$(bash "$INSTALLER" --dry-run --no-modify-path 2>&1)
 [[ "$out" == *"dry run: rafikicode 1.2.3 for ${target}"* ]] && [ ! -e "$RAFIKICODE_INSTALL_DIR/rafikicode" ]; check $? "dry run resolves latest and installs nothing"
@@ -106,6 +110,63 @@ out=$(bash "$INSTALLER" --no-modify-path --binary "$WORK/build-1.2.3/rafikicode"
 
 out=$(bash "$INSTALLER" --no-modify-path --prefix "$WORK/other/bin" --version 1.2.2 2>&1)
 [ "$("$WORK/other/bin/rafikicode" --version)" = "1.2.2" ] && [[ "$out" == *"Add $WORK/other/bin to your PATH"* ]]; check $? "prefix option and PATH note"
+
+# The symlink into a directory already on PATH: the only part of the install
+# that reaches the shell that ran it. The installer tries /usr/local/bin and
+# then $HOME/.local/bin, and uses one only when it is already on PATH and
+# writable. The cases below run with a throwaway HOME and a PATH from which
+# /usr/local/bin is removed, so the machine's own /usr/local/bin is never a
+# candidate and nothing outside $WORK is written.
+safe_path=$(printf '%s' "$PATH" | tr ':' '\n' | grep -v '^/usr/local/bin/*$' | paste -sd: -)
+
+linkhome="$WORK/linkhome"
+mkdir -p "$linkhome/.local/bin"
+: > "$linkhome/.bashrc"
+out=$(env HOME="$linkhome" SHELL=/bin/bash PATH="$linkhome/.local/bin:$safe_path" \
+    RAFIKICODE_INSTALL_DIR="$linkhome/.rafikicode/bin" \
+    bash "$INSTALLER" --version 1.2.2 2>&1 | plain)
+[[ "$out" == *"Linked $linkhome/.local/bin/rafikicode so rafikicode runs in this terminal"* ]] \
+    && [ -L "$linkhome/.local/bin/rafikicode" ] \
+    && [ "$(readlink "$linkhome/.local/bin/rafikicode")" = "$linkhome/.rafikicode/bin/rafikicode" ] \
+    && [ "$("$linkhome/.local/bin/rafikicode" --version)" = "1.2.2" ]; check $? "links into a writable PATH directory"
+
+# Linked, so the next steps must not ask for a PATH export and must name the
+# bare command, which now resolves.
+[[ "$out" != *"To use this one"* ]] && [[ "$out" == *"       rafikicode login"* ]]; check $? "linked install shows the bare command and no PATH step"
+
+# A file that is not one of the installer's own links is left alone.
+otherhome="$WORK/keephome"
+mkdir -p "$otherhome/.local/bin"
+echo "not ours" > "$otherhome/.local/bin/rafikicode"
+out=$(env HOME="$otherhome" SHELL=/bin/bash PATH="$otherhome/.local/bin:$safe_path" \
+    RAFIKICODE_INSTALL_DIR="$otherhome/.rafikicode/bin" \
+    bash "$INSTALLER" --version 1.2.2 2>&1 | plain)
+[[ "$out" != *"Linked "* ]] && [ "$(cat "$otherhome/.local/bin/rafikicode")" = "not ours" ]; check $? "never replaces a file that is not its own link"
+
+# No writable directory on PATH: no link, the startup file is written for new
+# terminals, and every command the next steps show is an absolute path.
+nolinkhome="$WORK/nolinkhome"
+mkdir -p "$nolinkhome"
+: > "$nolinkhome/.bashrc"
+out=$(env HOME="$nolinkhome" SHELL=/bin/bash PATH="$safe_path" \
+    RAFIKICODE_INSTALL_DIR="$nolinkhome/.rafikicode/bin" \
+    bash "$INSTALLER" --version 1.2.2 2>&1 | plain)
+[[ "$out" != *"Linked "* ]] \
+    && grep -Fq "export PATH=$nolinkhome/.rafikicode/bin:\$PATH" "$nolinkhome/.bashrc" \
+    && [[ "$out" == *"       export PATH=$nolinkhome/.rafikicode/bin:\$PATH"* ]] \
+    && [[ "$out" == *"       $nolinkhome/.rafikicode/bin/rafikicode login"* ]]; check $? "without a link, the startup file is written and the next steps use the full path"
+
+# --no-modify-path makes no link even where one is possible, and writes nothing.
+nomodhome="$WORK/nomodhome"
+mkdir -p "$nomodhome/.local/bin"
+: > "$nomodhome/.bashrc"
+out=$(env HOME="$nomodhome" SHELL=/bin/bash PATH="$nomodhome/.local/bin:$safe_path" \
+    RAFIKICODE_INSTALL_DIR="$nomodhome/.rafikicode/bin" \
+    bash "$INSTALLER" --no-modify-path --version 1.2.2 2>&1 | plain)
+[[ "$out" != *"Linked "* ]] \
+    && [ ! -e "$nomodhome/.local/bin/rafikicode" ] \
+    && [ ! -s "$nomodhome/.bashrc" ] \
+    && [[ "$out" == *"       $nomodhome/.rafikicode/bin/rafikicode login"* ]]; check $? "--no-modify-path makes no link and touches no file"
 
 echo "install tests: ${pass} passed, ${fail} failed"
 [ "$fail" = "0" ]

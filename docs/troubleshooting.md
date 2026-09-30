@@ -4,13 +4,15 @@ Each entry gives the message or symptom, the cause, and what to do. The messages
 
 ## Installation
 
-**`rafikicode: command not found` right after the installer.** The installer adds `export PATH=$HOME/.rafikicode/bin:$PATH` to `~/.bashrc` (the startup file of interactive bash terminals), and only new terminals read it. In the same terminal run:
+**`rafikicode: command not found` right after the installer.** Usually the installer prevents this by linking the binary into a directory that is already on your PATH, and says so: `Linked /usr/local/bin/rafikicode so rafikicode runs in this terminal`. If that line is missing, neither `/usr/local/bin` nor `~/.local/bin` was on your PATH and writable, or you passed `--no-modify-path`, and all you have is `export PATH=$HOME/.rafikicode/bin:$PATH` in `~/.bashrc` (the startup file of interactive bash terminals), which only new terminals read. In the same terminal run:
 
 ```bash
 export PATH=$HOME/.rafikicode/bin:$PATH
 ```
 
-or open a new terminal. The installer prints this line as its first next step. Shells that are not interactive (`bash -lc`, cron, CI steps, `ssh host "command"`) do not read `~/.bashrc` either: call `~/.rafikicode/bin/rafikicode` by its full path there.
+or open a new terminal. Whenever it could not link, the installer prints that line as the first of its next steps and gives every following command as a full path, so `~/.rafikicode/bin/rafikicode login` works without changing PATH at all. Shells that are not interactive (`bash -lc`, cron, CI steps, `ssh host "command"`) do not read `~/.bashrc` either: call `~/.rafikicode/bin/rafikicode` by its full path there.
+
+**`rafikicode` still runs after `uninstall`, or answers with a broken link.** `uninstall` removes `~/.rafikicode` and the lines in `~/.bashrc`, but not the link the installer made in `/usr/local/bin` or `~/.local/bin`. Check it with `ls -l $(command -v rafikicode)` and remove it with `rm`.
 
 **`curl: (22) The requested URL returned error: 404` from the installer.** You asked for a version that does not exist:
 
