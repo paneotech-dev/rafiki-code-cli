@@ -183,60 +183,64 @@ describe("installation", () => {
       }),
     )
 
-    testEffect(testLayer(() => jsonResponse({ version: "2.3.4" }))).effect("reads scoop manifest versions", () =>
-      Effect.gen(function* () {
-        const result = yield* Installation.use.latest("scoop")
-        expect(result).toBe("2.3.4")
-      }),
-    )
-
-    testEffect(testLayer(() => jsonResponse({ d: { results: [{ Version: "3.4.5" }] } }))).effect(
-      "reads chocolatey feed versions",
-      () =>
-        Effect.gen(function* () {
-          const result = yield* Installation.use.latest("choco")
-          expect(result).toBe("3.4.5")
+    /*
+     * brew, choco and scoop are not channels this product publishes through.
+     * These tests used to assert that `latest` read the upstream project's
+     * Homebrew formula, Chocolatey feed and Scoop manifest, which are packages
+     * for someone else's software. It now answers from this product's own
+     * release feed like any other method, and touches none of those three: no
+     * request to their feeds and no brew, choco or scoop process. The refusal
+     * belongs to upgrade(), tested below.
+     */
+    for (const method of ["brew", "choco", "scoop"] as const) {
+      const http: string[] = []
+      const spawned: string[] = []
+      testEffect(
+        testLayer(noHttp(http), (cmd) => {
+          spawned.push(cmd)
+          return ""
         }),
-    )
-
-    testEffect(
-      testLayer(
-        () => jsonResponse({ versions: { stable: "2.0.0" } }),
-        (cmd, args) => {
-          // getBrewFormula: return core formula (no tap)
-          if (cmd === "brew" && args.includes("--formula") && args.includes("anomalyco/tap/opencode")) return ""
-          if (cmd === "brew" && args.includes("--formula") && args.includes("opencode")) return "opencode"
-          return ""
-        },
-      ),
-    ).effect("reads brew formulae API versions", () =>
-      Effect.gen(function* () {
-        const result = yield* Installation.use.latest("brew")
-        expect(result).toBe("2.0.0")
-      }),
-    )
-
-    const brewInfoJson = JSON.stringify({
-      formulae: [{ versions: { stable: "2.1.0" } }],
-    })
-    testEffect(
-      testLayer(
-        () => jsonResponse({}), // HTTP not used for tap formula
-        (cmd, args) => {
-          if (cmd === "brew" && args.includes("anomalyco/tap/opencode") && args.includes("--formula")) return "opencode"
-          if (cmd === "brew" && args.includes("--json=v2")) return brewInfoJson
-          return ""
-        },
-      ),
-    ).effect("reads brew tap info JSON via CLI", () =>
-      Effect.gen(function* () {
-        const result = yield* Installation.use.latest("brew")
-        expect(result).toBe("2.1.0")
-      }),
-    )
+      ).effect(`reads this product's own release for ${method} and touches no package manager`, () =>
+        Effect.gen(function* () {
+          release = (url) => (url === `${RELEASE_API}/releases/latest` ? jsonResponse({ tag_name: "v1.2.3" }) : undefined)
+          const result = yield* Installation.use.latest(method)
+          expect(result).toBe("1.2.3")
+          expect(fetched).toEqual([`${RELEASE_API}/releases/latest`])
+          expect(http).toEqual([])
+          expect(spawned).toEqual([])
+        }),
+      )
+    }
   })
 
   describe("upgrade", () => {
+    /*
+     * The refusal. brew, choco and scoop commands would be built from the
+     * upstream project's package name, so upgrading through them would act on
+     * different software. It stops before running anything, and the message
+     * names the installer to use instead.
+     */
+    for (const method of ["brew", "choco", "scoop"] as const) {
+      const spawned: string[] = []
+      testEffect(
+        testLayer(
+          () => jsonResponse({}),
+          (cmd) => {
+            spawned.push(cmd)
+            return ""
+          },
+        ),
+      ).effect(`refuses to upgrade through ${method} and runs nothing`, () =>
+        Effect.gen(function* () {
+          const error = yield* Effect.flip(Installation.use.upgrade(method, "9.9.9"))
+          expect(error).toBeInstanceOf(Installation.UpgradeFailedError)
+          expect(error.stderr).toBe(Brand.unpublishedHint(method))
+          expect(error.stderr).toContain(Brand.release.installer)
+          expect(spawned).toEqual([])
+        }),
+      )
+    }
+
     testEffect(
       testLayer(
         () => jsonResponse({}),

@@ -183,10 +183,18 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
       latest: Effect.fn("Installation.latest")(function* (installMethod?: Method) {
         const detectedMethod = installMethod || (yield* result.method())
 
-        if (!Brand.published(detectedMethod) && detectedMethod !== "curl" && detectedMethod !== "unknown") {
-          return yield* new UpgradeFailedError({ stderr: Brand.unpublishedHint(detectedMethod) })
-        }
-
+        /*
+         * No refusal here. This function is Effect.orDie, so a failure raised in
+         * it is a defect, not a typed error: cli/cmd/upgrade.ts awaits it with no
+         * catch, and info() calls it, so refusing brew, choco or scoop here
+         * crashed the command instead of printing the reason. The refusal belongs
+         * to upgrade(), which is the step that would act on a package, and which
+         * cli/cmd/upgrade.ts already renders as a message. Reporting the newest
+         * release of this product touches none of those package managers: the
+         * question "is there a newer version" has the same answer however the
+         * copy was installed, and it is answered from this product's own release
+         * feed below.
+         */
         if (detectedMethod === "npm" || detectedMethod === "bun" || detectedMethod === "pnpm") {
           const response = yield* httpOk.execute(
             HttpClientRequest.get(
