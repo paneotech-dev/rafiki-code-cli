@@ -19,23 +19,25 @@ It stores no GitHub credential. Every command shells out to the `git` and `gh` b
    rafikicode gh status
    ```
 
-   It prints the repository, the branch, and the GitHub account `gh` is logged in as. If `gh` is missing or logged out, every other `gh` subcommand stops with the same message and names the command that fixes it.
+   It prints the repository, the branch, and the GitHub account `gh` is logged in as. `status` never fails for want of `gh`: when `gh` is missing or logged out it reports that as the state, and then names the command that fixes it.
+
+   Only the subcommands that talk to GitHub need `gh`: `pr create`, `pr comment`, `issue list`, `issue view` and `issue comment`. Those stop with the same message and name `gh auth login`. `branch`, `commit` and `push` use `git` alone and work with `gh` absent or logged out, so you can commit and push without it; `push` needs a remote your `git` can already authenticate to, which is the usual case whether or not `gh` is installed.
 
 ## Commands
 
-Run them from inside a git repository. Each one reports what it did, or stops with the first line of output from `git` or `gh`.
+Run them from inside a git repository; `status` is the exception and reports the absence of one. Each command reports what it did, or stops with the first line of output from `git` or `gh`. The `gh` column says whether the GitHub CLI has to be logged in.
 
-| command | what it does |
-|---|---|
-| `rafikicode gh status` | the repository, the branch, and whether `gh` is logged in |
-| `rafikicode gh branch <name>` | switches to `<name>`, creating it when it does not exist yet |
-| `rafikicode gh commit -m "<message>"` | stages every change and commits |
-| `rafikicode gh push` | pushes the current branch and sets its upstream |
-| `rafikicode gh pr create --title "<title>" --body "<body>"` | opens a pull request for the current branch |
-| `rafikicode gh pr comment <number> --body "<text>"` | comments on a pull request |
-| `rafikicode gh issue list` | lists issues, one per line |
-| `rafikicode gh issue view <number>` | prints an issue and its comments |
-| `rafikicode gh issue comment <number> --body "<text>"` | comments on an issue |
+| command | what it does | needs `gh` |
+|---|---|---|
+| `rafikicode gh status` | the repository, the branch, and whether `gh` is logged in | no |
+| `rafikicode gh branch <name>` | switches to `<name>`, creating it when it does not exist yet | no |
+| `rafikicode gh commit -m "<message>"` | stages every change and commits | no |
+| `rafikicode gh push` | pushes the current branch and sets its upstream | no |
+| `rafikicode gh pr create --title "<title>" --body "<body>"` | opens a pull request for the current branch | yes |
+| `rafikicode gh pr comment <number> --body "<text>"` | comments on a pull request | yes |
+| `rafikicode gh issue list` | lists issues, one per line | yes |
+| `rafikicode gh issue view <number>` | prints an issue and its comments | yes |
+| `rafikicode gh issue comment <number> --body "<text>"` | comments on an issue | yes |
 
 A worked sequence:
 
@@ -58,8 +60,8 @@ rafikicode gh pr create --title "Fix the login redirect" --body "Closes #42"
 
 | message | what to do |
 |---|---|
-| `The GitHub CLI (gh) was not found on your PATH.` | install `gh`, then run `gh auth login` |
-| `The GitHub CLI (gh) is installed but not logged in.` | run `gh auth login` |
+| `The GitHub CLI (gh) was not found on your PATH.` | install `gh`, then run `gh auth login`. Only the pull request and issue commands need it |
+| `The GitHub CLI (gh) is installed but not logged in.` | run `gh auth login`. Only the pull request and issue commands need it |
 | `Could not find a git repository here.` | run the command from inside a git repository |
 | `Nothing to commit: the work tree is clean.` | there is nothing staged or changed to commit |
 | `HEAD is detached. Switch to a branch before pushing.` | run `rafikicode gh branch <name>` first |
