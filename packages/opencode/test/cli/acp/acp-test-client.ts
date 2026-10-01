@@ -25,6 +25,13 @@ type JsonRpcNotification<T = unknown> = {
 
 export type AcpClient = {
   readonly request: <T>(method: string, params?: unknown) => Effect.Effect<JsonRpcResponse<T>, unknown>
+  // Fire and forget, for a request whose response is awaited separately —
+  // a turn that has to still be in flight while something else is sent.
+  readonly send: (msg: object) => Effect.Effect<void>
+  // An exact line, not JSON encoded. See AcpHandle.sendRaw.
+  readonly sendRaw: (line: string) => Effect.Effect<void>
+  // Everything the child has written to stderr so far. See AcpHandle.stderrText.
+  readonly stderrText: () => string
   readonly receive: Effect.Effect<unknown>
   readonly waitForNotification: <T>(
     method: string,
@@ -60,6 +67,9 @@ export function createAcpClient(acp: AcpHandle): AcpClient {
 
   return {
     request,
+    send: acp.send,
+    sendRaw: acp.sendRaw,
+    stderrText: acp.stderrText,
     receive: acp.receive,
     waitForNotification,
   }

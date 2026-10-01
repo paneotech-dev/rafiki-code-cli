@@ -149,6 +149,14 @@ export type AcpHandle = {
   // Lines are buffered in a queue so multiple receives in a row won't drop
   // anything. Pair with `Effect.timeout` if a test wants a deadline.
   readonly receive: Effect.Effect<unknown>
+  // Writes an exact line to stdin, newline appended, with no JSON encoding.
+  // For conformance tests that must put through the transport something
+  // `send` could never produce — a line that is not JSON at all.
+  readonly sendRaw: (line: string) => Effect.Effect<void>
+  // Everything the child has written to stderr so far. Under ACP stdout is the
+  // protocol transport, so diagnostics belong on stderr — tests assert which
+  // of the two a given message went to.
+  readonly stderrText: () => string
   // Closes stdin. ACP exits cleanly on stdin EOF; the scope finalizer also
   // calls this, so tests only need it when asserting exit behavior.
   readonly close: () => void
@@ -460,7 +468,13 @@ export function withCliFixture<A, E>(
             const ret = proc.stdin.write(JSON.stringify(msg) + "\n")
             if (typeof ret !== "number") await ret
           }),
+        sendRaw: (line: string) =>
+          Effect.promise(async () => {
+            const ret = proc.stdin.write(line + "\n")
+            if (typeof ret !== "number") await ret
+          }),
         receive: Queue.take(responses),
+        stderrText: () => stderrChunks.join(""),
         // proc.stdin.end() is idempotent in Bun; no try/catch needed.
         close: () => proc.stdin.end(),
         exited: proc.exited as Promise<number>,
