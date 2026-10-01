@@ -84,6 +84,163 @@ function detailOf(cause: unknown) {
   return String(cause)
 }
 
+/*
+ * Why a call did not arrive, in the user's terms rather than the kernel's.
+ *
+ * Two things were wrong with `... unreachable (getaddrinfo ETIMEOUT host)` and
+ * `Check the network.`
+ *
+ * The parenthetical was an errno. It is the right thing to put in a log and the
+ * wrong thing to put in a sentence addressed to someone who has to decide what
+ * to do next, and detailOf still produces it for everything this cannot place.
+ *
+ * And `Check the network.` was the fix for three conditions that need three
+ * different things from the user: no network at all (reconnect), a network that
+ * opens the connection and never answers - a wifi portal, a proxy, a corporate
+ * firewall (sign in, or set HTTPS_PROXY), and the far end being down (wait;
+ * there is nothing to check). Checking the network is the right advice for at
+ * most one of them, and for the third it sends someone hunting a fault that is
+ * not theirs.
+ *
+ * The taxonomy below is the one wp/2.18-offline-start wrote as
+ * Offline.classify() in rafiki/offline.ts, kept here rather than imported: that
+ * module is not on this release line, and its 379 lines are mostly a TCP
+ * reachability probe wired into the provider's error path, which a doctor run
+ * has no use for and a release branch should not acquire for a message fix.
+ * Its describe() does not fit here either - the steps it writes end by telling
+ * the reader to run `doctor`, and its override clause reads process.env, where
+ * every check in this file takes env as an argument so a test can set it. When
+ * that branch lands, this collapses into one call to Offline.classify() and the
+ * four strings below; nothing else here changes.
+ */
+type Reach = "offline" | "blocked" | "unreachable"
+
+// No name resolution, no route, no interface: nothing of this machine's works,
+// so no URL and no key is at fault. EHOSTUNREACH belongs here and not below:
+// "no route to host" is this machine's routing table having nothing to say.
+const OFFLINE = [
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "EAI_NONAME",
+  "EAI_FAIL",
+  "ENETDOWN",
+  "ENETUNREACH",
+  "EHOSTDOWN",
+  "EHOSTUNREACH",
+]
+// The connection went out and was never answered, or was answered by something
+// that is not the host asked for. DEFAULT_TIMEOUT_MS running out lands here
+// too, by the "timed out" text below: these are liveliness and account
+// endpoints, so eight seconds of silence from one is not a slow answer, and the
+// one thing a timeout rules out is having no network, which is the only
+// condition `Check the network.` was advice for.
+const BLOCKED = [
+  "ETIMEDOUT",
+  "ETIMEOUT",
+  "ERR_TLS_CERT_ALTNAME_INVALID",
+  "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+  "SELF_SIGNED_CERT_IN_CHAIN",
+  "DEPTH_ZERO_SELF_SIGNED_CERT",
+  "ERR_TLS_HANDSHAKE_TIMEOUT",
+]
+// Something at that address said no, which means the address was reached.
+// "ConnectionRefused" is Bun's own name for it: measured, `fetch` to a closed
+// port throws a TypeError with that code and no errno anywhere in the chain,
+// so the ECONNREFUSED spelling alone never matches in practice.
+const DOWN = ["ECONNREFUSED", "ConnectionRefused", "ECONNRESET", "ECONNABORTED", "EPIPE", "EPROTO", "ERR_SOCKET_CLOSED"]
+
+// The errno-style code a connection failure carries, wherever in the cause
+// chain it sits. Classification only; it is never printed.
+function codeOf(cause: unknown, depth = 0): string | undefined {
+  if (!cause || typeof cause !== "object" || depth > 5) return undefined
+  const record = cause as { code?: unknown; cause?: unknown }
+  if (typeof record.code === "string" && record.code) return record.code
+  return codeOf(record.cause, depth + 1)
+}
+
+// Every message down the chain, joined. The whole text is needed and not
+// detailOf's reduced form: a resolver that never answers reports ETIMEDOUT,
+// which on a socket means a blocked connection but here means no DNS at all,
+// and the only thing that tells the two apart is the call named in the text
+// ("getaddrinfo ETIMEOUT gateway.rafikiai.io").
+function messageOf(cause: unknown, depth = 0): string {
+  // A thrown string is text in its own right. Anything else that is not an
+  // object carries no words to match on, and falls through to detailOf.
+  if (typeof cause === "string") return cause
+  if (!cause || typeof cause !== "object" || depth > 5) return ""
+  const record = cause as { message?: unknown; cause?: unknown }
+  const own = typeof record.message === "string" ? record.message : ""
+  return [own, messageOf(record.cause, depth + 1)].filter(Boolean).join(" ")
+}
+
+// Undefined when the failure names no condition here, so the caller keeps the
+// wording it has rather than guessing one of three answers.
+function classify(cause: unknown): Reach | undefined {
+  const text = messageOf(cause).toLowerCase()
+  // Tested before the code, for the reason messageOf gives.
+  if (text.includes("getaddrinfo") || text.includes("could not resolve") || text.includes("dns lookup"))
+    return "offline"
+  const code = codeOf(cause)
+  if (code) {
+    if (OFFLINE.includes(code)) return "offline"
+    if (BLOCKED.includes(code)) return "blocked"
+    if (DOWN.includes(code)) return "unreachable"
+  }
+  if (!text) return undefined
+  for (const name of OFFLINE) if (text.includes(name.toLowerCase())) return "offline"
+  for (const name of BLOCKED) if (text.includes(name.toLowerCase())) return "blocked"
+  if (text.includes("timed out") || text.includes("timeout") || text.includes("certificate")) return "blocked"
+  for (const name of DOWN) if (text.includes(name.toLowerCase())) return "unreachable"
+  if (text.includes("connection refused") || text.includes("connection reset")) return "unreachable"
+  // Bun's and the AI SDK's wording for a connection that never opened, with no
+  // code of any kind behind it. Neither can tell the three apart, so neither
+  // can this: "unreachable" is the honest reading, and its fix does not send
+  // anyone to check a URL. Bun appends its own guess, "Is the computer able to
+  // access the url?", which is dropped with the rest of the raw text.
+  if (text.includes("unable to connect") || text.includes("cannot connect to api")) return "unreachable"
+  return undefined
+}
+
+const REACH: Record<Reach, { detail: string; fix: (subject: string, override: string) => string }> = {
+  offline: {
+    detail: "no network connection from this machine",
+    // No override clause: with no network at all the address is not what went
+    // wrong, and sending the one user who cannot look anything up to check a
+    // URL they never typed is the whole of what was wrong with this message.
+    fix: () => "Reconnect to a network and run the command again. Nothing is wrong with the address or with your key.",
+  },
+  blocked: {
+    detail: "the connection went out and nothing came back",
+    fix: (subject, override) =>
+      `Something between this machine and ${subject} is holding the connection open without answering: a wifi sign in page, a proxy, or a firewall. Open any page in a browser to see whether a network wants you to sign in, and behind a proxy set HTTPS_PROXY.${override}`,
+  },
+  unreachable: {
+    detail: "the address refused the connection",
+    fix: (subject, override) =>
+      `This machine's network is working, so ${subject} is down or restarting. Try again shortly.${override}`,
+  },
+}
+
+// The line for a call that never reached its host. `overrideVar` is the name of
+// the URL override when the user set one: their own setting is the first thing
+// worth checking, and they are the only person who can.
+function networkLine(
+  name: string,
+  subject: string,
+  url: string,
+  cause: unknown,
+  overrideVar: string | undefined,
+): Line {
+  const reach = classify(cause)
+  const known = reach ? REACH[reach] : undefined
+  if (!known) {
+    const clause = overrideVar ? `, and ${overrideVar} which is set` : ""
+    return unreachable(name, `${url} unreachable (${detailOf(cause)})`, `Check the network${clause}.`)
+  }
+  const sentence = overrideVar ? ` ${overrideVar} is set, so check its value first.` : ""
+  return unreachable(name, `${url} unreachable (${known.detail})`, known.fix(subject, sentence))
+}
+
 // Money for the terminal: at most four decimals, no trailing zeros.
 export function money(value: unknown) {
   const n = Number(value)
@@ -324,8 +481,7 @@ export async function checkGateway(root: string, f: typeof fetch, timeoutMs: num
     if (response.ok) return ok("gateway", `${root} answered in ${elapsed} ms`)
     return fail("gateway", `${url} answered ${response.status}`, "The gateway is up but not healthy. Try again shortly.")
   } catch (cause) {
-    const override = env[Brand.env.gatewayURL] ? `, and ${Brand.env.gatewayURL} which is set` : ""
-    return unreachable("gateway", `${root} unreachable (${detailOf(cause)})`, `Check the network${override}.`)
+    return networkLine("gateway", "the gateway", root, cause, env[Brand.env.gatewayURL] ? Brand.env.gatewayURL : undefined)
   }
 }
 
@@ -499,8 +655,13 @@ export async function checkConsole(
       timeoutMs,
     )
   } catch (cause) {
-    const override = env[Brand.env.consoleURL] ? `, and ${Brand.env.consoleURL} which is set` : ""
-    return unreachable("console", `${consoleURL} unreachable (${detailOf(cause)})`, `Check the network${override}.`)
+    return networkLine(
+      "console",
+      "the console",
+      consoleURL,
+      cause,
+      env[Brand.env.consoleURL] ? Brand.env.consoleURL : undefined,
+    )
   }
   if (response.status >= 300 && response.status < 400) {
     return ok("console", `${consoleURL} reachable, account route not available (${response.status})`)

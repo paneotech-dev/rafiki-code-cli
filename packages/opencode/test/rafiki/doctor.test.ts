@@ -275,9 +275,22 @@ describe("doctor checks", () => {
       timeoutMs: 2000,
     })
     expect(byName(report, "gateway")).toMatchObject({ status: "fail" })
-    expect(byName(report, "gateway").detail).toStartWith("http://127.0.0.1:1 unreachable (")
-    expect(byName(report, "gateway").fix).toBe("Check the network, and RAFIKICODE_GATEWAY_URL which is set.")
-    expect(byName(report, "console").fix).toBe("Check the network, and RAFIKICODE_CONSOLE_URL which is set.")
+    // A closed port refuses the connection, so the address was reached and the
+    // far end is what is down. The detail says that instead of naming the
+    // errno, and the fix says the one thing the user can act on: the override
+    // they set, since nothing else here is theirs to fix.
+    expect(byName(report, "gateway").detail).toBe("http://127.0.0.1:1 unreachable (the address refused the connection)")
+    expect(byName(report, "gateway").fix).toBe(
+      "This machine's network is working, so the gateway is down or restarting. Try again shortly. RAFIKICODE_GATEWAY_URL is set, so check its value first.",
+    )
+    expect(byName(report, "console").fix).toBe(
+      "This machine's network is working, so the console is down or restarting. Try again shortly. RAFIKICODE_CONSOLE_URL is set, so check its value first.",
+    )
+    for (const name of ["gateway", "console"]) {
+      expect(byName(report, name).detail).not.toContain("ECONN")
+      expect(byName(report, name).detail).not.toContain("ConnectionRefused")
+      expect(byName(report, name).fix).not.toBe("Check the network.")
+    }
     expect(report.failed).toBe(3)
     expect(report.exitCode).toBe(4)
   })
@@ -513,8 +526,94 @@ describe("a Console 401", () => {
       throw Object.assign(new Error("fetch failed"), { cause: { code: "ECONNREFUSED" } })
     }) as unknown as typeof fetch
     const line = await Doctor.checkConsole("https://console.example", "sk-stub", {}, down, 1_000, true)
-    expect(line).toMatchObject({ status: "fail", network: true, detail: "https://console.example unreachable (ECONNREFUSED)" })
+    expect(line).toMatchObject({
+      status: "fail",
+      network: true,
+      detail: "https://console.example unreachable (the address refused the connection)",
+    })
     expect(line.note).toBeUndefined()
+  })
+
+  /*
+   * No network, a network that swallows the connection, and a far end that is
+   * down need three different things from the user, and used to get one line:
+   * `Check the network.` Which is advice for the first only, and for the third
+   * sends someone hunting a fault that is not theirs. The errno is gone from
+   * all three; a failure that classifies as none of them keeps the old wording
+   * rather than being guessed at.
+   */
+  describe("a connection that never arrived", () => {
+    const throwing = (cause: unknown) =>
+      (async () => {
+        throw cause
+      }) as unknown as typeof fetch
+
+    // The shapes Bun's own fetch throws, measured rather than assumed: a closed
+    // port gives a TypeError coded "ConnectionRefused" with no errno in the
+    // chain, and an unresolvable name gives "getaddrinfo ENOTFOUND <host>".
+    const cases: { label: string; cause: unknown; detail: string; fix: string }[] = [
+      {
+        label: "a name that does not resolve is no network, not a bad address",
+        cause: Object.assign(new TypeError("getaddrinfo ENOTFOUND gateway.example"), { code: "ENOTFOUND" }),
+        detail: "no network connection from this machine",
+        fix: "Reconnect to a network and run the command again. Nothing is wrong with the address or with your key.",
+      },
+      {
+        label: "a resolver that times out is still no network, whatever the errno says",
+        // ETIMEOUT on a socket means a blocked connection; from getaddrinfo it
+        // means no working DNS, and the call named in the text is the only
+        // thing that tells the two apart.
+        cause: Object.assign(new TypeError("getaddrinfo ETIMEOUT gateway.example"), { code: "ETIMEOUT" }),
+        detail: "no network connection from this machine",
+        fix: "Reconnect to a network and run the command again. Nothing is wrong with the address or with your key.",
+      },
+      {
+        label: "a connection held open and never answered is a portal, a proxy or a firewall",
+        cause: Object.assign(new Error("The operation timed out."), { name: "TimeoutError" }),
+        detail: "the connection went out and nothing came back",
+        fix:
+          "Something between this machine and the gateway is holding the connection open without answering: a wifi sign in page, a proxy, or a firewall. " +
+          "Open any page in a browser to see whether a network wants you to sign in, and behind a proxy set HTTPS_PROXY.",
+      },
+      {
+        label: "a refused connection is the gateway being down, which the user cannot fix",
+        cause: Object.assign(new TypeError("Unable to connect. Is the computer able to access the url?"), {
+          code: "ConnectionRefused",
+        }),
+        detail: "the address refused the connection",
+        fix: "This machine's network is working, so the gateway is down or restarting. Try again shortly.",
+      },
+    ]
+
+    for (const item of cases) {
+      test(item.label, async () => {
+        const line = await Doctor.checkGateway("https://gateway.example", throwing(item.cause), 1_000, {}, () => 0)
+        expect(line).toMatchObject({
+          name: "gateway",
+          status: "fail",
+          network: true,
+          detail: `https://gateway.example unreachable (${item.detail})`,
+          fix: item.fix,
+        })
+        // Bun's own guess about the url is dropped with the rest of the raw text.
+        expect(line.fix).not.toContain("able to access the url")
+        expect(line.detail).not.toContain("getaddrinfo")
+      })
+    }
+
+    test("a failure it cannot place keeps the wording it had instead of guessing", async () => {
+      const line = await Doctor.checkGateway(
+        "https://gateway.example",
+        throwing(new Error("something nobody has seen before")),
+        1_000,
+        { RAFIKICODE_GATEWAY_URL: "set" },
+        () => 0,
+      )
+      expect(line).toMatchObject({
+        detail: "https://gateway.example unreachable (something nobody has seen before)",
+        fix: "Check the network, and RAFIKICODE_GATEWAY_URL which is set.",
+      })
+    })
   })
 
   test("a Console 5xx stays a failure even when the gateway accepts the key", async () => {
