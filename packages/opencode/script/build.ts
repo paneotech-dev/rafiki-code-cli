@@ -15,6 +15,14 @@ const generated = await import("./generate.ts")
 
 import { Script } from "@opencode-ai/script"
 import pkg from "../package.json"
+import {
+  coverageRows,
+  duplicateWarning,
+  renderReport,
+  skipReason,
+  type BuiltBinary,
+  type HostSpec,
+} from "./platform-coverage.ts"
 
 const singleFlag = process.argv.includes("--single")
 const baselineFlag = process.argv.includes("--baseline")
@@ -119,15 +127,17 @@ const targets = singleFlag
         return false
       }
 
+      // Skip abi-specific builds: they need extra Bun artifacts and cannot run
+      // here anyway. Checked before the baseline flag, which used to return
+      // early and so pulled the musl baseline target into --single --baseline.
+      if (item.abi !== undefined) {
+        return false
+      }
+
       // When building for the current platform, prefer a single native binary by default.
       // Baseline binaries require additional Bun artifacts and can be flaky to download.
       if (item.avx2 === false) {
         return baselineFlag
-      }
-
-      // also skip abi-specific builds for the same reason
-      if (item.abi !== undefined) {
-        return false
       }
 
       return true
@@ -137,6 +147,55 @@ const targets = singleFlag
 await $`rm -rf dist`
 
 const binaries: Record<string, string> = {}
+const built: BuiltBinary[] = []
+const executed = new Set<string>()
+
+// Streamed rather than read whole: these binaries are ~185MB each and there are
+// twelve of them.
+const sha256Of = async (file: string) => {
+  const hasher = new Bun.CryptoHasher("sha256")
+  const reader = Bun.file(file).stream().getReader()
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    hasher.update(value)
+  }
+  return hasher.digest("hex")
+}
+
+// What this machine can run decides what the release can claim. AVX2 is part of
+// it: a baseline target that starts on a host that has AVX2 says nothing about
+// the CPUs the baseline variant exists for.
+const hostAvx2 = await (async () => {
+  if (process.platform === "linux") {
+    const info = await Bun.file("/proc/cpuinfo")
+      .text()
+      .catch(() => "")
+    return info ? /(?:^|\s)avx2(?:\s|$)/im.test(info) : undefined
+  }
+  if (process.platform === "darwin") {
+    const probe = await $`sysctl -n hw.optional.avx2_0`.nothrow().quiet()
+    const value = probe.stdout.toString().trim()
+    return value ? value === "1" : undefined
+  }
+  return undefined
+})()
+
+const hostAbi = await (async () => {
+  if (process.platform !== "linux") return undefined
+  if (await Bun.file("/etc/alpine-release").exists()) return "musl" as const
+  const probe = await $`ldd --version`.nothrow().quiet()
+  const output = probe.stdout.toString() + probe.stderr.toString()
+  return /musl/i.test(output) ? ("musl" as const) : undefined
+})()
+
+const host: HostSpec = {
+  os: process.platform,
+  arch: process.arch,
+  ...(hostAbi ? { abi: hostAbi } : {}),
+  ...(hostAvx2 === undefined ? {} : { avx2: hostAvx2 }),
+}
+
 if (!skipInstall) {
   await $`bun install --os="*" --cpu="*" @opentui/core@${pkg.dependencies["@opentui/core"]}`
   await $`bun install --os="*" --cpu="*" @parcel/watcher@${pkg.dependencies["@parcel/watcher"]}`
@@ -201,18 +260,28 @@ for (const item of targets) {
     },
   })
 
-  // Smoke test: only run if binary is for current platform
-  if (item.os === process.platform && item.arch === process.arch && !item.abi) {
-    const binaryPath = `dist/${name}/bin/${pkg.name}`
+  // Smoke test every target this host can execute, musl and baseline included.
+  // The previous gate was `os === platform && arch === process.arch && !abi`,
+  // which on the Linux release runner left exactly the two glibc x64 targets --
+  // and those two turned out to be the same bytes, so one binary stood in for
+  // all twelve. Record the hash either way, so a duplicate cannot pass silently.
+  const plainPath = `dist/${name}/bin/${pkg.name}`
+  const binaryPath = (await Bun.file(plainPath).exists()) ? plainPath : `${plainPath}.exe`
+  const skip = skipReason(item, host)
+  if (skip) {
+    console.log(`Not executed: ${name} (${skip})`)
+  } else {
     console.log(`Running smoke test: ${binaryPath} --version`)
     try {
       const versionOutput = await $`${binaryPath} --version`.text()
       console.log(`Smoke test passed: ${versionOutput.trim()}`)
+      executed.add(name)
     } catch (e) {
       console.error(`Smoke test failed for ${name}:`, e)
       process.exit(1)
     }
   }
+  built.push({ name, target: item, sha256: await sha256Of(binaryPath) })
 
   await $`rm -rf ./dist/${name}/bin/tui`
   await Bun.file(`dist/${name}/package.json`).write(
@@ -230,6 +299,29 @@ for (const item of targets) {
     ),
   )
   binaries[name] = Script.version
+}
+
+// Write the release's own record of what was and was not exercised, beside the
+// archives, so "has this ever been run on a Mac" does not depend on reading a
+// workflow log that expires.
+const report = renderReport(coverageRows(built, host, executed), host, Script.version)
+await Bun.file("dist/PLATFORM-COVERAGE.md").write(report)
+console.log("")
+console.log(report)
+
+const warning = duplicateWarning(built)
+if (warning) {
+  const rule = "=".repeat(72)
+  console.log(rule)
+  console.log(warning)
+  console.log(rule)
+  // Not fatal by default: the collision comes from the toolchain serving one
+  // runtime per os/arch/abi, and failing every release outright would only move
+  // the surprise. Set this in CI once the toolchain is fixed to keep it fixed.
+  if (process.env["RAFIKICODE_REQUIRE_DISTINCT_TARGETS"] === "1") {
+    console.error("Refusing to publish identical targets (RAFIKICODE_REQUIRE_DISTINCT_TARGETS=1).")
+    process.exit(1)
+  }
 }
 
 if (Script.release) {
