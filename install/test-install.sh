@@ -111,7 +111,12 @@ echo "tampered" >> "$WORK/site/dl/download/v1.2.3/rafikicode-${target}${ext}"
 before=$(sha256sum "$RAFIKICODE_INSTALL_DIR/rafikicode" 2>/dev/null || shasum -a 256 "$RAFIKICODE_INSTALL_DIR/rafikicode")
 out=$(bash "$INSTALLER" --no-modify-path --version 1.2.3 2>&1) && rc=0 || rc=$?
 after=$(sha256sum "$RAFIKICODE_INSTALL_DIR/rafikicode" 2>/dev/null || shasum -a 256 "$RAFIKICODE_INSTALL_DIR/rafikicode")
-[ "$rc" != "0" ] && [[ "$out" == *"checksum mismatch"* ]] && [ "$before" = "$after" ] && [ ! -e "$RAFIKICODE_INSTALL_DIR/rafikicode.new" ]; check $? "checksum mismatch fails and leaves the installed binary untouched"
+plainout=$(printf '%s\n' "$out" | plain)
+[ "$rc" != "0" ] && [ "$before" = "$after" ] && [ ! -e "$RAFIKICODE_INSTALL_DIR/rafikicode.new" ] \
+    && [[ "$plainout" == *"is not the file the release says it is"* ]] \
+    && [[ "$plainout" == *"Nothing was installed and the download has been deleted"* ]] \
+    && [[ "$plainout" == *"Do not run a rafikicode binary that failed this check"* ]] \
+    && [[ "$plainout" == *"expected: "* ]] && [[ "$plainout" == *"received: "* ]]; check $? "checksum mismatch fails, says what it means, and leaves the installed binary untouched"
 
 out=$(bash "$INSTALLER" --no-modify-path --binary "$WORK/build-1.2.3/rafikicode" 2>&1)
 [ "$("$RAFIKICODE_INSTALL_DIR/rafikicode" --version)" = "1.2.3" ]; check $? "local binary install"
@@ -223,6 +228,243 @@ out=$(printf '%s\n' "$raw" | plain)
     && [[ "$out" == *"it said: cannot execute binary file"* ]] \
     && [[ "$out" == *"xattr -d com.apple.quarantine"* ]] \
     && [[ "$out" != *"Next steps"* ]]; check $? "post-install version check fails loudly when the binary cannot run"
+
+# --- Missing prerequisites ---------------------------------------------------
+#
+# Every one of these used to end in a single line that named a condition: "'curl'
+# is required but not installed". The point of the cases below is that the output
+# now contains a command the person can paste, chosen for the package manager the
+# machine actually has.
+#
+# A missing tool is simulated with a PATH that holds only what the case wants the
+# installer to find: a directory of symlinks to the real tools, minus the one
+# under test. A missing (or particular) package manager is simulated the same way,
+# which keeps these cases independent of whatever distribution the suite runs on.
+SANDBOX_TOOLS="sed awk head tr grep mktemp mkdir chmod mv cp rm ln touch cat ls
+    dirname basename df id uname sleep tar unzip curl sha256sum"
+# The sandbox PATH holds only the tools a case wants the installer to find, so
+# bash is not on it either: run the interpreter by its absolute path.
+BASH_BIN=$(command -v bash)
+# $1 = directory to build, $2 = space separated tools to leave out, $3 = fake
+# executables to create (a package manager, or an id that reports a normal user).
+mkbin() {
+    local dir=$1 omit=" ${2:-} " fakes=${3:-} tool real
+    rm -rf "$dir"
+    mkdir -p "$dir"
+    for tool in $SANDBOX_TOOLS; do
+        case "$omit" in *" $tool "*) continue ;; esac
+        real=$(command -v "$tool" 2>/dev/null) || continue
+        ln -sf "$real" "$dir/$tool"
+    done
+    for tool in $fakes; do
+        case "$tool" in
+            id-as-user) stub_id "$dir" 1000 tester ;;
+            id-as-root) stub_id "$dir" 0 root ;;
+            df-as-full) stub_df_full "$dir" ;;
+            # A package manager that only has to exist to be detected: the
+            # installer probes for the binary and never runs it.
+            *) write_stub "$dir/$tool" '#!/bin/sh\nexit 0\n' ;;
+        esac
+    done
+}
+
+# Write a stub executable, replacing whatever is at that path.
+#
+# The rm is not tidiness, it is the whole point: the loop above fills $dir with
+# symlinks to the real tools, and a redirection onto a symlink writes THROUGH it
+# to the target. Without the rm, stubbing df or id here silently overwrites
+# /usr/bin/df or /usr/bin/id on the machine running the suite. The refusal to
+# write outside $WORK is the second belt for the same mistake.
+write_stub() {
+    local path=$1 body=$2
+    case "$path" in
+        "$WORK"/*) ;;
+        *) echo "refusing to write a stub outside the test directory: $path" >&2; exit 1 ;;
+    esac
+    rm -f "$path"
+    printf "$body" > "$path"
+    chmod 755 "$path"
+}
+
+stub_id() {
+    write_stub "$1/id" "#!/bin/sh\nif [ \"\$1\" = \"-u\" ]; then echo $2; else echo $3; fi\n"
+}
+
+stub_df_full() {
+    write_stub "$1/df" '#!/bin/sh\necho "Filesystem 1024-blocks Used Available Capacity Mounted"\necho "tmpfs 1024000 1000000 20480 98%% /"\n'
+}
+
+# curl missing, on a machine with apt-get. The whole point of the change: an
+# apt-get line to paste, not the name of a condition.
+mkbin "$WORK/bin-nocurl-apt" "curl" "apt-get sudo id-as-root"
+out=$(env PATH="$WORK/bin-nocurl-apt" HOME="$WORK/home" \
+    "$BASH_BIN" "$INSTALLER" --no-modify-path 2>&1 | plain) && rc=0 || rc=$?
+[ "$rc" != "0" ] \
+    && [[ "$out" == *"curl is missing"* ]] \
+    && [[ "$out" == *"curl downloads the release"* ]] \
+    && [[ "$out" == *"This machine has apt-get"* ]] \
+    && [[ "$out" == *"apt-get update && apt-get install -y curl"* ]] \
+    && [[ "$out" == *"Then run this installer again"* ]]; check $? "missing curl prints the apt-get command for this machine"
+
+# Two tools missing at once are reported together, in one install command. This
+# is the preflight: on a minimal image this used to be two runs and two errors.
+mkbin "$WORK/bin-nocurltar-dnf" "curl tar" "dnf sudo id-as-root"
+out=$(env PATH="$WORK/bin-nocurltar-dnf" HOME="$WORK/home" \
+    "$BASH_BIN" "$INSTALLER" --no-modify-path 2>&1 | plain) && rc=0 || rc=$?
+[ "$rc" != "0" ] \
+    && [[ "$out" == *"curl and tar are missing"* ]] \
+    && [[ "$out" == *"dnf install -y curl tar"* ]]; check $? "two missing tools are reported in one pass with one command"
+
+# The checksum tool is a package whose name is not the name of the command.
+mkbin "$WORK/bin-nosum-apk" "sha256sum shasum" "apk sudo id-as-root"
+out=$(env PATH="$WORK/bin-nosum-apk" HOME="$WORK/home" \
+    "$BASH_BIN" "$INSTALLER" --no-modify-path 2>&1 | plain) && rc=0 || rc=$?
+[ "$rc" != "0" ] \
+    && [[ "$out" == *"sha256sum is missing"* ]] \
+    && [[ "$out" == *"apk add coreutils"* ]]; check $? "a missing checksum tool names the coreutils package, not the command"
+
+# Each manager gets its own syntax. pacman and zypper take different flags, and
+# brew must never be given sudo.
+mkbin "$WORK/bin-pacman" "curl" "pacman sudo id-as-user"
+out=$(env PATH="$WORK/bin-pacman" HOME="$WORK/home" "$BASH_BIN" "$INSTALLER" 2>&1 | plain) || true
+[[ "$out" == *"sudo pacman -Sy --noconfirm curl"* ]]; check $? "pacman gets its own flags, with sudo for a normal user"
+
+mkbin "$WORK/bin-brew" "curl" "brew id-as-user"
+out=$(env PATH="$WORK/bin-brew" HOME="$WORK/home" "$BASH_BIN" "$INSTALLER" 2>&1 | plain) || true
+[[ "$out" == *"brew install curl"* ]] && [[ "$out" != *"sudo brew"* ]]; check $? "brew is never prefixed with sudo"
+
+# Root needs no sudo, and saying it would be wrong.
+mkbin "$WORK/bin-root-zypper" "curl" "zypper sudo id-as-root"
+out=$(env PATH="$WORK/bin-root-zypper" HOME="$WORK/home" "$BASH_BIN" "$INSTALLER" 2>&1 | plain) || true
+[[ "$out" == *"zypper install -y curl"* ]] && [[ "$out" != *"sudo zypper"* ]]; check $? "no sudo is suggested when already root"
+
+# A normal user on a host with a package manager but no sudo: the shared hosting
+# case. Guessing that they can install it themselves is the wrong answer; the
+# right one is the sentence to send the host.
+mkbin "$WORK/bin-nosudo" "curl sudo" "apt-get id-as-user"
+out=$(env PATH="$WORK/bin-nosudo" HOME="$WORK/home" "$BASH_BIN" "$INSTALLER" 2>&1 | plain) || true
+[[ "$out" == *"but no sudo"* ]] \
+    && [[ "$out" == *"shared and cPanel style hosting"* ]] \
+    && [[ "$out" == *"Otherwise send whoever runs this server this line"* ]] \
+    && [[ "$out" == *'"Please install curl on this account.'* ]]; check $? "no sudo gives the sentence to send the host, not a command that will fail"
+
+# No package manager at all: say what was looked for, and give the route that
+# needs none of it.
+mkbin "$WORK/bin-nomgr" "curl sudo" "id-as-root"
+out=$(env PATH="$WORK/bin-nomgr" HOME="$WORK/home" "$BASH_BIN" "$INSTALLER" 2>&1 | plain) || true
+[[ "$out" == *"No package manager was found here"* ]] \
+    && [[ "$out" == *"apt-get, dnf, yum, pacman"* ]] \
+    && [[ "$out" == *"Otherwise send whoever runs this server this line"* ]] \
+    && [[ "$out" == *"--binary /path/to/rafikicode"* ]]; check $? "no package manager names what was looked for and the offline route"
+
+# --- Platform, space and permissions ----------------------------------------
+
+# An architecture with no published build. A fake uname keeps this independent of
+# the machine the suite runs on.
+mkbin "$WORK/bin-riscv" "uname" "sudo"
+write_stub "$WORK/bin-riscv/uname" '#!/bin/sh\ncase "$1" in -s) echo Linux ;; -m) echo riscv64 ;; *) echo Linux ;; esac\n'
+
+out=$(env PATH="$WORK/bin-riscv" HOME="$WORK/home" "$BASH_BIN" "$INSTALLER" 2>&1 | plain) && rc=0 || rc=$?
+[ "$rc" != "0" ] \
+    && [[ "$out" == *"no build for this machine: linux/riscv64"* ]] \
+    && [[ "$out" == *"uname -s said Linux, uname -m said riscv64"* ]] \
+    && [[ "$out" == *"Published builds: linux-x64 linux-arm64 darwin-x64 darwin-arm64 windows-x64"* ]] \
+    && [[ "$out" == *"report it at"* ]]; check $? "an unpublished architecture says what was detected and what is published"
+
+# Windows reported by a spelling the asset selection deliberately does not match.
+# There is no PowerShell installer in this release, so the message must not
+# promise one; it names the two routes that do work.
+mkbin "$WORK/bin-win" "uname" "sudo"
+write_stub "$WORK/bin-win/uname" '#!/bin/sh\ncase "$1" in -s) echo Windows_NT ;; -m) echo x86_64 ;; *) echo Windows_NT ;; esac\n'
+
+out=$(env PATH="$WORK/bin-win" HOME="$WORK/home" "$BASH_BIN" "$INSTALLER" 2>&1 | plain) && rc=0 || rc=$?
+[ "$rc" != "0" ] \
+    && [[ "$out" == *"This looks like Windows"* ]] \
+    && [[ "$out" == *"WSL, the Windows Subsystem for Linux"* ]] \
+    && [[ "$out" == *"Git Bash or MSYS2"* ]] \
+    && [[ "$out" == *"no native PowerShell installer in this release"* ]]; check $? "Windows is told the routes that work and promised no installer that does not exist"
+
+# Disk space, checked before the download rather than after: a truncated archive
+# fails the checksum, which reads like tampering and is not.
+mkbin "$WORK/bin-full" "" "df-as-full"
+out=$(env PATH="$WORK/bin-full:$safe_path" HOME="$WORK/home" TMPDIR="$WORK/home" \
+    "$BASH_BIN" "$INSTALLER" --no-modify-path 2>&1 | plain) && rc=0 || rc=$?
+[ "$rc" != "0" ] \
+    && [[ "$out" == *"not enough free disk space"* ]] \
+    && [[ "$out" == *"about 58 MB once extracted"* ]] \
+    && [[ "$out" == *"TMPDIR=/path/with/space"* ]] \
+    && [[ "$out" != *"Checksum verified"* ]]; check $? "a full disk is reported before anything is downloaded"
+
+# An install directory the user cannot write. Root bypasses file permissions, so
+# this one drops to an unprivileged user; it is skipped where that is not
+# possible rather than passing for the wrong reason.
+if [ "$(id -u)" != "0" ] || command -v setpriv >/dev/null 2>&1; then
+    roprefix="$WORK/readonly"
+    mkdir -p "$roprefix"
+    chmod 0555 "$roprefix"
+    chmod 0755 "$WORK"
+    if [ "$(id -u)" = "0" ]; then
+        runas="setpriv --reuid=65534 --regid=65534 --clear-groups"
+    else
+        runas=""
+    fi
+    out=$($runas env PATH="$safe_path" HOME="$WORK/home" \
+        "$BASH_BIN" "$INSTALLER" --no-modify-path --prefix "$roprefix/bin" 2>&1 | plain) && rc=0 || rc=$?
+    [ "$rc" != "0" ] \
+        && [[ "$out" == *"is not writable by you"* ]] \
+        && [[ "$out" == *'--prefix "$HOME/.rafikicode/bin"'* ]] \
+        && [[ "$out" != *"Checksum verified"* ]]; check $? "an unwritable install directory is refused before the download, with a prefix to use instead"
+else
+    echo "skip an unwritable install directory (needs setpriv or a non-root user)"
+fi
+
+# --- Download failures, told apart --------------------------------------------
+#
+# "download failed: <url>" was the same sentence for no network, no DNS, an
+# expired CA bundle, a proxy nobody told curl about, and a version that was never
+# published. curl's exit status separates them.
+out=$(env RAFIKICODE_RELEASE_API="https://no-such-host.invalid/api" \
+    RAFIKICODE_RELEASE_BASE="https://no-such-host.invalid/dl" \
+    HOME="$WORK/home" "$BASH_BIN" "$INSTALLER" --no-modify-path 2>&1 | plain) && rc=0 || rc=$?
+[ "$rc" != "0" ] \
+    && [[ "$out" == *"could not reach the release server"* ]] \
+    && [[ "$out" == *"host name did not resolve"* ]] \
+    && [[ "$out" == *"getent hosts"* ]]; check $? "a name that does not resolve is reported as DNS, with the command to confirm it"
+
+out=$(env RAFIKICODE_RELEASE_API="https://127.0.0.1:1/api" \
+    RAFIKICODE_RELEASE_BASE="https://127.0.0.1:1/dl" \
+    HOME="$WORK/home" "$BASH_BIN" "$INSTALLER" --no-modify-path 2>&1 | plain) && rc=0 || rc=$?
+[ "$rc" != "0" ] \
+    && [[ "$out" == *"refused the connection"* ]] \
+    && [[ "$out" == *"export https_proxy="* ]]; check $? "a refused connection mentions the firewall and how to name a proxy"
+
+# A version that was never published is an HTTP error, not a network fault, and
+# the answer is the list of releases.
+out=$("$BASH_BIN" "$INSTALLER" --no-modify-path --version 9.9.9 2>&1 | plain) && rc=0 || rc=$?
+[ "$rc" != "0" ] \
+    && [[ "$out" == *"no such file, because there is no such"* ]] \
+    && [[ "$out" == *"Leaving --version off installs the latest release"* ]]; check $? "an unpublished version is told apart from a network failure"
+
+# --binary pointed at a directory, which is what happens when someone unpacks the
+# archive and passes the folder.
+out=$("$BASH_BIN" "$INSTALLER" --no-modify-path --binary "$WORK/build-1.2.3" 2>&1 | plain) && rc=0 || rc=$?
+[ "$rc" != "0" ] \
+    && [[ "$out" == *"is a directory"* ]] \
+    && [[ "$out" == *"--binary $WORK/build-1.2.3/rafikicode"* ]]; check $? "--binary given a directory names the file inside it"
+
+# A release that published no asset for this machine: the checksum file is there
+# and simply has no line for this target. The answer is the list of builds it did
+# publish, not the name of the missing one.
+nobuild="$WORK/site/dl/download/v1.5.0"
+mkdir -p "$nobuild"
+printf 'aaaa  rafikicode-linux-arm64.tar.gz\nbbbb  rafikicode-darwin-arm64.zip\n' > "$nobuild/SHA256SUMS"
+out=$(bash "$INSTALLER" --no-modify-path --version 1.5.0 2>&1 | plain) && rc=0 || rc=$?
+[ "$rc" != "0" ] \
+    && [[ "$out" == *"was published, but without a build for this machine"* ]] \
+    && [[ "$out" == *"That release publishes:"* ]] \
+    && [[ "$out" == *"    rafikicode-linux-arm64.tar.gz"* ]] \
+    && [[ "$out" == *"    rafikicode-darwin-arm64.zip"* ]] \
+    && [[ "$out" == *"--binary /path/to/rafikicode"* ]]; check $? "a release with no build for this machine lists the builds it does have"
 
 echo "install tests: ${pass} passed, ${fail} failed"
 [ "$fail" = "0" ]
