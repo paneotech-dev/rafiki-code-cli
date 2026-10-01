@@ -470,6 +470,65 @@ verify_runs() {
     exit 1
 }
 
+# A temporary directory a file can be written to and then run from.
+#
+# The terminal interface is drawn by a native library that travels inside the
+# binary: starting it unpacks that library into the temporary directory and loads
+# it from there. A temporary directory mounted noexec, which is usual on shared
+# and cPanel style hosting, accepts the write and then refuses to run the file,
+# and the first run fails with a message about mapping a shared object that says
+# nothing a user can act on. --version does not touch that library, so verify_runs
+# passes on exactly the machines where this is about to go wrong. Find it out
+# here instead.
+#
+# Writable is not the same as executable, so this writes a small script, makes it
+# executable and runs it. The binary falls back to a directory of its own when
+# the temporary one cannot run a file, so create and test the same directories it
+# would, in the same order, and only warn when none of them works either.
+can_execute_in() {
+    local dir=$1 probe status=0
+    mkdir -p "$dir" 2>/dev/null || return 1
+    probe="${dir}/.${APP}-exec-probe.$$"
+    printf '#!/bin/sh\nexit 0\n' > "$probe" 2>/dev/null || return 1
+    chmod 0700 "$probe" 2>/dev/null || { rm -f "$probe"; return 1; }
+    "$probe" >/dev/null 2>&1 || status=$?
+    rm -f "$probe"
+    [ "$status" = "0" ]
+}
+
+exec_tmp_candidates() {
+    printf '%s\n' "${XDG_CACHE_HOME:-$HOME/.cache}/${APP}/tmp"
+    if [ -n "${XDG_CONFIG_HOME:-}" ]; then
+        printf '%s\n' "${XDG_CONFIG_HOME}/${APP}/tmp"
+    else
+        printf '%s\n' "$HOME/.${APP}/tmp"
+    fi
+}
+
+check_exec_tmp() {
+    local tmp="${TMPDIR:-/tmp}" candidate
+    if can_execute_in "$tmp"; then return 0; fi
+    while IFS= read -r candidate; do
+        if can_execute_in "$candidate"; then
+            print_message info "${MUTED}${tmp}${NC}${MUTED} does not allow running a file, so ${NC}${APP}${MUTED} will use ${NC}${candidate}${MUTED} instead.${NC}"
+            return 0
+        fi
+    done < <(exec_tmp_candidates)
+    print_message warning "Warning: nothing on this account can hold a file and then run it." >&2
+    {
+        printf '  Tried: %s\n' "$tmp"
+        exec_tmp_candidates | while IFS= read -r candidate; do printf '  Tried: %s\n' "$candidate"; done
+        printf '  These directories are mounted "noexec", which accepts a file and then will not run it.\n'
+        printf '  %s is installed and signing in will work, but the terminal interface cannot start.\n' "$APP"
+        printf '  If you know a directory on this machine that programs may run from, use it:\n'
+        printf '    TMPDIR=/that/directory %s\n' "$APP"
+        printf '  Otherwise send whoever runs this server this line:\n'
+        printf '    "%s needs a directory I can write a file to and then execute. Please give me one\n' "$APP"
+        printf '     that is not mounted noexec, or allow execution under my home directory."\n'
+    } >&2
+    return 0
+}
+
 if [ -n "$binary_path" ]; then
     if [ "$dry_run" = "true" ]; then
         echo "dry run: would install ${binary_path} to ${INSTALL_DIR}/${APP}"
@@ -492,6 +551,7 @@ fi
 
 verify_runs
 print_message info "${MUTED}Installed ${NC}${APP}${MUTED} at ${NC}${INSTALL_DIR}/${BIN_NAME}"
+check_exec_tmp
 link_into_path
 path_note
 

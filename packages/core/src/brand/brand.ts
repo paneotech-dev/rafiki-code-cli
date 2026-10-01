@@ -310,6 +310,12 @@ export const Brand = {
     // Reasoning effort for every rafiki-* model: none, low, medium, high, or
     // default to send no effort parameter. none turns reasoning off.
     reasoningEffort: "RAFIKICODE_REASONING_EFFORT",
+    // Set on the child when the binary starts itself again with TMPDIR pointing
+    // at a directory a file can be executed from, because the temporary
+    // directory it was given is mounted noexec and the terminal interface
+    // unpacks and loads a library there (rafiki/exec-tmp.ts). Its only job is
+    // to stop that happening twice.
+    tmpdirChecked: "RAFIKICODE_TMPDIR_CHECKED",
   },
   // Where builds are published. The installer script and the self updater read
   // these; the release workflow tags v<version> and uploads the archives plus

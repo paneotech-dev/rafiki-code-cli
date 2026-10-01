@@ -129,4 +129,25 @@ describe("cli.error", () => {
       expect(fix).not.toMatch(/(?<![A-Z_])opencode(?![A-Z_])/i)
     })
   })
+
+  // The dlopen string two users met on shared hosting says nothing they can act
+  // on, so it never reaches them (rafiki/exec-tmp.ts).
+  test("replaces the render library dlopen failure with something to act on", () => {
+    const formatted = FormatError(
+      new Error(
+        'Failed to initialize OpenTUI render library: Failed to open library "/tmp/.9adb7abbf6e5efff-00000001.so": /tmp/.9adb7abbf6e5efff-00000001.so: failed to map segment from shared object',
+      ),
+    )
+    expect(formatted).toBeDefined()
+    expect(formatted).toContain("Rafiki Code cannot start its terminal interface")
+    expect(formatted).not.toContain("opencode")
+    // The runtime's own words are kept at the end, as the line to quote in a
+    // report, not as the explanation.
+    expect(formatted).toContain("failed to map segment from shared object")
+    expect(formatted!.indexOf("failed to map segment")).toBeGreaterThan(formatted!.indexOf("terminal interface"))
+  })
+
+  test("leaves an unrecognised error to the unexpected error path", () => {
+    expect(FormatError(new Error("something else entirely"))).toBeUndefined()
+  })
 })
