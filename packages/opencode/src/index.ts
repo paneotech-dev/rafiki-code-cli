@@ -130,6 +130,14 @@ const cli = yargs(args)
     ) {
       if (err) throw err
       cli.showHelp(show)
+      // Help alone never said what was wrong with the command that was typed:
+      // a mistyped flag, a missing argument or a bad --method printed forty
+      // lines of options and no reason, which reads as the CLI refusing for
+      // no stated cause. yargs' own message names the argument, what was
+      // given and, for a choices violation, what was allowed. It is written
+      // after the help rather than before it so that it is the last thing on
+      // screen instead of being scrolled away by the help itself.
+      if (msg) process.stderr.write(EOL + msg + EOL)
     }
     if (err) throw err
     process.exit(1)
