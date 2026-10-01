@@ -86,6 +86,9 @@ jobs:
           done
           sha256sum rafikicode-*.tar.gz rafikicode-*.zip > SHA256SUMS
           cat SHA256SUMS
+          # Written by the build script: which targets the runner could execute
+          # and which were published without being started once.
+          cat PLATFORM-COVERAGE.md
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -94,6 +97,7 @@ jobs:
             packages/opencode/dist/rafikicode-*.tar.gz
             packages/opencode/dist/rafikicode-*.zip
             packages/opencode/dist/SHA256SUMS
+            packages/opencode/dist/PLATFORM-COVERAGE.md
             packages/opencode/dist/rafikicode-*/package.json
             packages/opencode/dist/rafikicode-*/bin/*
           if-no-files-found: error
@@ -114,9 +118,9 @@ jobs:
           # a known bug because nobody remembered to move it.
           cp "$GITHUB_WORKSPACE/install/install.sh" install.sh
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" rafikicode-*.tar.gz rafikicode-*.zip SHA256SUMS install.sh --clobber
+            gh release upload "$TAG" rafikicode-*.tar.gz rafikicode-*.zip SHA256SUMS PLATFORM-COVERAGE.md install.sh --clobber
           else
-            gh release create "$TAG" rafikicode-*.tar.gz rafikicode-*.zip SHA256SUMS install.sh \
+            gh release create "$TAG" rafikicode-*.tar.gz rafikicode-*.zip SHA256SUMS PLATFORM-COVERAGE.md install.sh \
               --title "$TAG" --generate-notes --verify-tag
           fi
 
