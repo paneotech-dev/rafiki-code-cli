@@ -365,21 +365,29 @@ export const Brand = {
     registry: "https://registry.npmjs.org",
   },
   /*
-   * Package managers this product is actually published through.
+   * Package managers this product is actually published through: none of them.
    *
-   * There is no Homebrew tap, Chocolatey package or Scoop bucket yet, so
-   * `upgrade` and `uninstall` must refuse those methods rather than run them:
-   * the upstream project publishes packages under its own name through all
-   * three, and a command built from that name would upgrade or remove someone
-   * else's software. Refusing is the safe answer, and naming a package we do
-   * not publish would only fail further along with a worse message.
+   * There is no Homebrew tap, Chocolatey package or Scoop bucket, and there is
+   * no npm package either: the registry answers 404 for the name in Brand.npm
+   * above. So `upgrade` and `uninstall` must refuse brew, choco and scoop
+   * rather than run them: the upstream project publishes packages under its own
+   * name through all three, and a command built from that name would upgrade or
+   * remove someone else's software. Refusing is the safe answer, and naming a
+   * package we do not publish would only fail further along with a worse
+   * message.
+   *
+   * The npm client side stays wired up (Installation.Method and the npm branch
+   * of Installation.upgrade) because publishing is intended: script/publish-npm.ts
+   * exists and the release workflow dry runs it when NPM_TOKEN is absent. Add
+   * the names here when a publish actually lands. Until then nothing shown to a
+   * user may offer them as a way to install or upgrade.
    */
-  packageManagers: ["npm", "pnpm", "bun", "yarn"] as readonly string[],
+  packageManagers: [] as readonly string[],
   published(method: string) {
     return Brand.packageManagers.includes(method)
   },
   unpublishedHint(method: string) {
-    return `${Brand.product} is not published through ${method}. Reinstall with the installer at ${Brand.release.installer}, or use npm, pnpm, bun or yarn.`
+    return `${Brand.product} is not published through ${method}. Reinstall with the installer at ${Brand.release.installer}, which is the only way it is published.`
   },
   gateway: { url: gatewayDefault },
   console: { url: consoleDefault },

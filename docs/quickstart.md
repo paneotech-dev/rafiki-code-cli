@@ -1,6 +1,6 @@
 # Quick start
 
-This page takes you from nothing to a first file written by `rafikicode` in about five minutes. It describes `rafikicode` 0.1.5. The key, first task and uninstall steps were run as written in clean `ubuntu:24.04` and `debian:12` containers that had only `curl` and `ca-certificates` installed. The install output below is that of the 0.1.5 installer and has not been run again in those containers.
+This page takes you from nothing to a first file written by `rafikicode` in about five minutes. The key, first task and uninstall steps were run as written in clean `ubuntu:24.04` and `debian:12` containers that had only `curl` and `ca-certificates` installed. The install output below is that of the 0.1.5 installer and has not been run again in those containers.
 
 Terms used here: a **terminal** is the text window where you type commands. **PATH** is the list of folders your shell searches for programs. An **API key** is a key issued by Rafiki AI with its own spending limit; every model call made with it uses credits in your Rafiki AI account. **Headless** means running where nobody can answer a question, such as a server, a container or a CI (continuous integration) pipeline.
 
