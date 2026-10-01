@@ -368,7 +368,7 @@ out=$(env PATH="$WORK/bin-riscv" HOME="$WORK/home" "$BASH_BIN" "$INSTALLER" 2>&1
 [ "$rc" != "0" ] \
     && [[ "$out" == *"no build for this machine: linux/riscv64"* ]] \
     && [[ "$out" == *"uname -s said Linux, uname -m said riscv64"* ]] \
-    && [[ "$out" == *"Published builds: linux-x64 linux-arm64 darwin-x64 darwin-arm64 windows-x64"* ]] \
+    && [[ "$out" == *"Published builds: linux-x64 linux-arm64 darwin-x64 darwin-arm64 windows-x64 windows-arm64"* ]] \
     && [[ "$out" == *"report it at"* ]]; check $? "an unpublished architecture says what was detected and what is published"
 
 # Windows reported by a spelling the asset selection deliberately does not match.
@@ -382,7 +382,8 @@ out=$(env PATH="$WORK/bin-win" HOME="$WORK/home" "$BASH_BIN" "$INSTALLER" 2>&1 |
     && [[ "$out" == *"This looks like Windows"* ]] \
     && [[ "$out" == *"WSL, the Windows Subsystem for Linux"* ]] \
     && [[ "$out" == *"Git Bash or MSYS2"* ]] \
-    && [[ "$out" == *"no native PowerShell installer in this release"* ]]; check $? "Windows is told the routes that work and promised no installer that does not exist"
+    && [[ "$out" == *"native PowerShell installer"* ]] \
+    && [[ "$out" == *"install.ps1"* ]]; check $? "Windows is told every route that works, including the PowerShell installer this release ships"
 
 # Disk space, checked before the download rather than after: a truncated archive
 # fails the checksum, which reads like tampering and is not.
@@ -465,6 +466,104 @@ out=$(bash "$INSTALLER" --no-modify-path --version 1.5.0 2>&1 | plain) && rc=0 |
     && [[ "$out" == *"    rafikicode-linux-arm64.tar.gz"* ]] \
     && [[ "$out" == *"    rafikicode-darwin-arm64.zip"* ]] \
     && [[ "$out" == *"--binary /path/to/rafikicode"* ]]; check $? "a release with no build for this machine lists the builds it does have"
+
+# --- Desktop platform selection -------------------------------------------
+# detect_platform is the one part of the installer that running it on this
+# machine can never exercise, so uname and sysctl are stubbed and only the
+# resolved asset name is checked. --dry-run downloads nothing.
+STUB="$WORK/stub"
+mkdir -p "$STUB"
+cat > "$STUB/uname" <<'EOF'
+#!/bin/sh
+case "$1" in
+  -s) echo "${FAKE_OS:-Linux}" ;;
+  -m) echo "${FAKE_ARCH:-x86_64}" ;;
+  *)  echo "${FAKE_OS:-Linux}" ;;
+esac
+EOF
+# macOS sysctl: a key that does not exist exits non-zero, which is what the
+# installer's `|| echo 0` fallbacks expect.
+cat > "$STUB/sysctl" <<'EOF'
+#!/bin/sh
+case "$*" in
+  *proc_translated*) if [ -n "${FAKE_ROSETTA:-}" ]; then echo 1; else exit 1; fi ;;
+  *avx2*) echo "${FAKE_AVX2:-0}" ;;
+  *) exit 1 ;;
+esac
+EOF
+chmod 755 "$STUB/uname" "$STUB/sysctl"
+
+resolves_to() {
+    # resolves_to <uname -s> <uname -m> [VAR=value ...]
+    # env applies the trailing assignments: a bare "$@" in command position is
+    # read as the command name, not as assignments.
+    local want_os=$1 want_arch=$2
+    shift 2
+    env PATH="$STUB:$safe_path" FAKE_OS="$want_os" FAKE_ARCH="$want_arch" "$@" \
+        bash "$INSTALLER" --dry-run --no-modify-path --no-login 2>&1 | plain
+}
+
+out=$(resolves_to Darwin arm64 FAKE_AVX2=0)
+[[ "$out" == *"rafikicode-darwin-arm64.zip"* ]]; check $? "Apple Silicon picks darwin-arm64"
+
+out=$(resolves_to Darwin x86_64 FAKE_AVX2=1)
+[[ "$out" == *"rafikicode-darwin-x64.zip"* ]]; check $? "Intel Mac with AVX2 picks darwin-x64"
+
+out=$(resolves_to Darwin x86_64 FAKE_AVX2=0)
+[[ "$out" == *"rafikicode-darwin-x64-baseline.zip"* ]]; check $? "Intel Mac without AVX2 picks darwin-x64-baseline"
+
+out=$(resolves_to Darwin x86_64 FAKE_ROSETTA=1)
+[[ "$out" == *"rafikicode-darwin-arm64.zip"* ]]; check $? "Rosetta reports x86_64 but picks darwin-arm64"
+
+out=$(resolves_to MINGW64_NT-10.0 x86_64)
+[[ "$out" == *"rafikicode-windows-x64.zip"* ]] && [[ "$out" == *"rafikicode.exe"* ]]; check $? "Git Bash picks windows-x64 and installs rafikicode.exe"
+
+# windows-arm64 is published with every release, so it has to be installable.
+out=$(resolves_to MINGW64_NT-10.0 aarch64)
+[[ "$out" == *"rafikicode-windows-arm64.zip"* ]]; check $? "Windows on ARM picks windows-arm64"
+
+out=$(resolves_to Linux aarch64)
+[[ "$out" == *"rafikicode-linux-arm64.tar.gz"* ]]; check $? "Linux arm64 picks linux-arm64"
+
+# --- A HOME with no shell startup file ------------------------------------
+# A fresh macOS account runs zsh and has no ~/.zshrc, and /usr/local/bin there
+# is root owned, so the symlink cannot be made either. With nothing written and
+# nothing linked the binary is unreachable by name from every new terminal.
+freshzsh="$WORK/fresh-zsh"
+mkdir -p "$freshzsh"
+out=$(env HOME="$freshzsh" SHELL=/bin/zsh PATH="$safe_path" \
+    RAFIKICODE_INSTALL_DIR="$freshzsh/.rafikicode/bin" \
+    bash "$INSTALLER" --no-login --binary "$WORK/build-1.2.3/rafikicode" 2>&1 | plain)
+[ ! -L "$freshzsh/.local/bin/rafikicode" ] \
+    && [ -f "$freshzsh/.zshrc" ] \
+    && grep -q "export PATH=$freshzsh/.rafikicode/bin:\$PATH" "$freshzsh/.zshrc"
+check $? "a zsh HOME with no startup file gets ~/.zshrc created with the PATH line"
+
+# Installing twice must not append the same line again.
+out=$(env HOME="$freshzsh" SHELL=/bin/zsh PATH="$safe_path" \
+    RAFIKICODE_INSTALL_DIR="$freshzsh/.rafikicode/bin" \
+    bash "$INSTALLER" --no-login --binary "$WORK/build-1.2.3/rafikicode" 2>&1 | plain)
+[ "$(grep -c "^export PATH=$freshzsh/.rafikicode/bin:\$PATH\$" "$freshzsh/.zshrc")" = "1" ]
+check $? "a second install does not duplicate the PATH line"
+
+# And the next steps must now promise new terminals, because a file was written.
+[[ "$out" == *"New terminals find rafikicode on their own"* ]]
+check $? "a created startup file is reported as new terminals being set"
+
+freshbash="$WORK/fresh-bash"
+mkdir -p "$freshbash"
+out=$(env HOME="$freshbash" SHELL=/bin/bash PATH="$safe_path" \
+    RAFIKICODE_INSTALL_DIR="$freshbash/.rafikicode/bin" \
+    bash "$INSTALLER" --no-login --binary "$WORK/build-1.2.3/rafikicode" 2>&1 | plain)
+[ -f "$freshbash/.bashrc" ]; check $? "a bash HOME with no startup file gets ~/.bashrc created"
+
+# --no-modify-path must still write nothing, even with no startup file present.
+freshnone="$WORK/fresh-untouched"
+mkdir -p "$freshnone"
+out=$(env HOME="$freshnone" SHELL=/bin/zsh PATH="$safe_path" \
+    RAFIKICODE_INSTALL_DIR="$freshnone/.rafikicode/bin" \
+    bash "$INSTALLER" --no-login --no-modify-path --binary "$WORK/build-1.2.3/rafikicode" 2>&1 | plain)
+[ ! -e "$freshnone/.zshrc" ]; check $? "--no-modify-path creates no startup file"
 
 echo "install tests: ${pass} passed, ${fail} failed"
 [ "$fail" = "0" ]

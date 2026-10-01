@@ -116,11 +116,16 @@ jobs:
           # instead of a tag that has to be repointed by hand at every release --
           # which it was, and the redirect spent two weeks serving an installer with
           # a known bug because nobody remembered to move it.
+          # install.ps1 ships the same way: install.sh is a POSIX shell script and
+          # runs on Windows only under WSL, Git Bash or Cygwin, so a plain Windows
+          # user needs the PowerShell one at
+          # releases/latest/download/install.ps1.
           cp "$GITHUB_WORKSPACE/install/install.sh" install.sh
+          cp "$GITHUB_WORKSPACE/install/install.ps1" install.ps1
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" rafikicode-*.tar.gz rafikicode-*.zip SHA256SUMS PLATFORM-COVERAGE.md install.sh --clobber
+            gh release upload "$TAG" rafikicode-*.tar.gz rafikicode-*.zip SHA256SUMS PLATFORM-COVERAGE.md install.sh install.ps1 --clobber
           else
-            gh release create "$TAG" rafikicode-*.tar.gz rafikicode-*.zip SHA256SUMS PLATFORM-COVERAGE.md install.sh \
+            gh release create "$TAG" rafikicode-*.tar.gz rafikicode-*.zip SHA256SUMS PLATFORM-COVERAGE.md install.sh install.ps1 \
               --title "$TAG" --generate-notes --verify-tag
           fi
 

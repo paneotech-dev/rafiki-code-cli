@@ -6,19 +6,54 @@ It is a thin fork of an open source coding agent; see [Attribution](#attribution
 
 ## Install
 
-One line installer for Linux and macOS (on Windows, use WSL, the Windows Subsystem for Linux):
+One line installer for Linux and macOS:
 
 ```bash
 curl -fsSL https://get.rafikiai.io | bash
 ```
 
+On Windows, in PowerShell:
+
+```powershell
+irm https://github.com/paneotech-dev/rafiki-code-cli/releases/latest/download/install.ps1 | iex
+```
+
+`install.sh` is a POSIX shell script, so on Windows it runs only inside WSL, Git
+Bash or Cygwin; `install.ps1` is the native route and needs no extra runtime. It
+takes the same decisions: it picks the build for the machine's architecture,
+checks it against the published `SHA256SUMS`, installs into
+`%USERPROFILE%\.rafikicode\bin`, puts that directory on the user `PATH` and runs
+`rafikicode --version` to confirm the binary starts. Options:
+`-Version 0.1.7`, `-Prefix DIR`, `-Baseline`, `-NoModifyPath`, `-DryRun`.
+
 Options, passed after `bash -s --`: `--version 0.1.4` installs a given release, `--prefix DIR` chooses another directory, `--no-modify-path` leaves your shell files alone, `--dry-run` only shows what would happen. The script is `install/install.sh` in this repository.
 
-The installer detects your platform, downloads the release archive, verifies it against the published `SHA256SUMS` file and installs the binary into `~/.rafikicode/bin`. It then adds that directory to your PATH in `~/.bashrc` for new terminals, and links the binary from a directory that is already on your PATH (`/usr/local/bin`, or `~/.local/bin`, when the directory is writable) so that `rafikicode --version` prints `0.1.5` in the terminal you installed from. It says which directory it linked.
+The installer detects your platform, downloads the release archive, verifies it against the published `SHA256SUMS` file and installs the binary into `~/.rafikicode/bin`. It then adds that directory to your PATH in your shell's startup file (`~/.bashrc` for bash, `~/.zshrc` for zsh, `~/.config/fish/config.fish` for fish), creating that file when you do not have one, and links the binary from a directory that is already on your PATH (`/usr/local/bin`, or `~/.local/bin`, when the directory is writable) so that `rafikicode --version` works in the terminal you installed from. It says which directory it linked.
 
 When it could not link, its next steps open with `export PATH=$HOME/.rafikicode/bin:$PATH` for this terminal and show the binary's full path, `~/.rafikicode/bin/rafikicode`, which works without touching PATH at all.
 
 `rafikicode` is installed with the installer script. It is not published on npm.
+
+### Per platform
+
+| Platform | What to run | Notes |
+| --- | --- | --- |
+| Linux x64, arm64 (glibc or musl) | `curl -fsSL https://get.rafikiai.io \| bash` | needs `curl` and `tar` |
+| macOS, Apple Silicon and Intel | `curl -fsSL https://get.rafikiai.io \| bash` | needs `curl` and `unzip`, both present by default; see the macOS note below |
+| Windows x64, arm64 | `irm .../install.ps1 \| iex` | PowerShell 5.1 or later; the full screen interface needs Windows Terminal |
+| Windows, inside WSL | `curl -fsSL https://get.rafikiai.io \| bash` | installs the Linux build |
+
+**macOS.** The binaries are ad-hoc signed but not notarised with an Apple
+Developer ID. The installer downloads with `curl`, which does not set the
+quarantine attribute, so the installed binary runs. If you instead take the
+`.zip` from the release page in a browser, macOS quarantines it and Gatekeeper
+refuses to run it; clear it with
+`xattr -d com.apple.quarantine ~/.rafikicode/bin/rafikicode`, or open the file
+once from the Finder's right click menu.
+
+**Windows.** The `.exe` is not Authenticode signed, so SmartScreen warns the
+first time it runs. The interactive interface needs Windows Terminal; the older
+console window cannot draw it, and `rafikicode run "your task"` works in either.
 
 To update:
 
@@ -26,7 +61,14 @@ To update:
 rafikicode update            # latest release, checksum verified, binary replaced in place
 ```
 
-`rafikicode update <version>` installs a specific release. `rafikicode` never updates itself unless you run this command. Release archives are verified by their SHA256 checksum; they are not code signed.
+`rafikicode update <version>` installs a specific release. `rafikicode` never updates itself unless you run this command.
+
+Release archives are verified by their SHA256 checksum. Beyond that: the macOS
+builds carry an ad-hoc signature, which is what lets them run on Apple Silicon,
+but they are not notarised with an Apple Developer ID; the Windows builds are not
+Authenticode signed. What that means for a user is in
+[Troubleshooting](./docs/troubleshooting.md) and in the Integrity section of each
+release's notes under `docs/releases/`.
 
 ## Quick start
 
