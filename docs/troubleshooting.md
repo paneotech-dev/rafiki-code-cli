@@ -34,7 +34,41 @@ Run the installer without `--version` to get the latest release.
 
 **Checksum mismatch during install.** The downloaded archive did not match the published `SHA256SUMS`. Nothing was installed. Run the installer again; if it repeats, a proxy or mirror is altering downloads, and you should fetch from the release page directly.
 
-**macOS refuses to open the binary.** Release binaries are not code signed. Right click the binary and choose Open once, or remove the quarantine attribute with `xattr -d com.apple.quarantine ~/.rafikicode/bin/rafikicode`.
+**macOS refuses to open the binary, or says the developer cannot be verified.** The macOS builds carry an ad-hoc signature, which is what lets them run on Apple Silicon at all, but they are not notarised with an Apple Developer ID. Gatekeeper only blocks a file that is *quarantined*, and macOS sets that attribute on files a browser downloaded. The installer fetches with `curl`, which does not set it, so an install from `https://get.rafikiai.io` is not affected. If you took the `.zip` from the release page in a browser instead, clear the attribute:
+
+```bash
+xattr -d com.apple.quarantine ~/.rafikicode/bin/rafikicode
+```
+
+Or right click the file in the Finder and choose Open once. `xattr -p com.apple.quarantine <file>` says whether a file carries it; "No such xattr" means it does not.
+
+**macOS: the installer says `No shell startup file found`.** Only releases before 0.1.8 did this. A fresh macOS account runs zsh and has no `~/.zshrc`, and `/usr/local/bin` there belongs to root, so the installer could neither write a startup file nor make the link, and `rafikicode` was not found in any new terminal. The installer now creates `~/.zshrc` with the PATH line. On an older install, create it yourself:
+
+```bash
+echo 'export PATH=$HOME/.rafikicode/bin:$PATH' >> ~/.zshrc
+```
+
+**Windows: `install.sh` does nothing, or the shell cannot run it.** `install/install.sh` is a POSIX shell script. On Windows it runs only inside WSL, Git Bash or Cygwin. In PowerShell use the PowerShell installer instead:
+
+```powershell
+irm https://github.com/paneotech-dev/rafiki-code-cli/releases/latest/download/install.ps1 | iex
+```
+
+**Windows: SmartScreen warns that the publisher is unknown.** The `.exe` is not Authenticode signed. The archive is verified against the published `SHA256SUMS` before it is installed, which is the check that matters; `Get-FileHash -Algorithm SHA256` on the downloaded archive reproduces it. Choose **More info**, then **Run anyway**, or unblock the file with `Unblock-File`.
+
+**Windows: the interactive interface draws garbage, or boxes and colours are wrong.** The old console window (`conhost.exe`, what you get from `cmd.exe` started from the Run box) cannot draw the full screen interface. Use Windows Terminal, which is the default on Windows 11 and installable from the Microsoft Store on Windows 10. `rafikicode run "your task"` prints plain lines and works in either.
+
+**Windows: the installed program does not start, or exits immediately with no message.** On an older x64 processor without AVX2, the normal build cannot run. Install the baseline build:
+
+```powershell
+.\install.ps1 -Baseline
+```
+
+**Windows: `rafikicode` is not found in a new terminal.** The installer puts `%USERPROFILE%\.rafikicode\bin` on the user `PATH`, which only processes started afterwards read. Close the terminal and open a new one. For the terminal you installed from:
+
+```powershell
+$env:Path = "$env:USERPROFILE\.rafikicode\bin;$env:Path"
+```
 
 ## Sign in
 

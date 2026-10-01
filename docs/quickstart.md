@@ -8,11 +8,19 @@ You need a Rafiki AI account. Rafiki Code is part of Rafiki AI by PANEOTECH, and
 
 ## 1. Install
 
-Linux and macOS (on Windows, use WSL, the Windows Subsystem for Linux). The machine needs `curl`; on a minimal Debian or Ubuntu install it first with `apt-get install -y curl ca-certificates`.
+Linux and macOS. The machine needs `curl`; on a minimal Debian or Ubuntu install it first with `apt-get install -y curl ca-certificates`. macOS needs nothing extra: `curl` and `unzip` are both present by default.
 
 ```bash
 curl -fsSL https://get.rafikiai.io | bash
 ```
+
+On Windows, open PowerShell and run:
+
+```powershell
+irm https://github.com/paneotech-dev/rafiki-code-cli/releases/latest/download/install.ps1 | iex
+```
+
+The line above is the native Windows route; `install.sh` is a POSIX shell script and runs on Windows only inside WSL, Git Bash or Cygwin. Either way the interactive interface in step 4 needs Windows Terminal, because the older console window cannot draw it. `rafikicode run "your task"` works in both.
 
 Expected output:
 

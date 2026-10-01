@@ -213,7 +213,7 @@ detect_platform() {
     fi
 
     case "$os-$arch" in
-      linux-x64|linux-arm64|darwin-x64|darwin-arm64|windows-x64) ;;
+      linux-x64|linux-arm64|darwin-x64|darwin-arm64|windows-x64|windows-arm64) ;;
       *) fail "unsupported OS or architecture: $os/$arch" ;;
     esac
 
@@ -324,11 +324,37 @@ download_and_install() {
 
 install_from_binary() {
     [ -f "$binary_path" ] || fail "binary not found at ${binary_path}"
+    # detect_platform does not run on this path, so the Windows suffix is set
+    # here. Without it the file is written without .exe and does not run.
+    case "$(uname -s)" in
+      MINGW*|MSYS*|CYGWIN*) BIN_NAME="$APP.exe" ;;
+    esac
     print_message info "\n${MUTED}Installing ${NC}${APP} ${MUTED}from ${NC}${binary_path}"
     mkdir -p "$INSTALL_DIR"
-    cp "$binary_path" "${INSTALL_DIR}/${APP}.new"
-    chmod 755 "${INSTALL_DIR}/${APP}.new"
-    mv -f "${INSTALL_DIR}/${APP}.new" "${INSTALL_DIR}/${APP}"
+    cp "$binary_path" "${INSTALL_DIR}/${BIN_NAME}.new"
+    chmod 755 "${INSTALL_DIR}/${BIN_NAME}.new"
+    mv -f "${INSTALL_DIR}/${BIN_NAME}.new" "${INSTALL_DIR}/${BIN_NAME}"
+}
+
+# macOS marks files downloaded by a browser with com.apple.quarantine, and
+# Gatekeeper refuses to run a quarantined binary that is not notarised: these
+# builds are ad-hoc signed only. curl and unzip do not set the attribute, so for
+# a normal install this does nothing. It matters for --binary pointed at a file
+# that came out of a browser download, which is what someone does after taking
+# the archive from the release page by hand.
+clear_quarantine() {
+    [ "$(uname -s)" = "Darwin" ] || return 0
+    command -v xattr >/dev/null 2>&1 || return 0
+    local bin=$1
+    [ -e "$bin" ] || return 0
+    if xattr "$bin" 2>/dev/null | grep -q com.apple.quarantine; then
+        if xattr -d com.apple.quarantine "$bin" 2>/dev/null; then
+            print_message info "${MUTED}Removed the macOS quarantine attribute${NC}"
+        else
+            print_message warning "Could not remove com.apple.quarantine from ${bin}. Run: xattr -d com.apple.quarantine ${bin}"
+        fi
+    fi
+    return 0
 }
 
 # Set to the startup file that carries the PATH entry, and only then: the next
@@ -359,22 +385,27 @@ path_note() {
     case $current_shell in
         fish)
             config_files="$HOME/.config/fish/config.fish"
+            primary_config="$HOME/.config/fish/config.fish"
             command="fish_add_path $INSTALL_DIR"
             ;;
         zsh)
             config_files="${ZDOTDIR:-$HOME}/.zshrc ${ZDOTDIR:-$HOME}/.zshenv $XDG_CONFIG_HOME/zsh/.zshrc $XDG_CONFIG_HOME/zsh/.zshenv"
+            primary_config="${ZDOTDIR:-$HOME}/.zshrc"
             command="export PATH=$INSTALL_DIR:\$PATH"
             ;;
         bash)
             config_files="$HOME/.bashrc $HOME/.bash_profile $HOME/.profile $XDG_CONFIG_HOME/bash/.bashrc $XDG_CONFIG_HOME/bash/.bash_profile"
+            primary_config="$HOME/.bashrc"
             command="export PATH=$INSTALL_DIR:\$PATH"
             ;;
         ash|sh)
             config_files="$HOME/.ashrc $HOME/.profile /etc/profile"
+            primary_config="$HOME/.profile"
             command="export PATH=$INSTALL_DIR:\$PATH"
             ;;
         *)
             config_files="$HOME/.bashrc $HOME/.bash_profile $XDG_CONFIG_HOME/bash/.bashrc $XDG_CONFIG_HOME/bash/.bash_profile"
+            primary_config="$HOME/.bashrc"
             command="export PATH=$INSTALL_DIR:\$PATH"
             ;;
     esac
@@ -400,11 +431,19 @@ path_note() {
         fi
     done
     if [[ -z $config_file ]]; then
-        if [ -z "$linked_path" ]; then
+        # Already reachable by its bare name through the symlink: nothing to do.
+        if [ -n "$linked_path" ]; then return; fi
+        # A fresh macOS account runs zsh and has no ~/.zshrc, and a minimal
+        # container image may have no startup file either. Create the usual one
+        # for this shell rather than leaving the binary unreachable for good.
+        if mkdir -p "$(dirname "$primary_config")" 2>/dev/null && touch "$primary_config" 2>/dev/null; then
+            print_message info "${MUTED}Created ${NC}$primary_config"
+            config_file=$primary_config
+        else
             print_message info "\nNo shell startup file found. Add ${INSTALL_DIR} to your PATH for ${current_shell}:"
             print_message info "  $command"
+            return
         fi
-        return
     fi
     add_to_path "$config_file" "$command"
 }
@@ -490,6 +529,7 @@ else
     download_and_install
 fi
 
+clear_quarantine "${INSTALL_DIR}/${BIN_NAME}"
 verify_runs
 print_message info "${MUTED}Installed ${NC}${APP}${MUTED} at ${NC}${INSTALL_DIR}/${BIN_NAME}"
 link_into_path
