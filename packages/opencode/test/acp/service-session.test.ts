@@ -1444,6 +1444,9 @@ describe("ACP service sessions", () => {
     expect(error.data).toEqual({ service: "session", errorName: "APIError" })
   })
 
+  // The mid-stream cancellation: the model had started, so the backing session
+  // finalizes the assistant message with MessageAbortedError on it. That mapping
+  // is kept, and this is the only path it covers.
   it("maps aborted assistant prompt errors to cancelled", async () => {
     const { service } = makeService([], {
       prompt: () =>
@@ -1463,6 +1466,64 @@ describe("ACP service sessions", () => {
     )
 
     expect(result.stopReason).toBe("cancelled")
+  })
+
+  // The early cancellation, driven rather than faked: no MessageAbortedError is
+  // injected anywhere. A turn aborted before the model was called is answered by
+  // the backing session with the user message, which carries neither an error nor
+  // any token accounting, so nothing about it says the turn was cancelled. The
+  // agent has to remember that itself, which is what this drives.
+  it("reports cancelled when the backing message says nothing about the abort", async () => {
+    const called = deferred<void>()
+    const response = deferred<{ data: { info: ReturnType<typeof assistantInfo> } }>()
+    const { service, aborts } = makeService([], {
+      prompt: () => {
+        called.resolve(undefined)
+        return response.promise
+      },
+    })
+    const session = await Effect.runPromise(service.newSession({ cwd: "/workspace", mcpServers: [] }))
+
+    const turn = Effect.runPromise(
+      service.prompt({ sessionId: session.sessionId, prompt: [{ type: "text", text: "hello" }] }),
+    )
+    await called.promise
+    await Effect.runPromise(service.cancel({ sessionId: session.sessionId }))
+    response.resolve({ data: { info: abortedBeforeAssistantMessage() } })
+
+    const result = await turn
+    expect(aborts).toEqual([session.sessionId])
+    expect(result.stopReason).toBe("cancelled")
+    // Omitted rather than zeroed: there is no accounting for this turn, and a
+    // zero cost is a different claim from an unknown one.
+    expect(result.usage).toBeUndefined()
+  })
+
+  // The flag is per turn, not per session: a cancelled turn must not make the
+  // next one report cancelled too.
+  it("clears the cancellation at the start of the next turn", async () => {
+    const called = deferred<void>()
+    const response = deferred<{ data: { info: ReturnType<typeof assistantInfo> } }>()
+    const { service } = makeService([], {
+      prompt: () => {
+        called.resolve(undefined)
+        return response.promise
+      },
+    })
+    const session = await Effect.runPromise(service.newSession({ cwd: "/workspace", mcpServers: [] }))
+
+    const cancelled = Effect.runPromise(
+      service.prompt({ sessionId: session.sessionId, prompt: [{ type: "text", text: "hello" }] }),
+    )
+    await called.promise
+    await Effect.runPromise(service.cancel({ sessionId: session.sessionId }))
+    response.resolve({ data: { info: abortedBeforeAssistantMessage() } })
+    expect((await cancelled).stopReason).toBe("cancelled")
+
+    const after = await Effect.runPromise(
+      service.prompt({ sessionId: session.sessionId, prompt: [{ type: "text", text: "again" }] }),
+    )
+    expect(after.stopReason).toBe("end_turn")
   })
 
   it("prompt maps assistant and user audience annotations", async () => {
@@ -1628,6 +1689,14 @@ function assistantInfo(
     tokens,
     ...(error ? { error } : {}),
   }
+}
+
+// What the backing session answers for a turn aborted before the assistant
+// message existed: the user message. The generated SDK type says a prompt always
+// resolves with an assistant message, and that assumption is exactly what broke,
+// so the real shape has to be cast in here.
+function abortedBeforeAssistantMessage(): ReturnType<typeof assistantInfo> {
+  return { role: "user" } as unknown as ReturnType<typeof assistantInfo>
 }
 
 function categories(result: NewSessionResponse | LoadSessionResponse) {

@@ -41,6 +41,7 @@ import { Directory } from "./directory"
 import { ACPEvent } from "./event"
 import { ACPSession } from "./session"
 import { UsageService } from "./usage"
+import { ACPWarning } from "./warning"
 import { ACPProfile } from "./profile"
 import { ProviderV2 } from "@opencode-ai/core/provider"
 import { ModelV2 } from "@opencode-ai/core/model"
@@ -86,6 +87,10 @@ export function make(input: {
   const directoryService = input.directory ?? makeDirectoryService(input.sdk)
   const registeredMcp = new Map<string, Set<string>>()
   const sessionSnapshots = new Map<string, Directory.Snapshot>()
+  // Workspace trust warnings would otherwise only reach stderr, which no ACP
+  // user ever sees. Only with a connection: without one there is nobody to
+  // tell, and the stderr fallback is already right.
+  if (input.connection) ACPWarning.install()
   const events = input.connection
     ? ACPEvent.start({ sdk: input.sdk, connection: input.connection, session })
     : undefined
@@ -358,6 +363,10 @@ export function make(input: {
 
   const cancel = Effect.fn("ACP.cancel")(function* (params: CancelNotification) {
     const current = yield* session.get(params.sessionId)
+    // Recorded before the abort is even requested. The backing session can
+    // resolve the turn the instant it is aborted, and whichever way that race
+    // goes the turn has to answer `cancelled`.
+    yield* session.markCancelled(params.sessionId)
     yield* abortBackingSession(current)
   })
 
@@ -510,6 +519,16 @@ export function make(input: {
     setSessionModel,
     prompt: Effect.fn("ACP.prompt")(function* (params: PromptRequest) {
       const current = yield* session.get(params.sessionId)
+      // Every turn starts uncancelled, and finishTurn below reads the flag back
+      // once the turn resolves.
+      yield* session.beginTurn(params.sessionId)
+      const finishTurn = Effect.fnUntraced(function* (info: AssistantInfo) {
+        yield* ACPWarning.flush(input.connection, params.sessionId)
+        return yield* promptResponse(info, params.messageId, yield* session.cancelled(params.sessionId))
+      })
+      // Anything brand/trust refused while this session was opened, said before
+      // the turn's own output rather than after it.
+      yield* ACPWarning.flush(input.connection, params.sessionId)
       const snapshot = yield* directorySnapshot(current.cwd)
       const selected = current.model ?? selectDefaultModel(snapshot)
       if (!current.model) {
@@ -542,7 +561,7 @@ export function make(input: {
           "session",
         )
         yield* sendUsageUpdate(input.usage, input.sdk, input.connection, current.id, current.cwd)
-        return yield* promptResponse(response.info, params.messageId)
+        return yield* finishTurn(response.info)
       }
 
       const known = snapshot.availableCommands.find((item) => item.name === command.name)
@@ -566,7 +585,7 @@ export function make(input: {
           "session",
         )
         yield* sendUsageUpdate(input.usage, input.sdk, input.connection, current.id, current.cwd)
-        return yield* promptResponse(response.info, params.messageId)
+        return yield* finishTurn(response.info)
       }
 
       if (command.name === "compact") {
@@ -588,7 +607,7 @@ export function make(input: {
       }
 
       yield* sendUsageUpdate(input.usage, input.sdk, input.connection, current.id, current.cwd)
-      return yield* promptResponse(undefined, params.messageId)
+      return yield* finishTurn(undefined)
     }),
     cancel,
   }
@@ -841,20 +860,34 @@ function detectSlashCommand(parts: ReturnType<typeof promptContentToParts>) {
 const promptResponse = Effect.fn("ACP.promptResponse")(function* (
   info: AssistantInfo,
   messageId: string | null | undefined,
+  cancelled: boolean,
 ) {
-  if (!info?.error) {
+  const base = {
+    // Omitted, not zeroed, when the message carries no token accounting: see
+    // UsageService.buildUsage.
+    ...usageOf(info),
+    ...(messageId ? { userMessageId: messageId } : {}),
+    _meta: {},
+  }
+
+  // The agent's own record of the turn, checked before anything is read off the
+  // backing message. The specification is unconditional (Prompt Turn,
+  // Cancellation): once the operations have been aborted the original
+  // session/prompt MUST answer `cancelled`, so a client can confirm it. A turn
+  // cancelled before the model was called resolves with a message that has no
+  // error on it at all, which would otherwise read as end_turn.
+  if (cancelled) {
     return {
-      stopReason: "end_turn" as const,
-      ...(info ? { usage: UsageService.buildUsage(info) } : {}),
-      ...(messageId ? { userMessageId: messageId } : {}),
-      _meta: {},
+      stopReason: "cancelled" as const,
+      ...base,
     }
   }
 
-  const base = {
-    usage: UsageService.buildUsage(info),
-    ...(messageId ? { userMessageId: messageId } : {}),
-    _meta: {},
+  if (!info?.error) {
+    return {
+      stopReason: "end_turn" as const,
+      ...base,
+    }
   }
 
   if (info.error.name === "MessageAbortedError") {
@@ -888,6 +921,14 @@ const promptResponse = Effect.fn("ACP.promptResponse")(function* (
     errorName: info.error.name,
   })
 })
+
+// `usage` is left out of the response entirely when there is no accounting to
+// report, which is what PromptResponse's optional `usage` is for.
+function usageOf(info: AssistantInfo) {
+  if (!info) return {}
+  const usage = UsageService.buildUsage(info)
+  return usage ? { usage } : {}
+}
 
 function promptErrorMessage(error: AssistantError) {
   if ("message" in error.data && typeof error.data.message === "string") return error.data.message

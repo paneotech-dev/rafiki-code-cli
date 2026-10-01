@@ -10,7 +10,13 @@ import { ModelV2 } from "@opencode-ai/core/model"
 import { Provider } from "@/provider/provider"
 import { Context, Effect, Layer, SynchronizedRef } from "effect"
 
-export type AssistantTokenCost = Pick<OpenCodeAssistantMessage, "cost" | "tokens">
+// The token accounting of a message, as the ACP layer may actually receive it.
+// The generated SDK type declares `cost` and `tokens` as always present on an
+// assistant message, but a prompt turn aborted before the model was called
+// resolves with the user message instead, which carries neither. Both fields
+// are optional here so the difference between "no accounting" and "zero" is
+// representable rather than a crash.
+export type AssistantTokenCost = Partial<Pick<OpenCodeAssistantMessage, "cost" | "tokens">>
 
 export type AssistantMessage = AssistantTokenCost &
   Pick<OpenCodeAssistantMessage, "role"> &
@@ -45,7 +51,7 @@ export interface ContextLimitLoaderInterface {
 export type UsageConnection = Pick<AgentSideConnection, "sessionUpdate">
 
 export interface Interface {
-  readonly buildUsage: (message: AssistantTokenCost) => Usage
+  readonly buildUsage: (message: AssistantTokenCost) => Usage | undefined
   readonly latestAssistantMessage: (messages: readonly SessionMessage[]) => AssistantMessage | undefined
   readonly totalSessionCost: (messages: readonly SessionMessage[]) => number
   readonly contextLimit: (input: {
@@ -84,18 +90,30 @@ export function messageLoaderFromSDK(sdk: SDK): MessageLoaderInterface {
 export const messageLoaderLayer = (sdk: SDK) => Layer.succeed(MessageLoader, messageLoaderFromSDK(sdk))
 
 export function contextTokens(message: AssistantTokenCost): number {
-  return message.tokens.input + message.tokens.cache.read + message.tokens.cache.write
+  const tokens = message.tokens
+  // An assistant message is created with zeroed counters, so this only guards
+  // against a message with no accounting reaching the usage update path. There
+  // the number is required, and 0 is the only value that can stand for it.
+  if (!tokens) return 0
+  return tokens.input + tokens.cache.read + tokens.cache.write
 }
 
-export function buildUsage(message: AssistantTokenCost): Usage {
-  const cachedReadTokens = message.tokens.cache.read
-  const cachedWriteTokens = message.tokens.cache.write
-  const thoughtTokens = message.tokens.reasoning
+// Undefined when the message carries no token accounting at all. `usage` is
+// optional on PromptResponse and every required field of Usage is a total, so
+// an unknown-cost turn is reported by leaving `usage` out. Zeros would be a
+// different and false claim: that the turn is known to have cost nothing.
+export function buildUsage(message: AssistantTokenCost): Usage | undefined {
+  const tokens = message.tokens
+  if (!tokens) return undefined
+
+  const cachedReadTokens = tokens.cache.read
+  const cachedWriteTokens = tokens.cache.write
+  const thoughtTokens = tokens.reasoning
 
   return {
-    inputTokens: message.tokens.input,
-    outputTokens: message.tokens.output,
-    totalTokens: message.tokens.input + message.tokens.output + thoughtTokens + cachedReadTokens + cachedWriteTokens,
+    inputTokens: tokens.input,
+    outputTokens: tokens.output,
+    totalTokens: tokens.input + tokens.output + thoughtTokens + cachedReadTokens + cachedWriteTokens,
     ...(thoughtTokens > 0 ? { thoughtTokens } : {}),
     ...(cachedReadTokens > 0 ? { cachedReadTokens } : {}),
     ...(cachedWriteTokens > 0 ? { cachedWriteTokens } : {}),
@@ -111,7 +129,7 @@ export function latestAssistantMessage(messages: readonly SessionMessage[]): Ass
 export function totalSessionCost(messages: readonly SessionMessage[]): number {
   return messages
     .filter((message): message is { readonly info: AssistantMessage } => message.info.role === "assistant")
-    .reduce((sum, message) => sum + message.info.cost, 0)
+    .reduce((sum, message) => sum + (message.info.cost ?? 0), 0)
 }
 
 export function findContextLimit(

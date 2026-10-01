@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { RequestError } from "@agentclientprotocol/sdk"
+import { Brand } from "@opencode-ai/core/brand/brand"
 import * as ACPError from "../../src/acp/error"
 
 describe("acp.error", () => {
@@ -53,9 +54,20 @@ describe("acp.error", () => {
   })
 
   test("wraps unknown defects without leaking raw details", () => {
-    const requestError = ACPError.toRequestError(
-      ACPError.fromUnknownDefect(new Error("stack has sk-ant-secret and oauth refresh token")),
-    )
+    const written: string[] = []
+    const original = process.stderr.write.bind(process.stderr)
+    process.stderr.write = ((chunk: string) => {
+      written.push(String(chunk))
+      return true
+    }) as typeof process.stderr.write
+    let requestError
+    try {
+      requestError = ACPError.toRequestError(
+        ACPError.fromUnknownDefect(new Error("stack has sk-ant-secret and oauth refresh token")),
+      )
+    } finally {
+      process.stderr.write = original
+    }
     const serialized = JSON.stringify(requestError.toErrorResponse())
 
     expect(requestError.code).toBe(-32603)
@@ -63,5 +75,14 @@ describe("acp.error", () => {
     expect(serialized).not.toContain("sk-ant-secret")
     expect(serialized).not.toContain("oauth refresh token")
     expect(serialized).not.toContain("stack")
+
+    // The defect is not discarded, only kept off the wire. Under ACP stdout is
+    // the protocol transport, so stderr is the only diagnostic there is, and a
+    // generic "Internal service failure" with nothing behind it is how a real
+    // crash in the prompt path stayed invisible.
+    const diagnostic = written.join("")
+    expect(diagnostic).toContain(Brand.product)
+    expect(diagnostic).toContain("sk-ant-secret")
+    expect(diagnostic).toContain("oauth refresh token")
   })
 })
