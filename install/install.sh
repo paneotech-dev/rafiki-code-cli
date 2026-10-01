@@ -17,7 +17,14 @@ INSTALLER_URL="https://get.rafikiai.io"
 RELEASE_API="${RAFIKICODE_RELEASE_API:-https://api.github.com/repos/${OWNER}/${REPO}}"
 RELEASE_BASE="${RAFIKICODE_RELEASE_BASE:-https://github.com/${OWNER}/${REPO}/releases}"
 CHECKSUMS=SHA256SUMS
-INSTALL_DIR="${RAFIKICODE_INSTALL_DIR:-$HOME/.${APP}/bin}"
+# HOME decides where this goes, and it is not always set: cron, some CI images
+# and a few jailshells start a process without it. Reading it unset under
+# `set -u` ends the script on that line with "install.sh: line 18: HOME: unbound
+# variable", which names neither the product nor anything the reader can do.
+# Resolve it to empty here instead and check it after the options are read,
+# because --prefix makes it unnecessary.
+HOME_DIR="${HOME:-}"
+INSTALL_DIR="${RAFIKICODE_INSTALL_DIR:-${HOME_DIR}/.${APP}/bin}"
 # File name of the binary inside the archive and on disk (.exe on Windows).
 BIN_NAME="$APP"
 
@@ -247,6 +254,19 @@ done
 
 check_override RAFIKICODE_RELEASE_API "${RAFIKICODE_RELEASE_API:-}"
 check_override RAFIKICODE_RELEASE_BASE "${RAFIKICODE_RELEASE_BASE:-}"
+
+# Only now is it known whether a home directory is needed at all: --prefix and
+# --binary both name their own destination.
+if [ -z "$HOME_DIR" ] && [ "$INSTALL_DIR" = "/.${APP}/bin" ]; then
+    printf 'Error: HOME is not set, so there is nowhere to install %s.\n' "$APP" >&2
+    {
+        printf '  Set it to this account'"'"'s home directory:\n'
+        printf '    HOME=/home/you curl -fsSL %s | bash\n' "$INSTALLER_URL"
+        printf '  Or choose the directory yourself, and nothing is written outside it:\n'
+        printf '    curl -fsSL %s | bash -s -- --prefix /opt/%s/bin\n' "$INSTALLER_URL" "$APP"
+    } >&2
+    exit 1
+fi
 
 print_message() {
     local level=$1
@@ -595,8 +615,35 @@ check_installed() {
     fi
 }
 
+# The install directory has to exist and be ours before anything is downloaded.
+# Checked here because the only other check was the mkdir after the archive had
+# already been fetched, verified and unpacked: a read-only home directory, which
+# is normal on a locked down or quota-exhausted account, spent a 60 MiB download
+# and then stopped on "mkdir: cannot create directory ... Read-only file system",
+# which names neither the product nor a way forward.
+ensure_install_dir() {
+    if [ -d "$INSTALL_DIR" ]; then
+        [ -w "$INSTALL_DIR" ] && return 0
+    elif mkdir -p "$INSTALL_DIR" 2>/dev/null; then
+        return 0
+    fi
+    print_message error "Error: ${INSTALL_DIR} cannot be created or written to." >&2
+    {
+        printf '  Nothing has been downloaded, so there is nothing to clean up.\n'
+        if [ -n "$HOME_DIR" ] && [ ! -w "$HOME_DIR" ]; then
+            printf '  %s is not writable by this account.\n' "$HOME_DIR"
+        fi
+        printf '  Install somewhere you can write instead:\n'
+        printf '    curl -fsSL %s | bash -s -- --prefix /path/you/can/write/bin\n' "$INSTALLER_URL"
+        printf '  If the home directory should be writable, this is usually a quota or a\n'
+        printf '  read-only mount; whoever runs this machine can say which.\n'
+    } >&2
+    exit 1
+}
+
 download_and_install() {
     if [ "$os" = "linux" ]; then need tar; else need unzip; fi
+    ensure_install_dir
     print_message info "\n${MUTED}Installing ${NC}${APP} ${MUTED}version ${NC}${specific_version}"
     TMP_DIR=$(umask 077 && mktemp -d "${TMPDIR:-/tmp}/${APP}_install.XXXXXXXXXX") \
         || fail "could not create a temporary directory in ${TMPDIR:-/tmp}. It is usually full, read only, or missing. Check with: df -h ${TMPDIR:-/tmp} && ls -ld ${TMPDIR:-/tmp} ; or send the download elsewhere with: TMPDIR=/path/you/can/write ./install.sh"
@@ -759,31 +806,31 @@ add_to_path() {
 path_note() {
     local current_shell
     current_shell=$(basename "${SHELL:-sh}")
-    XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-$HOME/.config}
+    XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-$HOME_DIR/.config}
     case $current_shell in
         fish)
-            config_files="$HOME/.config/fish/config.fish"
-            primary_config="$HOME/.config/fish/config.fish"
+            config_files="$HOME_DIR/.config/fish/config.fish"
+            primary_config="$HOME_DIR/.config/fish/config.fish"
             command="fish_add_path $INSTALL_DIR"
             ;;
         zsh)
-            config_files="${ZDOTDIR:-$HOME}/.zshrc ${ZDOTDIR:-$HOME}/.zshenv $XDG_CONFIG_HOME/zsh/.zshrc $XDG_CONFIG_HOME/zsh/.zshenv"
-            primary_config="${ZDOTDIR:-$HOME}/.zshrc"
+            config_files="${ZDOTDIR:-$HOME_DIR}/.zshrc ${ZDOTDIR:-$HOME_DIR}/.zshenv $XDG_CONFIG_HOME/zsh/.zshrc $XDG_CONFIG_HOME/zsh/.zshenv"
+            primary_config="${ZDOTDIR:-$HOME_DIR}/.zshrc"
             command="export PATH=$INSTALL_DIR:\$PATH"
             ;;
         bash)
-            config_files="$HOME/.bashrc $HOME/.bash_profile $HOME/.profile $XDG_CONFIG_HOME/bash/.bashrc $XDG_CONFIG_HOME/bash/.bash_profile"
-            primary_config="$HOME/.bashrc"
+            config_files="$HOME_DIR/.bashrc $HOME_DIR/.bash_profile $HOME_DIR/.profile $XDG_CONFIG_HOME/bash/.bashrc $XDG_CONFIG_HOME/bash/.bash_profile"
+            primary_config="$HOME_DIR/.bashrc"
             command="export PATH=$INSTALL_DIR:\$PATH"
             ;;
         ash|sh)
-            config_files="$HOME/.ashrc $HOME/.profile /etc/profile"
-            primary_config="$HOME/.profile"
+            config_files="$HOME_DIR/.ashrc $HOME_DIR/.profile /etc/profile"
+            primary_config="$HOME_DIR/.profile"
             command="export PATH=$INSTALL_DIR:\$PATH"
             ;;
         *)
-            config_files="$HOME/.bashrc $HOME/.bash_profile $XDG_CONFIG_HOME/bash/.bashrc $XDG_CONFIG_HOME/bash/.bash_profile"
-            primary_config="$HOME/.bashrc"
+            config_files="$HOME_DIR/.bashrc $HOME_DIR/.bash_profile $XDG_CONFIG_HOME/bash/.bashrc $XDG_CONFIG_HOME/bash/.bash_profile"
+            primary_config="$HOME_DIR/.bashrc"
             command="export PATH=$INSTALL_DIR:\$PATH"
             ;;
     esac
@@ -824,6 +871,35 @@ path_note() {
         fi
     fi
     add_to_path "$config_file" "$command"
+
+    # One more file, because the first one is read by only half the shells that
+    # matter. An interactive shell reads ~/.bashrc, which is what the list above
+    # finds first and what a new terminal window uses. A login shell that is not
+    # interactive -- `ssh host rafikicode ...`, cron, a CI step -- reads
+    # ~/.bash_profile or ~/.profile instead, and on Debian and Ubuntu the
+    # ~/.bashrc they ship opens with "If not running interactively, don't do
+    # anything" and returns before it ever reaches the line just appended.
+    #
+    # So an unprivileged install writes to ~/.bashrc, prints "New terminals find
+    # rafikicode on their own", and is telling the truth about new terminals and
+    # not about ssh. Writing the same line to the login file as well costs one
+    # append and makes the sentence true in both. add_to_path is idempotent, so a
+    # second install adds nothing.
+    case "$config_file" in
+        *.bashrc|*.zshrc|*.ashrc)
+            local login_file=""
+            for file in "$HOME_DIR/.bash_profile" "$HOME_DIR/.zprofile" "$HOME_DIR/.profile"; do
+                case "$current_shell" in
+                    bash) [[ "$file" == *.zprofile ]] && continue ;;
+                    zsh)  [[ "$file" == *.bash_profile ]] && continue ;;
+                esac
+                if [[ -f $file ]]; then login_file=$file; break; fi
+            done
+            if [ -n "$login_file" ] && [ "$login_file" != "$config_file" ]; then
+                add_to_path "$login_file" "$command"
+            fi
+            ;;
+    esac
 }
 
 # Make the command usable in the terminal that ran the installer.
@@ -843,7 +919,7 @@ linked_path=""
 link_into_path() {
     if [ "$no_modify_path" = "true" ]; then return 0; fi
     local target="${INSTALL_DIR}/${BIN_NAME}" dir link
-    for dir in /usr/local/bin "$HOME/.local/bin"; do
+    for dir in /usr/local/bin "$HOME_DIR/.local/bin"; do
         case ":$PATH:" in
             *":$dir:"*) ;;
             *) continue ;;
@@ -876,6 +952,30 @@ verify_runs() {
     {
         printf '  %s --version exited with status %s\n' "$bin" "$status"
         if [ -n "$out" ]; then printf '  it said: %s\n' "$out"; fi
+
+        # A missing shared library is not a guess, it is in the loader's own
+        # words, so name it and the package that carries it instead of listing
+        # causes. The musl build is linked against libstdc++ and libgcc, and
+        # Alpine installs neither by default: a correct install of the correct
+        # archive for the machine ends here, and the generic advice below sends
+        # the reader to check a glibc version that is not the problem.
+        case "$out" in
+            *"libstdc++"*|*"libgcc_s"*|*"Error relocating"*)
+                printf '  The build needs the C++ runtime libraries, which this system does not have.\n'
+                printf '  Install them and nothing else has to change:\n'
+                if [ -f /etc/alpine-release ] || command -v apk >/dev/null 2>&1; then
+                    printf '    apk add libstdc++ libgcc\n'
+                elif command -v apt-get >/dev/null 2>&1; then
+                    printf '    apt-get install -y libstdc++6\n'
+                else
+                    printf '    install your distribution'"'"'s libstdc++ and libgcc packages\n'
+                fi
+                printf '  Then check it with: %s --version\n' "$bin"
+                printf '  The binary is already in place, so there is nothing to install again.\n'
+                exit 1
+                ;;
+        esac
+
         printf '  Usual causes:\n'
         printf '    - a build for another machine (installed %s, this is %s/%s)\n' \
             "${target:-${binary_path:-unknown}}" "$(uname -s)" "$(uname -m)"
@@ -914,11 +1014,11 @@ can_execute_in() {
 }
 
 exec_tmp_candidates() {
-    printf '%s\n' "${XDG_CACHE_HOME:-$HOME/.cache}/${APP}/tmp"
+    printf '%s\n' "${XDG_CACHE_HOME:-$HOME_DIR/.cache}/${APP}/tmp"
     if [ -n "${XDG_CONFIG_HOME:-}" ]; then
         printf '%s\n' "${XDG_CONFIG_HOME}/${APP}/tmp"
     else
-        printf '%s\n' "$HOME/.${APP}/tmp"
+        printf '%s\n' "$HOME_DIR/.${APP}/tmp"
     fi
 }
 
