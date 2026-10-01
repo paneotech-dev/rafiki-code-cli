@@ -22,6 +22,12 @@
 #   install/test-matrix.sh --only noexec        # cells whose id matches
 #   install/test-matrix.sh --release-version 0.1.7
 #   install/test-matrix.sh --no-download        # fail instead of fetching assets
+#   install/test-matrix.sh --results out.tsv    # also write the verdicts as TSV
+#
+# --results writes one tab separated row per cell and facet -- id, facet,
+# pass|fail|untested, detail -- to a path that outlives the run. The table below
+# is for a person; the file is for whatever has to gate on it, and it carries
+# the same three verdicts: nothing is decided, merged or softened on the way out.
 #
 # Cost on an 8 core host: about 6 minutes and roughly 1.1 GiB of transient Docker
 # writable layer for a full run, plus 250 MiB of cached release assets and about
@@ -47,6 +53,7 @@ TUI_WAIT="${RAFIKICODE_MATRIX_TUI_WAIT:-12}"
 IMAGE_PREFIX=rafikicode-matrix
 
 only=""
+results_out=""
 do_download=true
 do_list=false
 keep=false
@@ -55,10 +62,11 @@ while [[ $# -gt 0 ]]; do
         --only) only="${2:?--only needs a pattern}"; shift 2 ;;
         --release-version) RELEASE_VERSION="${2:?}"; RELEASE_URL="https://github.com/${OWNER}/${REPO}/releases/download/v${RELEASE_VERSION}"; shift 2 ;;
         --assets) ASSETS="${2:?}"; shift 2 ;;
+        --results) results_out="${2:?--results needs a path}"; shift 2 ;;
         --no-download) do_download=false; shift ;;
         --list) do_list=true; shift ;;
         --keep) keep=true; shift ;;
-        -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,35p' "$0"; exit 0 ;;
         *) echo "unknown option '$1'" >&2; exit 1 ;;
     esac
 done
@@ -482,6 +490,13 @@ else
     while IFS=$'\t' read -r id facet _ detail; do
         printf '  %-22s %-10s %s\n' "$id" "$facet" "$detail"
     done <<< "$untested"
+fi
+
+# Copied out before the trap removes the work directory. Written whatever the
+# verdicts are, because a gate that only ever sees the good runs is not a gate.
+if [ -n "$results_out" ]; then
+    cp "$RESULTS" "$results_out"
+    note "verdicts written to $results_out"
 fi
 
 p=$(awk -F'\t' '$3=="pass"' "$RESULTS" | wc -l | tr -d ' ')

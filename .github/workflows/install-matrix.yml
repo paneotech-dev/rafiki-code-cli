@@ -1,0 +1,330 @@
+name: install matrix
+
+# Installs the real published release, in containers shaped like the machines
+# users actually have, and starts the program in each one.
+#
+# Why this is a workflow and not a test. v0.1.7 published twelve binaries and
+# exactly one distinct binary was ever executed -- linux-x64, as --version, on
+# the build runner. Two users were then stopped dead by a crash that a container
+# reproduces in under a minute: /tmp mounted noexec, so the native library the
+# full screen interface needs is written and then refused a mapping. Every other
+# signal said success -- the install, the PATH, --version, doctor, the sign in,
+# the billing -- which is why nobody caught it. install/test-matrix.sh is the
+# cell that reproduces it, and this is what makes it run without being asked.
+#
+# What it does not do. It runs the matrix, and only the matrix: the unit and
+# brand suites belong to test.yml. Nine of the twelve published archives are
+# started by no cell at all -- both arm64-musl and the four baseline builds have
+# no cell, and nothing in a Linux container runs macOS or Windows -- so the
+# record this job writes names them one by one. A green run here is a statement
+# about three archives and must never be read as one about twelve.
+#
+# What it runs against. The real release archives for a published version,
+# verified against the published SHA256SUMS and then served from a loopback
+# mirror so twenty cells cost one download rather than twenty. A job that built
+# the binary and tested it in place could not see the packaging faults at all:
+# the four -baseline archives being byte identical to the siblings they exist to
+# replace, the musl build needing a libstdc++ that Alpine does not install, or
+# windows-arm64 being published and then refused by the installer.
+#
+# When it runs, and why not on every push:
+#
+#   * On the release tag, from release.yml, between publishing the archives and
+#     publishing the npm packages. That is the moment it matters, and it is also
+#     the earliest moment the real bytes exist at the URL the installer uses, so
+#     the run tests the upload as well as the build. npm waits on the result.
+#     This is a gate on what goes out next, not on what has already gone out:
+#     the archives on the release page cannot be unpublished by a later job.
+#     A true pre-publish gate is possible and was not built here, because it
+#     means splitting release.yml's one build-and-publish job into build, then
+#     matrix, then publish. The harness already has the hooks for it -- point
+#     --assets at the downloaded rafikicode-release artifact and pass
+#     --no-download, and it serves those bytes instead of fetching them -- so
+#     the work is in the release pipeline, not in the matrix.
+#   * On a pull request and on a push to dev that touches install/**, because the
+#     installer is the other half of what each cell measures.
+#   * Weekly, because nothing in this repository changes when debian:12-slim,
+#     ubuntu:24.04 or alpine:3.20 change under it, and a release that installed
+#     cleanly in March can stop installing in June with no commit to blame.
+#   * By hand, against any published version, for bisecting one.
+#
+# Not on every push: six minutes and roughly 1.1 GiB of transient Docker layer
+# per run, to re-measure bytes that only change when a release is cut, is the
+# kind of cost that gets a job switched off -- and a switched off matrix is the
+# same as no matrix.
+#
+# Untrusted values (the dispatch input, the caller's version) reach scripts only
+# through quoted env variables, and the version is refused unless it is a
+# semantic version before any step uses it, the same rule release.yml applies to
+# the tag.
+
+on:
+  workflow_call:
+    inputs:
+      release-version:
+        description: "Published version whose assets to install, without the leading v"
+        required: true
+        type: string
+      publish-to-release:
+        description: "Upload INSTALL-MATRIX.md to the release for this version"
+        required: false
+        type: boolean
+        default: false
+      only:
+        description: "Run only the cells whose id contains this"
+        required: false
+        type: string
+        default: ""
+  workflow_dispatch:
+    inputs:
+      release-version:
+        description: "Published version to install, without the leading v (blank: the newest release)"
+        required: false
+        type: string
+      only:
+        description: "Run only the cells whose id contains this (blank: all of them)"
+        required: false
+        type: string
+  push:
+    branches:
+      - dev
+    paths:
+      - install/**
+      - .github/workflows/install-matrix.yml
+  pull_request:
+    paths:
+      - install/**
+      - .github/workflows/install-matrix.yml
+  schedule:
+    # Monday morning, off the hour, so a week of base image drift is found by a
+    # job rather than by a user.
+    - cron: "41 5 * * 1"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  # A release run is never thrown away for a later one; a pull request run is.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  matrix:
+    name: install matrix
+    # The same image release.yml builds on, and a hosted runner with Docker
+    # available directly rather than inside a container: the cells need --tmpfs,
+    # --read-only, --user and the host network namespace.
+    runs-on: ubuntu-24.04
+    # A full run is about six minutes on eight cores. The two emulated arm64
+    # cells are much slower than that on four, and a hung cell should be killed
+    # by the clock rather than left to burn an hour.
+    timeout-minutes: 60
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - name: Work out which published release to install
+        id: meta
+        shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.release-version }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          VERSION="${INPUT_VERSION:-}"
+          SOURCE="the version this run was given"
+          if [ -z "$VERSION" ]; then
+            # A push, a schedule or a dispatch with the field left blank: the
+            # newest published release is the one users are installing today.
+            TAG=$(gh api "repos/${REPO}/releases/latest" --jq .tag_name 2>/dev/null || true)
+            VERSION="${TAG#v}"
+            SOURCE="the newest published release of ${REPO}"
+          fi
+          if [ -z "$VERSION" ]; then
+            echo "::error title=install matrix::No published release to install, and none was named. The matrix installs real published assets, so there is nothing for it to test. Give a version with workflow_dispatch once a release exists."
+            exit 1
+          fi
+          semver='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
+          if [ "${#VERSION}" -gt 64 ] || ! [[ "$VERSION" =~ $semver ]]; then
+            echo "::error title=install matrix::'${VERSION}' is not a semantic version. Give it without the leading v, for example 0.1.8."
+            exit 1
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Installing the published assets of v${VERSION} (${SOURCE})."
+
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Report the runner before the run
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "runner: $(uname -srm), $(nproc) cpus"
+          df -h / /mnt 2>/dev/null || df -h /
+          docker version --format '{{.Server.Version}}' | sed 's/^/docker: /'
+
+      # Two cells run on linux/arm64, which needs a qemu-aarch64 binfmt_misc
+      # registration that a hosted runner does not have. Without this they are
+      # reported untested, which is honest but measures nothing; with it they run
+      # under emulation, which measures the arm64 binary's own dynamic linking.
+      #
+      # It is still not arm64 hardware, and this runner's emulation is the same
+      # qemu-user as anywhere else, so it offers the same false comfort: a guest
+      # PROT_EXEC mapping of a file on a noexec mount is not refused the way the
+      # kernel refuses it natively. arm64-noexec passed here once for exactly
+      # that reason and was demoted to untested. The harness demotes it
+      # unconditionally, on every host, so registering qemu cannot turn that
+      # cell green -- see the arm64 note in test-matrix.sh. Do not "fix" it.
+      - name: Register qemu for linux/arm64
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
+        with:
+          platforms: arm64
+
+      - name: Run the matrix
+        id: run
+        shell: bash
+        env:
+          RAFIKICODE_MATRIX_ASSETS: ${{ runner.temp }}/matrix-assets
+          MATRIX_VERSION: ${{ steps.meta.outputs.version }}
+          MATRIX_ONLY: ${{ inputs.only }}
+        run: |
+          # GitHub runs a bash step with -e, which would kill this step on the
+          # harness's own exit status before it could be recorded. The gate is
+          # the next step; this one only has to finish and hand the status over.
+          set +e
+          set -uo pipefail
+          args=(--release-version "$MATRIX_VERSION" --results "$RUNNER_TEMP/matrix-results.tsv")
+          [ -n "${MATRIX_ONLY:-}" ] && args+=(--only "$MATRIX_ONLY")
+          # The exit status is deliberately not the gate. Several cells are built
+          # to fail -- a machine with no bash cannot run a bash installer -- so a
+          # correct run is routinely non-zero. The next step judges the verdicts
+          # against what each cell is recorded to do, and that is what fails the
+          # job. Nothing here is continue-on-error: the step records the status
+          # and the job dies in the gate.
+          install/test-matrix.sh "${args[@]}" 2>&1 | tee "$RUNNER_TEMP/matrix.log"
+          status=${PIPESTATUS[0]}
+          echo "status=${status}" >> "$GITHUB_OUTPUT"
+          echo "install/test-matrix.sh exited ${status}"
+
+      - name: Judge the run and write the record
+        if: always() && steps.run.conclusion != 'skipped'
+        shell: bash
+        env:
+          HARNESS_STATUS: ${{ steps.run.outputs.status }}
+          MATRIX_VERSION: ${{ steps.meta.outputs.version }}
+          MATRIX_ONLY: ${{ inputs.only }}
+        run: |
+          set -euo pipefail
+          results="$RUNNER_TEMP/matrix-results.tsv"
+          record="$RUNNER_TEMP/INSTALL-MATRIX.md"
+
+          # Exit 3 is the harness refusing to fill the disk. It is not a product
+          # result and must not be read as one.
+          if [ "${HARNESS_STATUS:-}" = "3" ]; then
+            echo "::error title=install matrix::The matrix stopped on its free disk floor, so the cells after that point did not run. This is the runner, not the product: nothing here is a pass and nothing here is a failure."
+            { echo "## Install matrix: did not run"; echo;
+              echo "The harness stopped on its free disk floor. No cell after that point was tested."; } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          if [ ! -s "$results" ]; then
+            echo "::error title=install matrix::The matrix produced no verdicts at all (harness exit ${HARNESS_STATUS:-unknown}). Every cell is untested; none of them passed."
+            { echo "## Install matrix: did not run"; echo;
+              echo "No verdicts were produced, so every cell is untested. Harness exit \`${HARNESS_STATUS:-unknown}\`."; } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          gate_args=(--results "$results" --markdown "$record"
+                     --version "v${MATRIX_VERSION}"
+                     --where "${RUNNER_OS}/${RUNNER_ARCH} hosted runner (ubuntu-24.04)")
+          # A run narrowed with --only attempted some of the cells. The rest are
+          # reported as not attempted rather than as missing, and the record says
+          # so, so that a green subset is not read as a green matrix.
+          [ -n "${MATRIX_ONLY:-}" ] && gate_args+=(--subset)
+
+          gate=0
+          install/matrix-gate.sh "${gate_args[@]}" | tee "$RUNNER_TEMP/matrix-gate.log" || gate=$?
+
+          # The record goes on the run's own summary page as well as into the
+          # artifact, because a result nobody sees is a result nobody acts on.
+          if [ -s "$record" ]; then
+            cat "$record" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "## Install matrix: no record was rendered" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          {
+            echo
+            echo "<details><summary>Gate output and harness exit status</summary>"
+            echo
+            echo '```'
+            cat "$RUNNER_TEMP/matrix-gate.log"
+            echo "install/test-matrix.sh exited ${HARNESS_STATUS:-unknown}"
+            echo '```'
+            echo
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          exit "$gate"
+
+      - name: Keep the verdicts, the record and every cell's log
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: install-matrix-${{ steps.meta.outputs.version || 'unknown' }}-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          retention-days: 30
+          path: |
+            ${{ runner.temp }}/INSTALL-MATRIX.md
+            ${{ runner.temp }}/matrix-results.tsv
+            ${{ runner.temp }}/matrix-gate.log
+            ${{ runner.temp }}/matrix.log
+
+      - name: Clean up and report the runner after the run
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          set -uo pipefail
+          # Cells run with --rm, so this only sweeps up after a crash, and the
+          # derived images are worth nothing to a runner that is about to be
+          # destroyed.
+          docker ps -aq --filter label=rafikicode-matrix | xargs -r docker rm -f >/dev/null 2>&1 || true
+          docker image rm -f $(docker images -q 'rafikicode-matrix*') >/dev/null 2>&1 || true
+          rm -rf "$RUNNER_TEMP/matrix-assets" || true
+          docker system prune -f >/dev/null 2>&1 || true
+          df -h /
+
+  publish:
+    name: publish the record beside PLATFORM-COVERAGE.md
+    # Only the release call asks for this. PLATFORM-COVERAGE.md already says
+    # which binaries were ever started; this says what happened when they were
+    # installed, and the two answer the same question from the two ends, so they
+    # belong on the same release page rather than in a log that expires.
+    #
+    # Published whether the run was green or red. A release page that quietly
+    # lacks the record is the v0.1.7 situation again: absence of evidence read
+    # as evidence of absence.
+    if: ${{ always() && inputs.publish-to-release && needs.matrix.outputs.version != '' }}
+    needs: matrix
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: install-matrix-${{ needs.matrix.outputs.version }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: record
+
+      - name: Upload INSTALL-MATRIX.md to the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v${{ needs.matrix.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ ! -s record/INSTALL-MATRIX.md ]; then
+            echo "::error title=install matrix::The matrix produced no record to publish, so the release page says nothing about how it installs. Look at the matrix job."
+            exit 1
+          fi
+          gh release upload "$TAG" record/INSTALL-MATRIX.md --clobber --repo "$GITHUB_REPOSITORY"

@@ -129,9 +129,32 @@ jobs:
               --title "$TAG" --generate-notes --verify-tag
           fi
 
+  install-matrix:
+    name: install matrix
+    needs: build
+    # Runs install/test-matrix.sh against the archives the job above just
+    # published: the installer's real download, checksum and unpack path, in
+    # twenty containers shaped like the machines users have, and the program
+    # started in each one. The assets exist at their public URL by this point,
+    # so the run tests the upload as well as the build -- and this is the first
+    # moment in a release when it can. See .github/workflows/install-matrix.yml.
+    permissions:
+      # The called workflow publishes INSTALL-MATRIX.md beside
+      # PLATFORM-COVERAGE.md on the release, so the record of how this version
+      # installs outlives the workflow log.
+      contents: write
+    uses: ./.github/workflows/install-matrix.yml
+    with:
+      release-version: ${{ needs.build.outputs.version }}
+      publish-to-release: true
+
   npm:
     name: publish npm packages
-    needs: build
+    # The npm packages carry the same binaries to the other install channel, so
+    # they wait for the matrix. v0.1.7 went out everywhere at once on the
+    # strength of one --version run on the build host; the archives on the
+    # release page cannot be unpublished, but these can still be held back.
+    needs: [build, install-matrix]
     runs-on: ubuntu-24.04
     permissions:
       contents: read
