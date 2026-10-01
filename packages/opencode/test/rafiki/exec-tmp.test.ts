@@ -188,21 +188,29 @@ describe("recognising the failure", () => {
     expect(ExecTmp.explain(new Error("fetch failed"))).toBeUndefined()
   })
 
-  test("explain replaces the reported error with something to act on", () => {
-    const text = ExecTmp.explain(new Error(reported), [])
-    expect(text).toBeDefined()
-    expect(text).toContain("cannot start its terminal interface")
+  test("explain hands the reported error to the diagnosis layer as a cause and a step", () => {
+    // Not a finished message any more: the words below are printed as the cause
+    // and the step of a startup diagnosis, which is what carries the exit code,
+    // the original error and the --print-logs hint (rafiki/startup.ts).
+    const detail = ExecTmp.explain(new Error(reported), [])
+    expect(detail).toBeDefined()
+    expect(detail!.cause).toContain("Probable cause:")
+    expect(detail!.step.split("\n").length).toBeGreaterThan(1)
   })
 
   test("explain does not blame noexec when the temporary directory can run a file", () => {
     // This suite runs with a usable temporary directory, so the same error has to
     // be explained by what is left: a build for another machine, a C library, a
-    // memory limit. The original words are kept for a bug report.
-    const text = ExecTmp.explain(new Error(reported), [])!
-    expect(text).toContain("is not this")
-    expect(text).toContain("ldd --version")
-    expect(text).toContain("failed to map segment from shared object")
-    expect(text).not.toContain("Directories tried")
+    // memory limit. The library that failed is still named; the original words
+    // are printed by the diagnosis layer as "Original error:", asserted there.
+    const detail = ExecTmp.explain(new Error(reported), [])!
+    expect(detail.cause).toContain("is not this")
+    expect(detail.cause).toContain("ldd --version")
+    expect(detail.cause).toContain("/tmp/.9adb7abbf6e5efff-00000001.so could not be mapped")
+    expect(detail.cause).toContain("your sign in and your key are fine")
+    expect(detail.cause).not.toContain("Directories tried")
+    // A build problem is worth sending to us, unlike a host's noexec mount.
+    expect(detail.report).toBe(true)
   })
 })
 
@@ -229,8 +237,11 @@ describe("the message when no directory works", () => {
   })
 
   test("gives a command to type and a line to send the host", () => {
-    expect(text).toContain(`TMPDIR=/that/directory ${Brand.name}`)
-    expect(text).toContain("not mounted noexec")
+    // Both live in the step rather than in the message, because the diagnosis
+    // layer prints a cause and a step (rafiki/startup.ts). Same words.
+    const step = ExecTmp.step()
+    expect(step).toContain(`TMPDIR=/that/directory ${Brand.name}`)
+    expect(step).toContain("not mounted noexec")
   })
 
   test("uses this product's name and never the upstream one", () => {

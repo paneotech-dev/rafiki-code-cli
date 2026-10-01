@@ -25,8 +25,12 @@
 //
 // Writable is not the same as executable, so every candidate is tested for
 // real: write a small script, make it executable, run it. A directory that
-// cannot run it is not used. When none of them can, message() says so in words
-// a user can act on, and FormatError prints it in place of the dlopen string.
+// cannot run it is not used. When none of them can, explain() hands what the
+// probe found to the diagnosis layer (rafiki/startup.ts) as the cause of the
+// failure, with the step to take: this module is the only thing that knows
+// which directories were tried and why each one refused, and that layer owns
+// the headline, the exit code, the original error, the cause chain and the
+// --print-logs hint, for this failure as for every other.
 import fs from "fs"
 import os from "os"
 import path from "path"
@@ -192,13 +196,16 @@ function primary(tried: readonly Attempt[]): Verdict {
   return order.find((verdict) => tried.some((attempt) => attempt.verdict === verdict)) ?? "unknown"
 }
 
-// What a blocked user reads instead of the dlopen string. It has to say what
-// failed, that their account is not the problem, and one command they can type.
+// What a blocked user reads instead of the dlopen string: what failed, every
+// directory tried and why each one refused, and that their account is not the
+// problem. This is the cause of the diagnosis, so it opens the way every other
+// cause does; step() is the command half, and the headline and the original
+// error belong to the layer that prints them (rafiki/startup.ts).
 export function message(tried: readonly Attempt[]) {
   const lines = [
-    `${Brand.product} cannot start its terminal interface on this machine.`,
+    "Probable cause: no temporary directory on this machine will run a file.",
     "",
-    `The interface is drawn by a small library that travels inside the ${Brand.name} binary. Starting it means unpacking that library into a temporary directory and then running it from there, and every directory tried refuses one of those two steps.`,
+    `${Brand.product} draws its terminal interface with a small library that travels inside the ${Brand.name} binary. Starting it means unpacking that library into a temporary directory and then running it from there, and every directory tried refuses one of those two steps.`,
     "",
     "Directories tried:",
     ...tried.map((attempt) => `  ${attempt.dir} (${reasons[attempt.verdict]})`),
@@ -224,8 +231,15 @@ export function message(tried: readonly Attempt[]) {
     default:
       lines.push("Why the directories cannot be used could not be determined on this machine.")
   }
-  lines.push(
-    "",
+  return lines.join("\n")
+}
+
+// The step for that same case: one directory the user can point at themselves,
+// and one line to send whoever runs the machine. The fallback directories have
+// already been tried by the time this prints, which is why it does not offer
+// one of them.
+export function step() {
+  return [
     `If you know a directory on this machine that programs are allowed to run from, point ${Brand.name} at it:`,
     "",
     `  TMPDIR=/that/directory ${Brand.name}`,
@@ -233,8 +247,7 @@ export function message(tried: readonly Attempt[]) {
     "Otherwise ask whoever runs this server for one. This is the line to send them:",
     "",
     `  "${Brand.name} needs a directory I can write a file to and then execute. Please give me one that is not mounted noexec, or allow execution under my home directory."`,
-  )
-  return lines.join("\n")
+  ].join(os.EOL)
 }
 
 // True for the render library failing to load, in any of the shapes the runtime
@@ -255,37 +268,67 @@ function roots() {
   return { cache: path.join(xdgCache ?? path.join(os.homedir(), ".cache"), Brand.dir), config: Brand.configDir() }
 }
 
+// The library the failure names, when it names one, so the cause can say which
+// file it was instead of leaving the user to find it in a dlopen string.
+function libraryFile(input: unknown) {
+  const text = input instanceof Error ? input.message : typeof input === "string" ? input : ""
+  return text.match(/(?:[A-Za-z]:)?[\\/][^\s"'`:,()]+\.(?:so|dylib|dll)(?:\.\d+)*/)?.[0]
+}
+
 // The render library failed, and yet a file can be written to dir and run from
 // it, so noexec is not what happened. The causes left are ones a probe cannot
 // tell apart: a library built for another machine or another C library, or the
-// account running out of memory while it was mapped. Say which they are and keep
-// the original words for whoever gets asked about it.
+// account running out of memory while it was mapped. Say which they are, and do
+// not list directories that are not at fault. The original words are kept by the
+// layer that prints this, as the "Original error:" line (rafiki/startup.ts).
 function otherCause(input: unknown, dir: string) {
+  const file = libraryFile(input)
   return [
-    `${Brand.product} cannot start its terminal interface on this machine.`,
-    "",
-    `The library that draws it did not load. ${dir} can hold a file and then run it, so the usual cause on shared hosting, a temporary directory mounted "noexec", is not this.`,
+    `Probable cause: not the temporary directory. ${dir} can hold a file and then run it, so the usual cause on shared hosting, a temporary directory mounted "noexec", is not this${file ? `, and yet ${file} could not be mapped` : ""}.`,
     "",
     "What is left:",
     "  a build for another kind of machine, or for a newer C library than this one has (check yours with: ldd --version)",
     "  this account reaching its memory limit while the library was loaded",
     `  too little free space in ${dir}`,
     "",
-    `Reinstalling from ${Brand.release.installer} fetches the build for this machine. If it keeps happening, report it at ${Brand.issues} with the line below.`,
-    "",
-    `  ${input instanceof Error ? input.message : String(input)}`,
+    "Either way this is not your account: your sign in and your key are fine, because only the terminal interface loads a library from a file.",
   ].join("\n")
 }
 
-// The message for a render library failure, or undefined when this is not that
-// failure. Probes again here rather than carrying state from ensure(), so the
-// reasons printed are the ones true at the moment of the failure, and so a
-// failure that is not about the temporary directory is not blamed on it.
-export function explain(input: unknown, dirs: readonly string[] = candidates(roots())): string | undefined {
+// The step for that case: nothing here is fixed by a different directory, so it
+// sends the user to the self check first, and the report way out carries the
+// address to report it at (rafiki/startup.ts).
+function selfCheck() {
+  return `Start with the self check, in case it names the problem:${os.EOL}  ${Brand.name} doctor`
+}
+
+// What the diagnosis layer prints for a render library failure: the cause, in
+// the words of whatever the probe found, and the step that follows from it.
+// report is true when the failure is worth sending to us rather than to whoever
+// runs the machine.
+export interface Detail {
+  cause: string
+  step: string
+  report?: boolean
+}
+
+// The detail for a render library failure, or undefined when this is not that
+// failure, in which case the diagnosis layer falls back to what the error text
+// alone can tell it. Probes again here rather than carrying state from ensure(),
+// so the reasons printed are the ones true at the moment of the failure, and so
+// a failure that is not about the temporary directory is not blamed on it. check
+// is the probe, taken as an argument so the no-directory-works report can be
+// tested on a machine where a noexec mount cannot be created.
+export function explain(
+  input: unknown,
+  dirs: readonly string[] = candidates(roots()),
+  check: (dir: string) => Verdict = probe,
+): Detail | undefined {
   if (!isRenderLibFailure(input)) return undefined
   const current = process.env["TMPDIR"] || os.tmpdir()
-  const picked = choose([current, ...dirs])
-  return picked.dir ? otherCause(input, picked.dir) : message(picked.tried)
+  const picked = choose([current, ...dirs], [], check)
+  if (!picked.dir) return { cause: message(picked.tried), step: step() }
+  return { cause: otherCause(input, picked.dir), step: selfCheck(), report: true }
 }
 
 // Starts this binary again with TMPDIR pointing at dir and exits with whatever

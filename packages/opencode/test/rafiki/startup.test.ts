@@ -16,6 +16,7 @@ import fs from "fs"
 import os from "os"
 import path from "path"
 import * as Startup from "../../src/rafiki/startup"
+import * as ExecTmp from "../../src/rafiki/exec-tmp"
 
 const root = path.resolve(import.meta.dir, "../..")
 
@@ -74,12 +75,19 @@ describe("startup diagnosis in the terminal", () => {
     expect(result.all).not.toContain("Unexpected error")
 
     expect(result.all).toContain("Rafiki Code cannot start: a library it needs could not be loaded on this machine.")
-    // Probable cause, naming the directory and the file from the error.
-    expect(result.all).toContain("Probable cause: /tmp does not allow an executable file to be loaded from it")
+    // The cause is the temporary directory probe's own, measured on this
+    // machine, not a guess read off the error text: that it probed at all is
+    // the absence of the text the fallback would have printed.
+    expect(result.all).toContain("Probable cause:")
+    expect(result.all).not.toContain("does not allow an executable file to be loaded from it")
     expect(result.all).toContain("noexec")
-    expect(result.all).toContain("/tmp/.9adb7abbf6e5efff-00000001.so could not be mapped")
-    // One command, pasteable as printed.
-    expect(result.all).toContain("mkdir -p ~/.rafikicode/tmp && TMPDIR=~/.rafikicode/tmp rafikicode")
+    // The directory it tested is named, whichever verdict it reached.
+    expect(result.all).toContain("/tmp")
+    // The sentence users need: they arrive at this certain their account or
+    // their key is broken, and it is neither.
+    expect(result.all).toContain("your sign in and your key are fine")
+    // One command, pasteable as printed: indented on a line of its own.
+    expect(result.all).toMatch(/^ {2}\S/m)
     // The escape hatches, every time.
     expect(result.all).toContain("rafikicode doctor")
     expect(result.all).toContain('rafikicode run "your task"')
@@ -98,16 +106,20 @@ describe("startup diagnosis in the terminal", () => {
     expect(result.exitCode).toBe(6)
   }, 30_000)
 
-  test("an illegal instruction blames the CPU and offers the baseline build, not the run command", async () => {
+  test("an illegal instruction is reported as a bug, and not sent for a reinstall that changes nothing", async () => {
     const result = await run([], { RAFIKICODE_TEST_STARTUP_ERROR: "Illegal instruction (core dumped)" })
 
-    expect(result.all).toContain(
-      "Rafiki Code cannot start: the installed build needs a newer CPU than this machine has.",
-    )
-    expect(result.all).toContain("curl -fsSL https://get.rafikiai.io | bash")
+    expect(result.all).toContain("Rafiki Code cannot start: it stopped on an instruction this machine's CPU would not run.")
+    // No reinstall: the four archives labelled "baseline" are byte identical
+    // to their siblings, and the binary has been driven on an emulated 2008
+    // CPU with neither AVX nor AVX2, so there is no other build to fetch.
+    expect(result.all).not.toContain("curl -fsSL https://get.rafikiai.io | bash")
+    expect(result.all).not.toContain("baseline")
     // A build that will not execute here is not helped by another command.
     expect(result.all).not.toContain('rafikicode run "your task"')
     expect(result.all).toContain("report it at")
+    // Something to put in the report: which CPU this happened on.
+    expect(result.all).toContain("lscpu")
     expect(result.stderr).toContain("Original error: Illegal instruction (core dumped)")
     expect(result.exitCode).toBe(6)
   }, 30_000)
@@ -207,7 +219,7 @@ describe("startup diagnosis in the terminal", () => {
 describe("startup diagnosis", () => {
   test("classifies by what the error says", () => {
     expect(Startup.diagnose(new Error(NOEXEC)).kind).toBe("native_library")
-    expect(Startup.diagnose(new Error("Illegal instruction")).kind).toBe("cpu_baseline")
+    expect(Startup.diagnose(new Error("Illegal instruction")).kind).toBe("illegal_instruction")
     expect(Startup.diagnose(new Error("libc.so.6: version `GLIBC_2.32' not found")).kind).toBe("libc_mismatch")
     expect(Startup.diagnose(new Error("inappropriate ioctl for device")).kind).toBe("terminal")
     expect(Startup.diagnose(new Error("nothing recognisable")).kind).toBe("unknown")
@@ -238,6 +250,49 @@ describe("startup diagnosis", () => {
     expect(Startup.terminal(env, { isTTY: true, columns: 80, rows: 24 })).toBeUndefined()
     // The switch the test suites use to drive the full screen interface.
     expect(Startup.terminal({ ...env, RAFIKICODE_TEST_TTY: "1" }, { isTTY: false })).toBeUndefined()
+  })
+
+  // The two halves of a render library failure, each driven without needing a
+  // machine in that state: a noexec mount cannot be created everywhere, and a
+  // machine whose temporary directory works cannot be made to fail. The probe
+  // is injected, the words it produces are its real ones, and the report around
+  // them is the one every other class gets.
+  test("no temporary directory will run a file: every directory tried, why, and the line to send the host", () => {
+    const dirs = ["/home/me/.cache/rafikicode/tmp", "/home/me/.rafikicode/tmp"]
+    const detail = ExecTmp.explain(new Error(NOEXEC), dirs, () => "noexec")!
+    const diagnosis = Startup.diagnose(new Error(NOEXEC), () => detail)
+    const text = Startup.render(diagnosis, new Error(NOEXEC))
+
+    expect(diagnosis.kind).toBe("native_library")
+    // The code this class was created for, which is what a script branches on.
+    expect(diagnosis.exitCode).toBe(6)
+    expect(text).toContain("Rafiki Code cannot start: a library it needs could not be loaded on this machine.")
+    expect(text).toContain("Probable cause: no temporary directory on this machine will run a file.")
+    expect(text).toContain("Directories tried:")
+    for (const dir of dirs) expect(text).toContain(dir)
+    expect(text).toContain('mounted "noexec", so a file written there cannot be run')
+    expect(text).toContain("your sign in and your key are fine")
+    // The command to type and the line to send whoever runs the machine.
+    expect(text).toContain("TMPDIR=/that/directory rafikicode")
+    expect(text).toContain("not mounted noexec, or allow execution under my home directory")
+    expect(text).toContain("rafikicode doctor")
+    expect(text).toContain('rafikicode run "your task"')
+    expect(text).toContain(`Original error: ${NOEXEC}`)
+    expect(text).toContain("--print-logs")
+  })
+
+  test("a temporary directory that does run a file is ruled out by name, not blamed", () => {
+    const detail = ExecTmp.explain(new Error(NOEXEC), [], () => "ok")!
+    const text = Startup.render(Startup.diagnose(new Error(NOEXEC), () => detail), new Error(NOEXEC))
+
+    expect(text).toContain('a temporary directory mounted "noexec", is not this')
+    expect(text).toContain("/tmp/.9adb7abbf6e5efff-00000001.so could not be mapped")
+    expect(text).toContain("ldd --version")
+    // Nothing was at fault, so nothing is listed as if it were.
+    expect(text).not.toContain("Directories tried")
+    expect(text).toContain("your sign in and your key are fine")
+    expect(text).toContain("report it at")
+    expect(text).toContain(`Original error: ${NOEXEC}`)
   })
 
   test("looks through a wrapped error to the cause that names the problem, and prints both", () => {

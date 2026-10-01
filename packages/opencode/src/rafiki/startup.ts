@@ -17,7 +17,10 @@
 //
 // Classification reads the error text only, so a cause nobody anticipated
 // still gets the unknown class, which carries the ways out and the original
-// error rather than a dead end.
+// error rather than a dead end. One class knows more than the text: the render
+// library failing to load is diagnosed by probing the temporary directories
+// for real (rafiki/exec-tmp.ts), and that probe's words become the cause here.
+// The report around them is this file's either way, for every class alike.
 import os from "os"
 import path from "path"
 import { Brand } from "@opencode-ai/core/brand/brand"
@@ -25,10 +28,11 @@ import { errorFormat, errorMessage } from "@/util/error"
 import { isRecord } from "@/util/record"
 import { UI } from "@/cli/ui"
 import * as Contract from "./contract"
+import * as ExecTmp from "./exec-tmp"
 
 export type Kind =
   | "native_library"
-  | "cpu_baseline"
+  | "illegal_instruction"
   | "libc_mismatch"
   | "no_writable_directory"
   | "terminal"
@@ -100,7 +104,13 @@ function quoted(text: string) {
   return match?.[1]
 }
 
-export function diagnose(error: unknown): Diagnosis {
+export function diagnose(
+  error: unknown,
+  // What the temporary directory probe makes of a render library failure.
+  // Injectable so the report for "no directory on this machine will run a
+  // file" can be tested where such a directory cannot be created.
+  detail: (input: unknown) => ExecTmp.Detail | undefined = ExecTmp.explain,
+): Diagnosis {
   const links = chain(error)
   const text = links
     .flatMap((link) => [errorMessage(link), errorFormat(link), field(link, "code") ?? "", field(link, "path") ?? ""])
@@ -130,11 +140,17 @@ export function diagnose(error: unknown): Diagnosis {
 
   if (/illegal instruction|sigill|invalid instruction|unsupported cpu|\bavx2?\b|\bsse4/.test(lower)) {
     return {
-      kind: "cpu_baseline",
-      headline: `${Brand.product} cannot start: the installed build needs a newer CPU than this machine has.`,
+      kind: "illegal_instruction",
+      headline: `${Brand.product} cannot start: it stopped on an instruction this machine's CPU would not run.`,
+      // Not a reinstall. The published builds need no AVX or AVX2: this binary
+      // has been driven on an emulated 2008 Nehalem with neither, and all four
+      // archives labelled "baseline" are byte for byte the sibling they sit
+      // beside, so there is no other build for the installer to fetch. An
+      // illegal instruction here is a bug in the build, and the CPU it
+      // happened on is the thing worth reporting.
       cause:
-        "Probable cause: this build uses instructions (AVX2 and similar) this CPU does not have, so it stops with an illegal instruction. A baseline build exists for exactly this case.",
-      step: `Reinstall, so the installer detects the CPU and picks the baseline build:${os.EOL}  ${INSTALLER}`,
+        "Probable cause: a bug in this build, not the wrong build for this machine. The published builds do not need AVX2 or any other recent instruction, and there is no separate build to install instead, so an illegal instruction here should not happen on any CPU.",
+      step: `Note which CPU this is, so the report can name it:${os.EOL}  lscpu || sysctl -n machdep.cpu.brand_string`,
       ways: ["report"],
       exitCode: Contract.EXIT.machine,
     }
@@ -145,6 +161,25 @@ export function diagnose(error: unknown): Diagnosis {
       lower,
     )
   ) {
+    // What the probe found, when this is the render library failing to load:
+    // which directories were tried and why each one refused, that the account
+    // is not at fault, and the line to send whoever runs the machine. It knows
+    // this machine; the fallback below it knows only the error text. The
+    // flattened chain is what it is given, not the error object, because such a
+    // failure arrives wrapped as often as not ("Failed to start X", caused by
+    // the dlopen error) and the text is where it is recognisable.
+    const probed = detail(text)
+    if (probed)
+      return {
+        kind: "native_library",
+        headline: `${Brand.product} cannot start: a library it needs could not be loaded on this machine.`,
+        cause: probed.cause,
+        step: probed.step,
+        // The library is the full screen interface's own: the run command
+        // needs none of it and keeps working while this is unfixed.
+        ways: probed.report ? ["doctor", "run", "report"] : ["doctor", "run"],
+        exitCode: Contract.EXIT.machine,
+      }
     const file = library(text) ?? quoted(text)
     const dir = file ? path.dirname(file) : os.tmpdir()
     return {

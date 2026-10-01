@@ -131,20 +131,20 @@ describe("cli.error", () => {
   })
 
   // The dlopen string two users met on shared hosting says nothing they can act
-  // on, so it never reaches them (rafiki/exec-tmp.ts).
-  test("replaces the render library dlopen failure with something to act on", () => {
-    const formatted = FormatError(
-      new Error(
-        'Failed to initialize OpenTUI render library: Failed to open library "/tmp/.9adb7abbf6e5efff-00000001.so": /tmp/.9adb7abbf6e5efff-00000001.so: failed to map segment from shared object',
+  // on, and it is not answered here. A string returned from this function is
+  // all the caller prints: no exit code of its own, no "Original error:", no
+  // stack behind --print-logs. So it is left to the diagnosis layer, which owns
+  // those, and the temporary directory probe's words arrive there as the cause
+  // (rafiki/startup.ts, rafiki/exec-tmp.ts; asserted in test/rafiki/startup.test.ts,
+  // which drives the real binary and checks the message and exit code 6).
+  test("leaves the render library dlopen failure to the diagnosis layer", () => {
+    expect(
+      FormatError(
+        new Error(
+          'Failed to initialize OpenTUI render library: Failed to open library "/tmp/.9adb7abbf6e5efff-00000001.so": /tmp/.9adb7abbf6e5efff-00000001.so: failed to map segment from shared object',
+        ),
       ),
-    )
-    expect(formatted).toBeDefined()
-    expect(formatted).toContain("Rafiki Code cannot start its terminal interface")
-    expect(formatted).not.toContain("opencode")
-    // The runtime's own words are kept at the end, as the line to quote in a
-    // report, not as the explanation.
-    expect(formatted).toContain("failed to map segment from shared object")
-    expect(formatted!.indexOf("failed to map segment")).toBeGreaterThan(formatted!.indexOf("terminal interface"))
+    ).toBeUndefined()
   })
 
   test("leaves an unrecognised error to the unexpected error path", () => {

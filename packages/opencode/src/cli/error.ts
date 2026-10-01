@@ -2,7 +2,6 @@ import { Brand } from "@opencode-ai/core/brand/brand"
 import { NamedError } from "@opencode-ai/core/util/error"
 import { errorFormat } from "@/util/error"
 import { isRecord } from "@/util/record"
-import * as ExecTmp from "@/rafiki/exec-tmp"
 
 type ConfigIssue = { message: string; path: string[] }
 
@@ -143,10 +142,13 @@ export function FormatError(input: unknown): string | undefined {
   }
 
   // The native render library failing to load, which on shared hosting means a
-  // temporary directory mounted noexec. The runtime reports it as a dlopen
-  // string that tells a user nothing, so it is replaced (rafiki/exec-tmp.ts).
-  const renderLib = ExecTmp.explain(input)
-  if (renderLib) return renderLib
+  // temporary directory mounted noexec, is deliberately not formatted here.
+  // Returning a finished string from this function means the caller prints it
+  // and nothing else: no exit code of its own, no "Original error:", no stack
+  // behind --print-logs. It is left undefined so it reaches the diagnosis layer
+  // like every other startup failure, and the probe's words (the directories
+  // tried, why each refused, the line to send the host) arrive there as the
+  // cause (rafiki/startup.ts, rafiki/exec-tmp.ts).
 
   // UICancelledError: user cancelled an interactive CLI prompt
   if (isTaggedError(input, "UICancelledError") || NamedError.hasName(input, "UICancelledError")) {

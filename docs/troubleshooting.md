@@ -40,15 +40,15 @@ Run the installer without `--version` to get the latest release.
 
 When `rafikicode` cannot start, it says what it thinks the cause is, gives one command to try, and prints the original error under `Original error:` so you can paste it to us. Add `--print-logs` to the same command for the full error and its stack. Two exit codes carry the result for scripts: 6 means this machine or this build cannot run `rafikicode` at all, 7 means it runs but this terminal cannot host the full screen interface.
 
-**`Rafiki Code cannot start: a library it needs could not be loaded on this machine.`** The full screen interface loads a drawing library from the temporary directory, and that directory refuses to load executable files (a `noexec` mount, common on shared hosts), or it is full. The message names the file and the directory. Point `rafikicode` at a temporary directory of your own:
+**`Rafiki Code cannot start: a library it needs could not be loaded on this machine.`** The full screen interface is drawn by a library that is unpacked into the temporary directory and run from there. When that fails, `rafikicode` tests every temporary directory it could use, by writing a small file there and running it, and the message is what it found. Either no directory will run a file, and it lists each one it tried and why (a `noexec` mount, which is common on shared hosts; full; not writable), or the temporary directory is fine and the cause lies elsewhere, in which case it says so and names what is left: a build for another kind of machine, a newer C library than this one has, or a memory limit. Your sign in and your key are not the problem in either case. When no directory will run a file, point `rafikicode` at one that programs are allowed to run from:
 
 ```bash
-mkdir -p ~/.rafikicode/tmp && TMPDIR=~/.rafikicode/tmp rafikicode
+TMPDIR=/that/directory rafikicode
 ```
 
-Meanwhile `rafikicode run "your task"` needs no drawing library and keeps working. Exit code 6.
+If you do not have one, the message carries a line you can send to whoever runs the server. Meanwhile `rafikicode run "your task"` needs no drawing library and keeps working. Exit code 6.
 
-**`Rafiki Code cannot start: the installed build needs a newer CPU than this machine has.`** The build uses instructions, such as AVX2, that this processor does not have, so it stops with an illegal instruction. Run the installer again: it detects the processor and installs the baseline build made for it. Exit code 6.
+**`Rafiki Code cannot start: it stopped on an instruction this machine's CPU would not run.`** The published builds need no recent instruction set, such as AVX2, and there is no other build for the installer to fetch instead, so an illegal instruction here should not happen on any processor: it is a bug in the build. Reinstalling changes nothing. Please report it at the issue tracker the message names, with the original error and the processor this happened on (`lscpu`, or `sysctl -n machdep.cpu.brand_string` on macOS). Exit code 6.
 
 **`Rafiki Code cannot start: this build does not match the system C library of this machine.`** The installed build needs a different C library from the one this machine has: a newer glibc than it carries, or glibc where the machine uses musl (Alpine Linux and similar), or the other way round. Run the installer again: it detects which build this machine needs. Exit code 6.
 
