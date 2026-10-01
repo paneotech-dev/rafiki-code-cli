@@ -386,7 +386,7 @@ export const ProvidersCommand = Brand.providers.open() ? UpstreamProvidersComman
 // One line per check, ok, a warning, or a plain fix hint; exit 0 unless a line failed.
 export const DoctorCommand = effectCmd({
   command: "doctor",
-  describe: `check this terminal's ${Brand.product} setup: config, key, gateway, tiers, Rafiki AI console, version`,
+  describe: `check this terminal's ${Brand.product} setup: config, project config, workspace trust, key, gateway, tiers, Rafiki AI console, PATH, version`,
   instance: false,
   builder: (yargs: Argv) =>
     yargs.option("timeout", {

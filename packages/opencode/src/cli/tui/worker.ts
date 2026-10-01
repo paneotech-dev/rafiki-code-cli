@@ -10,8 +10,17 @@ import { Heap } from "@/cli/heap"
 import { AppRuntime } from "@/effect/app-runtime"
 import { Effect } from "effect"
 import { disposeAllInstancesAndEmitGlobalDisposed } from "@/server/global-lifecycle"
+import { installTrustNotices } from "@/rafiki/notice"
 
 Heap.start()
+
+// Config, plugins and permission rules are loaded here, so workspace-trust
+// warnings are raised here. The terminal interface owns the screen in the parent
+// process: send them as toast events instead of writing to a stderr nobody sees.
+// Installed before anything can load a config file.
+installTrustNotices((event) => {
+  GlobalBus.emit("event", event)
+})
 
 const onUnhandledRejection = (_error: unknown) => {}
 

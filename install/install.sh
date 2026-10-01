@@ -530,7 +530,7 @@ if can_sign_in; then
     # The install has already succeeded, so a sign in that is declined or fails
     # must not fail the installer. Fall through to the written instructions.
     if "$run_cmd" login </dev/tty; then
-        print_message info "\n${MUTED}Signed in. Run ${NC}${run_cmd}${MUTED} to start.${NC}"
+        print_message info "\n${MUTED}Signed in. Run ${NC}${run_cmd}${MUTED} to start, or ${NC}${run_cmd} doctor${MUTED} to check the setup.${NC}"
         exit 0
     fi
     print_message warning "Sign in did not finish. You can do it whenever you like:"
@@ -558,3 +558,9 @@ print_message info "  ${step}. Sign in to your Rafiki AI account:"
 print_message info "       ${run_cmd} login"
 print_message info "     ${MUTED}On a server with no browser, use a key from https://console.rafikiai.io/keys (tick the Rafiki Code option):${NC}"
 print_message info "       export RAFIKICODE_API_KEY=sk-..."
+step=$((step + 1))
+# The one command that answers "did that work?". It checks the config files, the
+# key, the gateway and, since this installer is the thing most likely to get it
+# wrong, whether the name resolves to the binary that was just written.
+print_message info "  ${step}. Check the whole setup, once signed in:"
+print_message info "       ${run_cmd} doctor"

@@ -2,6 +2,7 @@ import { describe, expect } from "bun:test"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { Effect, Layer } from "effect"
 import { Skill } from "../../src/skill"
+import { BrandSkill } from "@opencode-ai/core/brand/skill"
 import { Discovery } from "../../src/skill/discovery"
 import { RuntimeFlags } from "../../src/effect/runtime-flags"
 import { EventV2Bridge } from "../../src/event-v2-bridge"
@@ -89,6 +90,25 @@ describe("skill", () => {
       expect(output).not.toContain("file://")
       expect(output).not.toContain("%23")
     }),
+  )
+
+  // The built-in configuration skill. The upstream one is hidden here because it
+  // teaches upstream file names and a schema URL; hiding it kept the hard failure
+  // it mitigated, so a replacement written for this product ships in its place.
+  it.live("registers the built-in configuration skill written for this product", () =>
+    provideTmpdirInstance(
+      () =>
+        Effect.gen(function* () {
+          const skill = yield* Skill.Service
+          const builtin = (yield* skill.all()).filter((s) => s.location === "<built-in>")
+          expect(builtin.map((s) => s.name)).toEqual([BrandSkill.name])
+          expect(builtin[0]!.name).not.toContain("opencode")
+          expect(builtin[0]!.description).toBe(BrandSkill.description)
+          expect(builtin[0]!.content).toBe(BrandSkill.body())
+          expect(yield* skill.get("customize-opencode")).toBeUndefined()
+        }),
+      { git: true },
+    ),
   )
 
   it.live("discovers skills from .opencode/skill/ directory", () =>
