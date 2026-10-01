@@ -1,0 +1,178 @@
+# What each install matrix cell and facet is expected to do, read by
+# install/matrix-gate.sh. Tab separated: cell, facet, pass|fail|untested, note.
+#
+# This is the record of what the installed product does on each kind of machine.
+# Any other result fails the gate, in both directions: a cell that starts failing
+# is a regression, and a cell that starts passing is a fix that belongs in the
+# same change as its new expectation. "untested" means the facet was not
+# exercised, and it is never accepted in place of "pass".
+#
+# Two rules live in install/matrix-gate.sh instead of here and cannot be edited
+# out of this file: the noexec-tmp cells must pass every facet, because that is
+# the failure that cost a first customer; and the arm64 cells may come back
+# untested on a runner with no emulator, reported as untested and never as a pass.
+#
+# Measured against the published v0.1.7 assets on 2026-10-01, 8 core Debian host,
+# docker 29.6.2. Two groups of rows are what a correct release does rather than
+# what v0.1.7 does, and are marked OPEN DEFECT. Until the release under test
+# carries those fixes this gate is red, and that is the whole point of it.
+
+# --- machines that have everything the installer needs -----------------------
+debian-root	installer	pass
+debian-root	onpath	pass
+debian-root	loginpath	pass
+debian-root	version	pass
+debian-root	doctor	pass
+debian-root	tui	pass
+debian-nonroot	installer	pass
+debian-nonroot	onpath	pass
+debian-nonroot	loginpath	pass
+debian-nonroot	version	pass
+debian-nonroot	doctor	pass
+debian-nonroot	tui	pass
+ubuntu-root	installer	pass
+ubuntu-root	onpath	pass
+ubuntu-root	loginpath	pass
+ubuntu-root	version	pass
+ubuntu-root	doctor	pass
+ubuntu-root	tui	pass
+ubuntu-nonroot	installer	pass
+ubuntu-nonroot	onpath	pass
+ubuntu-nonroot	loginpath	pass
+ubuntu-nonroot	version	pass
+ubuntu-nonroot	doctor	pass
+ubuntu-nonroot	tui	pass
+umask-077	installer	pass
+umask-077	onpath	pass
+umask-077	loginpath	pass
+umask-077	version	pass
+umask-077	doctor	pass
+umask-077	tui	pass
+
+# --- musl ---------------------------------------------------------------------
+# install.sh is a bash script and the documented command pipes it into bash, so a
+# machine with no bash cannot install. That is a prerequisite, stated in the
+# README, and the facets behind it are unreachable rather than broken.
+alpine-stock	installer	fail	no bash: install.sh is a bash script, which the README names as a prerequisite
+alpine-stock	onpath	untested	the installer could not run
+alpine-stock	loginpath	untested	the installer could not run
+alpine-stock	version	untested	the installer could not run
+alpine-stock	doctor	untested	the installer could not run
+alpine-stock	tui	untested	the installer could not run
+# OPEN DEFECT. The musl build is linked against libstdc++ and libgcc_s, which
+# Alpine does not install by default, so a stock Alpine machine installs the
+# archive and gets a binary that cannot start: "Error loading shared library
+# libstdc++.so.6". alpine-libstdcpp below is the control -- the same archive on
+# the same image with libstdc++ added passes every facet -- so the fix is either
+# to link statically or to say in the installer which packages musl needs.
+# Recorded, not accepted.
+alpine-bash-root	installer	fail	OPEN DEFECT: musl build needs libstdc++ and libgcc_s, absent from stock Alpine
+alpine-bash-root	onpath	fail	OPEN DEFECT: the installer aborts before the PATH line is written
+alpine-bash-root	loginpath	fail	OPEN DEFECT: as above, for a login shell
+alpine-bash-root	version	fail	OPEN DEFECT: exit 127, libstdc++.so.6 not found
+alpine-bash-root	doctor	fail	OPEN DEFECT: exit 127, libstdc++.so.6 not found
+alpine-bash-root	tui	fail	OPEN DEFECT: exit 127, libstdc++.so.6 not found
+alpine-bash-nonroot	installer	fail	OPEN DEFECT: as alpine-bash-root, unprivileged
+alpine-bash-nonroot	onpath	fail	OPEN DEFECT: as alpine-bash-root, unprivileged
+alpine-bash-nonroot	loginpath	fail	OPEN DEFECT: as alpine-bash-root, unprivileged
+alpine-bash-nonroot	version	fail	OPEN DEFECT: as alpine-bash-root, unprivileged
+alpine-bash-nonroot	doctor	fail	OPEN DEFECT: as alpine-bash-root, unprivileged
+alpine-bash-nonroot	tui	fail	OPEN DEFECT: as alpine-bash-root, unprivileged
+# The control for the two above: musl works, the missing C++ runtime is the bug.
+alpine-libstdcpp	installer	pass
+alpine-libstdcpp	onpath	pass
+alpine-libstdcpp	loginpath	pass
+alpine-libstdcpp	version	pass
+alpine-libstdcpp	doctor	pass
+alpine-libstdcpp	tui	pass
+
+# --- the customer incident ----------------------------------------------------
+# A noexec /tmp, the shared and cPanel hosting default. The install, the PATH,
+# --version, doctor, the sign in and the billing all report success and the
+# program cannot start, because the native render library is unpacked into the
+# temporary directory and then refused a mapping. Required to pass: the gate
+# enforces these three cells itself, whatever this file says.
+# v0.1.7 fails the tui facet here with
+#   Failed to initialize OpenTUI render library: ... failed to map segment
+# which is verbatim what the two users saw. 0.1.8 restarts itself with TMPDIR
+# pointing at a directory that can execute, which is what noexec-tmp-tmpdir
+# already demonstrates by hand.
+noexec-tmp	installer	pass
+noexec-tmp	onpath	pass
+noexec-tmp	loginpath	pass
+noexec-tmp	version	pass
+noexec-tmp	doctor	pass
+noexec-tmp	tui	pass	REQUIRED: the failure that cost a first customer
+noexec-tmp-nonroot	installer	pass
+noexec-tmp-nonroot	onpath	pass
+noexec-tmp-nonroot	loginpath	pass
+noexec-tmp-nonroot	version	pass
+noexec-tmp-nonroot	doctor	pass
+noexec-tmp-nonroot	tui	pass	REQUIRED: as noexec-tmp, unprivileged
+noexec-tmp-tmpdir	installer	pass
+noexec-tmp-tmpdir	onpath	pass
+noexec-tmp-tmpdir	loginpath	pass
+noexec-tmp-tmpdir	version	pass
+noexec-tmp-tmpdir	doctor	pass
+noexec-tmp-tmpdir	tui	pass	REQUIRED: the documented way out of a noexec /tmp must keep working
+
+# --- machines the installer is right to refuse --------------------------------
+# These failures are the installer saying what is missing and stopping, which is
+# the correct behaviour. The detail is asserted by install/test-install.sh; what
+# this file records is that the refusal still happens and still happens early.
+no-curl	installer	fail	correct refusal: "curl is missing"
+no-curl	onpath	fail	nothing was installed
+no-curl	loginpath	fail	nothing was installed
+no-curl	version	untested	no binary to run
+no-curl	doctor	untested	no binary to run
+no-curl	tui	untested	no binary to run
+no-tar	installer	fail	correct refusal: "tar is missing"
+no-tar	onpath	fail	nothing was installed
+no-tar	loginpath	fail	nothing was installed
+no-tar	version	untested	no binary to run
+no-tar	doctor	untested	no binary to run
+no-tar	tui	untested	no binary to run
+tmp-tiny	installer	fail	correct refusal: "not enough free disk space to unpack rafikicode"
+tmp-tiny	onpath	fail	nothing was installed
+tmp-tiny	loginpath	fail	nothing was installed
+tmp-tiny	version	untested	no binary to run
+tmp-tiny	doctor	untested	no binary to run
+tmp-tiny	tui	untested	no binary to run
+home-unset	installer	fail	correct refusal: "HOME is not set, so there is nowhere to install"
+home-unset	onpath	fail	nothing was installed
+home-unset	loginpath	fail	nothing was installed
+home-unset	version	untested	no binary to run
+home-unset	doctor	untested	no binary to run
+home-unset	tui	untested	no binary to run
+home-readonly	installer	fail	correct refusal: the install directory is not writable by you
+home-readonly	onpath	fail	nothing was installed
+home-readonly	loginpath	fail	nothing was installed
+home-readonly	version	untested	no binary to run
+home-readonly	doctor	untested	no binary to run
+home-readonly	tui	untested	no binary to run
+
+# --- how CI itself invokes it -------------------------------------------------
+# Piped stdin and stdout. The install must work; the full screen interface is
+# not started without a terminal and is not expected to be.
+no-tty	installer	pass
+no-tty	onpath	pass
+no-tty	loginpath	pass
+no-tty	version	pass
+no-tty	doctor	pass
+no-tty	tui	untested	by design: no terminal on stdout, so the interface is never started
+
+# --- arm64 --------------------------------------------------------------------
+# Under qemu on a host with a binfmt_misc registration. A runner without one
+# reports these untested, which the gate tolerates and warns about.
+arm64-root	installer	pass
+arm64-root	onpath	pass
+arm64-root	loginpath	pass
+arm64-root	version	pass
+arm64-root	doctor	pass
+arm64-root	tui	pass	emulated: proves the arm64 binary links and draws, not that the hardware does
+arm64-noexec	installer	pass
+arm64-noexec	onpath	pass
+arm64-noexec	loginpath	pass
+arm64-noexec	version	pass
+arm64-noexec	doctor	pass
+arm64-noexec	tui	untested	emulation does not enforce noexec on a guest mapping; needs real arm64 hardware
