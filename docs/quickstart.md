@@ -124,6 +124,8 @@ ok    key         key rafikicode-..., spent 0.0769 USD of 2.5 USD budget, expire
 ok    tiers       rafiki-fast, rafiki-pro
 ```
 
+The other lines check things that are not about the key: your configuration file and the project configuration of the directory you are in, whether the workspace is trusted, which copy of `rafikicode` your shell resolves the name to, and the installed version. Every line is one of `ok`, `WARN` with a fix hint, `FAIL` with a fix hint, or `skip`, and `doctor` exits 0 unless something failed. The full list is in [Headless and CI](./headless-and-ci.md#checking-a-machine-with-doctor).
+
 ## 3. Run a first task
 
 Start in an empty folder:

@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Each entry gives the message or symptom, the cause, and what to do. The messages are those of `rafikicode` 0.1.5. Start with `rafikicode doctor`: it checks the configuration file, the credential, the gateway, the key's budget, the tiers, the Rafiki AI console and the installed version, one line each with a fix hint (details in [Headless and CI](./headless-and-ci.md#checking-a-machine-with-doctor)). Add `--print-logs --log-level DEBUG` to any command to see what it did.
+Each entry gives the message or symptom, the cause, and what to do. The messages quoted here are the ones the current release prints. Start with `rafikicode doctor`: it checks your configuration file, the project configuration this directory would load, whether the workspace is trusted, the credential, the gateway, the key's budget, the tiers, the Rafiki AI console, the copy of `rafikicode` your shell resolves the name to, and the installed version, one line each with a fix hint (details in [Headless and CI](./headless-and-ci.md#checking-a-machine-with-doctor)). Add `--print-logs --log-level DEBUG` to any command to see what it did.
 
 ## Installation
 
@@ -11,6 +11,13 @@ export PATH=$HOME/.rafikicode/bin:$PATH
 ```
 
 or open a new terminal. Whenever it could not link, the installer prints that line as the first of its next steps and gives every following command as a full path, so `~/.rafikicode/bin/rafikicode login` works without changing PATH at all. Shells that are not interactive (`bash -lc`, cron, CI steps, `ssh host "command"`) do not read `~/.bashrc` either: call `~/.rafikicode/bin/rafikicode` by its full path there.
+
+**`doctor` shows `FAIL  path  rafikicode resolves to ... but this process runs from ...`.** Your shell finds a different copy of `rafikicode` than the one that just ran: a stale link from an older install, or a second copy in a directory earlier on your `PATH`. The fix line prints both paths. Remove the copy your shell finds, or put the directory of the running binary earlier on `PATH`, then open a new terminal and run `rafikicode doctor` again. Two other forms of this line:
+
+- `WARN  path  ... a launcher script, not the binary running this check`. A package manager or a shim based version manager put a small script on `PATH` that starts the real binary. Nothing is wrong. If you did not expect one, it is an older install still answering to the name: run `rafikicode --version` in a new terminal to see which version it starts.
+- `FAIL  path  rafikicode is not on PATH`. No directory on your `PATH` holds the name at all, so only the full path works. Add the directory the line names to `PATH`, or reinstall with the installer at https://get.rafikiai.io, which links `rafikicode` into a directory already on it.
+
+In a source checkout the process runs from `bun` rather than from an installed binary, so there is nothing to compare and the line reads `skip`.
 
 **`rafikicode` still runs after `uninstall`.** `uninstall` removes `~/.rafikicode`, the lines in `~/.bashrc` and the link the installer made in `/usr/local/bin` or `~/.local/bin`, and names each one as it goes. It leaves the link alone, and says so, when the name is no longer a link to the binary it removed, because then it belongs to something else. Anything still answering to `rafikicode` came from elsewhere: `ls -l $(command -v rafikicode)` shows what it is, and `rm` removes it if it is yours.
 
@@ -114,9 +121,15 @@ git config --global user.name "Your Name"
 git config --global user.email "you@example.com"
 ```
 
+**Project plugins, custom tools, a local MCP server, a formatter or a language server declared in the repository do not load.** The workspace is not trusted. `rafikicode doctor` says so on its `trust` line, as a `WARN` rather than a failure, with the list of what was dropped on the line below and the command that fixes it: `rafikicode trust` in the repository, or `RAFIKICODE_TRUST_WORKSPACE=1` for one run. Trust only repositories whose contents you would run as a script; see [workspace trust](./security/workspace-trust.md).
+
 **Slow first request.** The first run in a repository indexes the project and starts language servers. Later requests are faster.
 
 ## Configuration
+
+**A command stops at start with `Configuration is invalid ...` or `Config file at ... is not valid JSON(C)`.** A configuration file cannot be loaded, so nothing starts. The message ends with three fix lines: run `rafikicode doctor` to see which file is at fault and what to change, `RAFIKICODE_DISABLE_PROJECT_CONFIG=1 rafikicode` to start one run without anything from the working tree, and the address of the schema that lists every option with its type. `doctor` checks both places a file can come from: the `config` line is `~/.rafikicode/config.json`, and the `project` line is every project file a session started in this directory would load, named in the order they merge.
+
+**`doctor` shows `FAIL  config` or `FAIL  project  ... does not match the configuration schema (...)`.** The file parses but a field has the wrong shape. The detail names up to three fields and counts the rest, and the fix names the schema to check them against. `doctor` validates with the same decoder a session uses, so a file that passes here starts a session. For a project file the escape hatch is `RAFIKICODE_DISABLE_PROJECT_CONFIG=1`, because the file belongs to the repository rather than to you; for `~/.rafikicode/config.json` you can also move the file aside and let the next run recreate it with defaults.
 
 **Your editor warns that the schema of `~/.rafikicode/config.json` cannot be loaded.** Releases 0.1.0 and 0.1.1 wrote a `$schema` address that answers 404. Runs are not affected. From 0.1.4, new configuration files point at the schema of the installed release, for example `https://raw.githubusercontent.com/paneotech-dev/rafiki-code-cli/v0.1.4/schema/config.json`, and the first command you run replaces the old address in an existing file, changing nothing else in it.
 
