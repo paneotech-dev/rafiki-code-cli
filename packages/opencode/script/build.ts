@@ -260,6 +260,12 @@ for (const item of targets) {
     },
   })
 
+  // Embedding the bundle invalidates the linker's ad-hoc signature, and macOS 27+
+  // SIGKILLs binaries with invalid pages. Re-sign ad-hoc; release CI re-signs with Developer ID.
+  if (item.os === "darwin" && process.platform === "darwin") {
+    await $`codesign --force --sign - dist/${name}/bin/${pkg.name}`
+  }
+
   // Smoke test every target this host can execute, musl and baseline included.
   // The previous gate was `os === platform && arch === process.arch && !abi`,
   // which on the Linux release runner left exactly the two glibc x64 targets --
