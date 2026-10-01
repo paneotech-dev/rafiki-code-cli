@@ -25,8 +25,11 @@
     read from RAFIKICODE_INSTALL_DIR.
 
 .PARAMETER Baseline
-    Force the baseline build, which does not require AVX2. Use this on an older
-    x64 processor if the installed program fails to start.
+    Ask for the x64 archive labelled "baseline" instead of letting this script
+    choose. This is not a fix for a program that will not start: every published
+    baseline archive is byte identical to the sibling it sits beside, so it
+    installs the same bytes under another name. It is here so a release can be
+    verified against the asset it names.
 
 .PARAMETER NoModifyPath
     Do not change the user PATH; print the directory to add instead.
@@ -128,23 +131,35 @@ if ($arch -ne 'x64' -and $arch -ne 'arm64') {
 }
 
 # AVX2 decides between the normal and the baseline x64 build. The check is only
-# available on PowerShell 7 and later, where System.Runtime.Intrinsics exists.
-# On Windows PowerShell 5.1 the normal build is chosen and the smoke test at the
-# end tells the user to rerun with -Baseline if it does not start.
+# available on PowerShell 7 and later, where System.Runtime.Intrinsics exists;
+# on Windows PowerShell 5.1 the normal build is chosen.
+#
+# This selection is kept, but it currently changes nothing, and it must not be
+# offered to anyone as a remedy. Two things were measured against the published
+# 0.1.7 assets. All four archives labelled baseline are byte identical to the
+# siblings they exist to replace, because the build toolchain serves one runtime
+# per operating system, architecture and C library and returns the same runtime
+# for a baseline target, so asking for the baseline build downloads the same
+# file. And the ordinary binary needs no AVX2: it was driven under emulation on
+# a 2008 Nehalem, which has neither AVX nor AVX2, where --version, --help and
+# doctor all exited 0, including a live gateway call. So there is no CPU this
+# switch is known to rescue and no different bytes for it to fetch.
+#
+# It stays because the asset names are real and published, the branch resolves
+# and installs a working binary, the duplication is upstream rather than ours,
+# and the day upstream builds the two variants differently this is already
+# correct with nothing further to do. script/platform-coverage.ts hashes every
+# binary and names any targets that collide, so the day that changes is visible.
 $variant = ''
-$avx2Known = $false
 if ($Baseline) {
     $variant = 'baseline'
-    $avx2Known = $true
 } elseif ($arch -eq 'x64') {
     try {
         $avx2Type = [Type]::GetType('System.Runtime.Intrinsics.X86.Avx2')
-        if ($null -ne $avx2Type) {
-            $avx2Known = $true
-            if (-not $avx2Type::IsSupported) { $variant = 'baseline' }
-        }
+        if ($null -ne $avx2Type -and -not $avx2Type::IsSupported) { $variant = 'baseline' }
     } catch {
-        $avx2Known = $false
+        # No way to ask on this runtime. The ordinary build needs no AVX2, so
+        # there is nothing to fall back to.
     }
 }
 
@@ -354,8 +369,10 @@ if ($NoModifyPath) {
     }
 }
 
-# Smoke test. This is where a wrong architecture or a missing AVX2 instruction
-# set shows up, so the hint about -Baseline belongs here rather than in a doc.
+# Smoke test. This is where a build that cannot run on this machine shows up.
+# It does not suggest -Baseline: that archive is the same bytes, as recorded at
+# the variant selection above, so a reinstall would cost the user a download and
+# change nothing. An installed binary that will not run is a bug in the build.
 $ok = $false
 $versionOutput = ''
 $global:LASTEXITCODE = 0
@@ -370,14 +387,11 @@ if ($ok) {
     Write-Note "Verified: $App $("$versionOutput".Trim())"
 } else {
     Write-Warning "$targetPath was installed but did not run."
-    if ($arch -eq 'x64' -and $variant -eq '' -and -not $avx2Known) {
-        Write-Step ''
-        Write-Step 'This processor may not support AVX2. Install the baseline build:'
-        Write-Step '  .\install.ps1 -Baseline'
-    }
     Write-Step ''
-    Write-Step 'Report the output of this command:'
+    Write-Step 'Installing a different build will not help: this is a bug worth reporting.'
+    Write-Step 'Report the output of both of these, including which processor this is:'
     Write-Step "  & `"$targetPath`" --version"
+    Write-Step '  Get-CimInstance Win32_Processor | Select-Object -ExpandProperty Name'
 }
 
 Write-Step ''

@@ -58,11 +58,14 @@ irm https://github.com/paneotech-dev/rafiki-code-cli/releases/latest/download/in
 
 **Windows: the interactive interface draws garbage, or boxes and colours are wrong.** The old console window (`conhost.exe`, what you get from `cmd.exe` started from the Run box) cannot draw the full screen interface. Use Windows Terminal, which is the default on Windows 11 and installable from the Microsoft Store on Windows 10. `rafikicode run "your task"` prints plain lines and works in either.
 
-**Windows: the installed program does not start, or exits immediately with no message.** On an older x64 processor without AVX2, the normal build cannot run. Install the baseline build:
+**Windows: the installed program does not start, or exits immediately with no message.** This is not an old processor, and the baseline build will not fix it. The published builds need no recent instruction set: the ordinary binary has been run on an emulated 2008 processor with neither AVX nor AVX2. The four archives labelled `baseline` are byte identical to the siblings they exist to replace, so `-Baseline` fetches the same bytes and changes nothing. Please report it, with the processor named:
 
 ```powershell
-.\install.ps1 -Baseline
+& "$env:USERPROFILE\.rafikicode\bin\rafikicode.exe" --version
+Get-CimInstance Win32_Processor | Select-Object -ExpandProperty Name
 ```
+
+If `--version` works and only the full screen interface fails, say so in the report. That path loads a separately compiled drawing library, which the run above does not touch, so it is the one case here that is not yet ruled out.
 
 **Windows: `rafikicode` is not found in a new terminal.** The installer puts `%USERPROFILE%\.rafikicode\bin` on the user `PATH`, which only processes started afterwards read. Close the terminal and open a new one. For the terminal you installed from:
 
