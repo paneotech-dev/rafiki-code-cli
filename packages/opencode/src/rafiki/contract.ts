@@ -83,14 +83,18 @@ export const MESSAGE: Record<string, string> = {
   [ERROR.keyRevoked]: "This key was revoked or has expired. Run rafikicode login.",
   [ERROR.wrongKeyKind]: "This key cannot be refreshed here. Create a new key at console.rafikiai.io/keys.",
   [ERROR.serviceUnavailable]: "The service is not available.",
-  [ERROR.keyBudgetExhausted]: "Your key has run out of budget. Top up or raise the key's budget at console.rafikiai.io/keys.",
+  [ERROR.keyBudgetExhausted]:
+    "Your key has run out of budget. Top up or raise the key's budget at console.rafikiai.io/keys.",
   [ERROR.tierNotAllowed]: "This key is not allowed to use the <tier> tier. Approve it at console.rafikiai.io/keys.",
   [ERROR.gatewayUnavailable]: "The model gateway is having trouble. Try again shortly.",
   [ERROR.requestTimeout]: "The request timed out.",
   [ERROR.rateLimited]: "Too many requests. Try again in <n> seconds.",
 }
 
-// CLI exit codes from the contract: scripts branch on these.
+// CLI exit codes from the contract: scripts branch on these. 6 and 7 are the
+// startup codes added for the diagnosis layer (rafiki/startup.ts), so an
+// installer or a CI job can tell "this machine cannot run it" and "this
+// terminal cannot draw it" from "not signed in" (2) without reading any text.
 export const EXIT = {
   ok: 0,
   failed: 1,
@@ -98,6 +102,13 @@ export const EXIT = {
   wallet: 3,
   network: 4,
   internal: 5,
+  // The build or the machine cannot run rafikicode at all: a native library
+  // that cannot be loaded, a CPU without the instructions the build needs, a C
+  // library mismatch, no directory it may write to.
+  machine: 6,
+  // rafikicode runs on this machine, but this terminal cannot host the full
+  // screen interface. The run command still works.
+  terminal: 7,
 } as const
 
 export interface DeviceCodeResponse {

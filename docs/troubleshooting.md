@@ -29,6 +29,28 @@ Run the installer without `--version` to get the latest release.
 
 **macOS refuses to open the binary.** Release binaries are not code signed. Right click the binary and choose Open once, or remove the quarantine attribute with `xattr -d com.apple.quarantine ~/.rafikicode/bin/rafikicode`.
 
+## When it will not start
+
+When `rafikicode` cannot start, it says what it thinks the cause is, gives one command to try, and prints the original error under `Original error:` so you can paste it to us. Add `--print-logs` to the same command for the full error and its stack. Two exit codes carry the result for scripts: 6 means this machine or this build cannot run `rafikicode` at all, 7 means it runs but this terminal cannot host the full screen interface.
+
+**`Rafiki Code cannot start: a library it needs could not be loaded on this machine.`** The full screen interface loads a drawing library from the temporary directory, and that directory refuses to load executable files (a `noexec` mount, common on shared hosts), or it is full. The message names the file and the directory. Point `rafikicode` at a temporary directory of your own:
+
+```bash
+mkdir -p ~/.rafikicode/tmp && TMPDIR=~/.rafikicode/tmp rafikicode
+```
+
+Meanwhile `rafikicode run "your task"` needs no drawing library and keeps working. Exit code 6.
+
+**`Rafiki Code cannot start: the installed build needs a newer CPU than this machine has.`** The build uses instructions, such as AVX2, that this processor does not have, so it stops with an illegal instruction. Run the installer again: it detects the processor and installs the baseline build made for it. Exit code 6.
+
+**`Rafiki Code cannot start: this build does not match the system C library of this machine.`** The installed build needs a different C library from the one this machine has: a newer glibc than it carries, or glibc where the machine uses musl (Alpine Linux and similar), or the other way round. Run the installer again: it detects which build this machine needs. Exit code 6.
+
+**`Rafiki Code cannot start: it has no directory it can write to.`** The directory that holds the configuration, the logs and the session history cannot be created or written, and the message names it and the reason (`EACCES`, `EROFS`, `ENOSPC`, `ENOTDIR`). Give yourself that directory (`mkdir -p` and `chmod 700`, as the message prints it), free space on its disk, or check where `HOME` points when the reason is `ENOTDIR`. Exit code 6.
+
+**`Rafiki Code cannot start its full screen interface here: standard output is not a terminal.`** The output is redirected to a file or a pipe, or nothing is attached to this job at all (CI, cron, a container, `ssh host "command"`). Give the task directly instead with `rafikicode run "your task"`, which is built for exactly this. A matching message names the other two cases: a terminal whose `TERM` is `dumb`, and a window too small to draw in. Exit code 7.
+
+**`Rafiki Code stopped with a failure it has no diagnosis for.`** No cause is known for this one. The original error is printed below the message, `--print-logs` adds its stack, `rafikicode doctor` checks the machine, and `rafikicode run "your task"` works without the full screen interface. Please report it with the original error at the issue tracker the message names. Exit code 1.
+
 ## Sign in
 
 **`No terminal is attached, so the browser sign-in is not available.`** You ran `rafikicode login` in a pipeline, over a non-interactive SSH session, or with input redirected. `login` needs a person at a terminal. Run it in an interactive terminal, or use an API key as described in [Headless and CI](./headless-and-ci.md#api-keys). Exit code 2.

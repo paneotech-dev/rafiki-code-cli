@@ -130,6 +130,10 @@ The sign-in commands (`login`, `logout`, `whoami`) use a fixed table so scripts 
 | 3 | credits or key budget spent |
 | 4 | network problem reaching the Rafiki AI console or the gateway |
 | 5 | internal error |
+| 6 | this machine or this build cannot run `rafikicode`: a library that cannot be loaded, a processor without the instructions the build needs, a C library mismatch, no directory it may write to |
+| 7 | `rafikicode` runs on this machine, but this terminal cannot host the full screen interface. `rafikicode run` works |
+
+6 and 7 are the startup codes: an installer or a job can tell "this machine cannot run it" (6) and "this terminal cannot draw it" (7) from "not signed in" (2) without reading the message. Both print what they think the cause is, one command to try, and the original error under `Original error:`; `--print-logs` adds the full error and its stack. See [When it will not start](./troubleshooting.md#when-it-will-not-start).
 
 `rafikicode run` exits 0 when the task completes. When the gateway refuses a request it uses the same table: 2 for a revoked or expired key or a tier the key may not use, 3 when the key's budget or the account's credits are spent, 4 when the gateway cannot be reached. Other failures exit 1.
 
