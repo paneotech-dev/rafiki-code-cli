@@ -565,5 +565,89 @@ out=$(env HOME="$freshnone" SHELL=/bin/zsh PATH="$safe_path" \
     bash "$INSTALLER" --no-login --no-modify-path --binary "$WORK/build-1.2.3/rafikicode" 2>&1 | plain)
 [ ! -e "$freshnone/.zshrc" ]; check $? "--no-modify-path creates no startup file"
 
+# --- A rate limited API must not be reported as a missing release -------------
+#
+# GitHub allows 60 unauthenticated API requests an hour per IP, shared by
+# everyone behind that address, and answers 403 when it runs out. curl reports a
+# 403 with the same exit 22 it uses for a 404, so the installer used to tell the
+# user there was no such release and send them to check a version number that
+# was correct. These drive a real 403 and a real 302 from a local server rather
+# than a stub, because the bug was in how the two statuses are told apart.
+cat > "$WORK/ratelimit-server.py" <<'PYEOF'
+import http.server, sys, functools
+
+SITE, PORT = sys.argv[1], int(sys.argv[2])
+
+class H(http.server.SimpleHTTPRequestHandler):
+    def do_GET(self):
+        if self.path.startswith("/api/"):
+            body = (b'{"message": "API rate limit exceeded for 203.0.113.9. '
+                    b'(But here is the good news: Authenticated requests get a '
+                    b'higher rate limit.)"}')
+            self.send_response(403)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("X-RateLimit-Limit", "60")
+            self.send_header("X-RateLimit-Remaining", "0")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if self.path == "/dl/latest":
+            self.send_response(302)
+            self.send_header("Location", f"http://127.0.0.1:{PORT}/dl/tag/v1.2.3")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        super().do_GET()
+
+    def log_message(self, *a):
+        pass
+
+http.server.HTTPServer(
+    ("127.0.0.1", PORT),
+    functools.partial(H, directory=SITE),
+).serve_forever()
+PYEOF
+
+RL_PORT=$((PORT + 1))
+python3 "$WORK/ratelimit-server.py" "$WORK/site" "$RL_PORT" >"$WORK/ratelimit.log" 2>&1 &
+RL_PID=$!
+for _ in $(seq 1 50); do
+    curl -sS -o /dev/null "http://127.0.0.1:${RL_PORT}/dl/latest" 2>/dev/null && break
+    sleep 0.1
+done
+
+# Earlier cases in this file deliberately corrupt the fixture archive to prove
+# the checksum check bites, and nothing restores it, so rebuild the release
+# before asking for a successful install.
+make_release 1.2.3
+
+# The API is exhausted, the release page still answers: the install must succeed.
+rlhome="$WORK/home-ratelimited"
+mkdir -p "$rlhome"
+out=$(env RAFIKICODE_RELEASE_API="http://127.0.0.1:${RL_PORT}/api" \
+    RAFIKICODE_RELEASE_BASE="http://127.0.0.1:${RL_PORT}/dl" \
+    RAFIKICODE_INSTALL_DIR="$WORK/prefix-ratelimited/bin" \
+    HOME="$rlhome" "$BASH_BIN" "$INSTALLER" --no-login --no-modify-path 2>&1 | plain) && rc=0 || rc=$?
+[ "$rc" = "0" ] \
+    && [[ "$out" != *"there is no such"* ]] \
+    && [[ "$out" != *"curl: ("* ]] \
+    && [ -x "$WORK/prefix-ratelimited/bin/rafikicode" ] \
+    && [ "$("$WORK/prefix-ratelimited/bin/rafikicode" --version)" = "1.2.3" ]; check $? "a rate limited API falls back to the release page instead of claiming the release is missing"
+
+# Both routes gone: the message must raise the rate limit rather than only 404.
+out=$(env RAFIKICODE_RELEASE_API="http://127.0.0.1:${RL_PORT}/api" \
+    RAFIKICODE_RELEASE_BASE="http://127.0.0.1:${PORT}/dl" \
+    HOME="$rlhome" "$BASH_BIN" "$INSTALLER" --no-login --no-modify-path 2>&1 | plain) && rc=0 || rc=$?
+[ "$rc" != "0" ] \
+    && [[ "$out" == *"60 requests an hour per IP address"* ]] \
+    && [[ "$out" == *"Your version number is probably fine"* ]] \
+    && [[ "$out" == *"curl -s https://api.github.com/rate_limit"* ]] \
+    && [[ "$out" == *"returned error: 403"* ]] \
+    && [[ "$out" == *"bash -s -- --version"* ]]; check $? "an exhausted API names the rate limit and says the version is probably fine"
+
+kill "$RL_PID" 2>/dev/null
+wait "$RL_PID" 2>/dev/null
+
 echo "install tests: ${pass} passed, ${fail} failed"
 [ "$fail" = "0" ]

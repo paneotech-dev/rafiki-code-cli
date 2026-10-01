@@ -170,16 +170,45 @@ $asset = "$App-$target.zip"
 # Version resolution.
 if ([string]::IsNullOrWhiteSpace($Version)) {
     $latestUrl = "$ReleaseApi/releases/latest"
+    $resolved = ''
+    $apiError = ''
     try {
         $release = Invoke-RestMethod -Uri $latestUrl -Headers @{
             'Accept'     = 'application/vnd.github+json'
             'User-Agent' = $App
         } -UseBasicParsing
+        if ($release.tag_name) { $resolved = "$($release.tag_name)" -replace '^v', '' }
     } catch {
-        Fail "Could not read the latest version from $latestUrl : $($_.Exception.Message)"
+        $apiError = $_.Exception.Message
     }
-    if (-not $release.tag_name) { Fail "The latest release at $latestUrl has no tag name." }
-    $resolved = "$($release.tag_name)" -replace '^v', ''
+    if ($resolved -eq '') {
+        # The API allows 60 requests an hour per IP address, shared by everyone
+        # behind that address, and answers 403 once they are used. The release
+        # page is not rate limited and redirects to the newest tag, so read the
+        # version from where it points. WebRequest rather than
+        # Invoke-WebRequest because stopping at a redirect is spelled
+        # differently, and fails differently, on Windows PowerShell 5.1 and
+        # PowerShell 7; this is the same on both.
+        try {
+            $pageRequest = [System.Net.WebRequest]::Create("$ReleaseBase/latest")
+            $pageRequest.AllowAutoRedirect = $false
+            $pageRequest.UserAgent = $App
+            $pageResponse = $pageRequest.GetResponse()
+            $location = "$($pageResponse.Headers['Location'])"
+            $pageResponse.Close()
+            if ($location -match '/tag/v?([^/]+)$') { $resolved = $Matches[1] }
+        } catch {
+            # Reported below, together with what the API said.
+        }
+    }
+    if ($resolved -eq '') {
+        if ($apiError -eq '') { Fail "The latest release at $latestUrl has no tag name." }
+        $hint = ''
+        if ($apiError -match '403|rate limit') {
+            $hint = " A 403 here usually means the GitHub API's hourly allowance for your IP address is used up, which an office network or a shared CI runner can do. Name the version to skip the API: pick one from $ReleaseBase and pass -Version."
+        }
+        Fail "Could not read the latest version from $latestUrl : $apiError$hint"
+    }
 } else {
     $resolved = "$Version" -replace '^v', ''
 }

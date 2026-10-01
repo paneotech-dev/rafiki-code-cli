@@ -585,14 +585,38 @@ resolve_version() {
         # curl's exit status instead of letting the pipeline swallow it: it is the
         # only thing that says which of those it was.
         local latest status=0
-        latest=$(curl -fsSL ${CURL_PROTO[@]+"${CURL_PROTO[@]}"} -H "Accept: application/vnd.github+json" "${RELEASE_API}/releases/latest") || status=$?
-        if [ "$status" != "0" ]; then
-            net_fail "$status" "${RELEASE_API}/releases/latest" \
-                "could not reach the release server to find the latest ${APP} version"
+        # --stderr - puts curl's own complaint in $latest instead of on the
+        # terminal. With -f a failed request writes no body, so on failure
+        # $latest is that complaint and nothing else, and it is printed below
+        # only if the fallback fails too. Printed here it would sit above an
+        # install that then succeeded.
+        latest=$(curl -fsSL --stderr - ${CURL_PROTO[@]+"${CURL_PROTO[@]}"} -H "Accept: application/vnd.github+json" "${RELEASE_API}/releases/latest") || status=$?
+        specific_version=""
+        if [ "$status" = "0" ]; then
+            specific_version=$(printf '%s' "$latest" \
+                | sed -n 's/.*"tag_name": *"v\{0,1\}\([^"]*\)".*/\1/p' | head -n 1)
         fi
-        specific_version=$(printf '%s' "$latest" \
-            | sed -n 's/.*"tag_name": *"v\{0,1\}\([^"]*\)".*/\1/p' | head -n 1)
-        if [[ -z "$specific_version" ]]; then
+        if [ -z "$specific_version" ]; then
+            # The API is rate limited to 60 requests an hour per IP address, and
+            # that allowance is shared by everyone behind the same address: an
+            # office network, a shared CI runner, any NAT. When it runs out the
+            # API answers 403, and curl reports a 403 with the same exit 22 it
+            # uses for a 404, so this used to tell the user there was no such
+            # release and to go and check their version number, which was
+            # correct all along. The release page is not rate limited and
+            # redirects to the newest tag, so ask it before giving up.
+            local redirect=""
+            redirect=$(curl -sS ${CURL_PROTO[@]+"${CURL_PROTO[@]}"} -o /dev/null \
+                -w '%{redirect_url}' "${RELEASE_BASE}/latest" 2>/dev/null) || redirect=""
+            specific_version=$(printf '%s' "$redirect" \
+                | sed -n 's|.*/tag/v\{0,1\}\([^/]*\)$|\1|p' | head -n 1)
+        fi
+        if [ -z "$specific_version" ]; then
+            if [ "$status" != "0" ]; then
+                [ -z "$latest" ] || printf '%s\n' "$latest" >&2
+                net_fail "$status" "${RELEASE_API}/releases/latest" \
+                    "could not reach the release server to find the latest ${APP} version"
+            fi
             fail "the release server answered but published no version number at ${RELEASE_API}/releases/latest. If that URL opens in a browser, this is a bug: report it at https://github.com/${OWNER}/${REPO}/issues"
         fi
     else
@@ -1218,11 +1242,18 @@ net_fail() {
                 printf '  Try again, and if it times out every time, this is a network to ask about.\n'
                 ;;
             22)
-                printf '  That status means the server answered with an HTTP error. For this URL that\n'
-                printf '  almost always means 404: there is no such file, because there is no such\n'
-                printf '  release. Check the version you asked for against the published list:\n'
+                printf '  That status means the server answered with an HTTP error, usually 404 or\n'
+                printf '  403, and curl does not distinguish them in its exit status.\n'
+                printf '  If 404: there is no such file, because there is no such release. Check the\n'
+                printf '  version you asked for against the published list:\n'
                 printf '    %s\n' "$RELEASE_BASE"
                 printf '  Leaving --version off installs the latest release.\n'
+                printf '  If 403: the GitHub API allows 60 requests an hour per IP address, shared\n'
+                printf '  by everyone behind it, so an office network or a shared CI runner can use\n'
+                printf '  it up. Your version number is probably fine. See for yourself with:\n'
+                printf '    curl -s https://api.github.com/rate_limit\n'
+                printf '  Naming the version skips the API altogether, so this works now:\n'
+                printf '    curl -fsSL %s | bash -s -- --version <version from the list above>\n' "$INSTALLER_URL"
                 ;;
             35|51|58|59|60|77|83)
                 printf '  That status is a TLS failure. The usual cause is a certificate store too old\n'
