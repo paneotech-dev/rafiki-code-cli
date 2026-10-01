@@ -2,6 +2,7 @@ import { Brand } from "@opencode-ai/core/brand/brand"
 import { NamedError } from "@opencode-ai/core/util/error"
 import { errorFormat } from "@/util/error"
 import { isRecord } from "@/util/record"
+import * as ExecTmp from "@/rafiki/exec-tmp"
 
 type ConfigIssue = { message: string; path: string[] }
 
@@ -118,6 +119,12 @@ export function FormatError(input: unknown): string | undefined {
       ...issues.map((issue) => "↳ " + issue.message + " " + issue.path.join(".")),
     ].join("\n")
   }
+
+  // The native render library failing to load, which on shared hosting means a
+  // temporary directory mounted noexec. The runtime reports it as a dlopen
+  // string that tells a user nothing, so it is replaced (rafiki/exec-tmp.ts).
+  const renderLib = ExecTmp.explain(input)
+  if (renderLib) return renderLib
 
   // UICancelledError: user cancelled an interactive CLI prompt
   if (isTaggedError(input, "UICancelledError") || NamedError.hasName(input, "UICancelledError")) {

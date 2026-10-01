@@ -30,6 +30,15 @@ import { PluginCommand } from "./cli/cmd/plug"
 import { Heap } from "./cli/heap"
 import { Brand } from "@opencode-ai/core/brand/brand"
 import { DoctorCommand, LoginCommand, LogoutCommand, ProvidersCommand, TrustCommand, WhoamiCommand, markHeadless, refuseMissingKey, refuseUnsafeCredential } from "./rafiki/cmd"
+import * as ExecTmp from "./rafiki/exec-tmp"
+
+// The terminal interface unpacks a native library into the temporary directory
+// and loads it from there, so a temporary directory mounted noexec stops this
+// binary before any command runs. The directory comes from TMPDIR, which is
+// read while the process starts and cannot be changed from here, so when it
+// cannot run a file this starts the binary again with TMPDIR pointing at one
+// that can. No-op everywhere else (rafiki/exec-tmp.ts).
+ExecTmp.ensure()
 
 const args = hideBin(process.argv)
 
