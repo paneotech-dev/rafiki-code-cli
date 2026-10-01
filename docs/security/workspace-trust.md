@@ -50,6 +50,10 @@ The key has one more guard that trust does not relax: any provider request that 
 
 `OPENCODE_DISABLE_PROJECT_CONFIG=1` (alias `RAFIKICODE_DISABLE_PROJECT_CONFIG=1`) still loads nothing at all from the working tree, trusted or not.
 
+## Checking which it is
+
+`rafikicode doctor` reports the decision on its `trust` line, so you do not have to guess: `ok` with `trusted for this run by RAFIKICODE_TRUST_WORKSPACE`, `ok` with `trusted (stored in ~/.rafikicode/trusted-workspaces.json)`, or `WARN` with `is not trusted` and, on the line below, what that costs here: the project plugins, custom tools, local MCP servers, formatters, language servers and permission rules this directory declares are not loaded. It is a warning and not a failure, because an untrusted workspace still runs; `doctor` exits 0. The fix hint names `rafikicode trust` with the repository root. The `trust` line is always reported, whatever the other checks say.
+
 ## Limits
 
 - A trusted workspace can run code, and code can read the key from the environment or the credential file. Trust only repositories whose contents you would run as a script.

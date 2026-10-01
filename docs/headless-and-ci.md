@@ -90,30 +90,37 @@ An untrusted workspace also loads no project plugins, custom tools or provider p
 
 ## Checking a machine with doctor
 
-`rafikicode doctor` runs the checks a headless job depends on and prints one line each: `ok`, `WARN` with a fix hint and a note, `FAIL` with a fix hint, or `skip` when an earlier check makes it moot. With a key created in the Rafiki AI console:
+`rafikicode doctor` runs the checks a headless job depends on and prints one line each: `ok`, `WARN` with a fix hint and a note on the line below, `FAIL` with a fix hint, or `skip` when an earlier check makes it moot. It ends with `All checks passed`, naming the warnings when there are any, or `N checks need attention, see the lines marked FAIL.` With a key created in the Rafiki AI console, in a checkout you have not trusted:
 
 ```text
 ok    config      ~/.rafikicode/config.json not created yet, built in defaults apply
+ok    project     no project configuration in this directory or above it
+WARN  trust       /srv/build/api is not trusted. Fix: Run rafikicode trust /srv/build/api.
+                  Project plugins, custom tools, local MCP servers, formatters, language servers and permission rules declared in this directory are not loaded.
 ok    credential  RAFIKICODE_API_KEY from the environment
 ok    gateway     https://gateway.rafikiai.io answered in 134 ms
 ok    key         key rafikicode-..., spent 0.1568 USD of 2.5 USD budget, expires 2026-10-13T12:34:43.455000+00:00
 ok    tiers       rafiki-fast, rafiki-pro
 ok    console     https://console.rafikiai.io, account ...
-ok    version     rafikicode 0.1.5, ...
+ok    path        rafikicode resolves to /usr/local/bin/rafikicode (a link to ~/.rafikicode/bin/rafikicode), the binary running this check
+ok    version     rafikicode ..., stable channel, installed by the installer script, rafikicode update applies
 ```
 
-The home directory is shortened to `~` and account details to `...`. With no key at all the `credential` line reads `FAIL  credential  none. Fix: Run rafikicode login, or set RAFIKICODE_API_KEY on servers and in CI.`, the `key` and `tiers` lines are skipped, and `doctor` exits 1. A key that works at the gateway but was not created in the Rafiki AI console gives `WARN  console ... does not know this key (401)`, and `doctor` still exits 0; see [Troubleshooting](./troubleshooting.md#keys-and-credits).
+The home directory is shortened to `~`, and the version number and the account details to `...`. With no key at all the `credential` line reads `FAIL  credential  none. Fix: Run rafikicode login, or set RAFIKICODE_API_KEY on servers and in CI.`, the `key` and `tiers` lines are skipped, and `doctor` exits 1. A key that works at the gateway but was not created in the Rafiki AI console gives `WARN  console ... does not know this key (401)`, and `doctor` still exits 0; see [Troubleshooting](./troubleshooting.md#keys-and-credits). The `trust` line reads `ok` once the job sets `RAFIKICODE_TRUST_WORKSPACE=1` or the machine has run `rafikicode trust`.
 
 The checks, in order:
 
 | line | what it verifies |
 |---|---|
-| `config` | `~/.rafikicode/config.json` is absent (defaults apply) or valid JSON with comments allowed; the default model is shown |
-| `credential` | which credential a run would use: `RAFIKICODE_API_KEY`, a stored sign-in, or none. A stored browser sign-in is reported as refused when `CI` is set |
+| `config` | `~/.rafikicode/config.json` is absent (built in defaults apply), or readable, valid JSON with comments allowed, and accepted by the same decoder a session uses; the `model` it sets is shown, with a note when that model is outside the gateway. A file that cannot be read, is not JSON, is not a JSON object, or does not match the configuration schema fails here, and the fix names the fields and the schema |
+| `project` | the project configuration a session started in this directory would load, each file checked against that same decoder: `rafikicode.json`, `rafikicode.jsonc`, `opencode.json` and `opencode.jsonc` from here up to the repository root, plus the same files under `.rafikicode/` and `.opencode/`, listed in the order they merge. A file a session would refuse is named here instead of stopping the session at start. `skip` when `RAFIKICODE_DISABLE_PROJECT_CONFIG` is set, because then nothing loads from the working tree |
+| `trust` | whether this directory is trusted and by what: `RAFIKICODE_TRUST_WORKSPACE` for this run, or the stored list in `~/.rafikicode/trusted-workspaces.json`. An untrusted directory is a `WARN`, not a failure, and the note says what it costs: the project plugins, custom tools, local MCP servers, formatters, language servers and permission rules the directory declares are not loaded. See [workspace trust](security/workspace-trust.md) |
+| `credential` | which credential a run would use: `RAFIKICODE_API_KEY`, a stored sign-in, or none. A stored browser sign-in is reported as refused when `CI` is set, and so is a credential file other users can read or write |
 | `gateway` | the gateway answers its liveness probe, with the round trip time |
 | `key` | the gateway knows the key: alias, spend, budget and expiry as numbers and dates. A revoked key, a spent budget or an expired key fail here. A key made in the Rafiki AI console without the Rafiki Code option gives `WARN` (exit code still 0): create one with the option ticked, or run `rafikicode login` |
 | `tiers` | which Rafiki tiers (`rafiki-fast`, `rafiki-pro`) the key may use |
 | `console` | the Rafiki AI console answers, and with a key, the account and its credit balance |
+| `path` | the name your shell resolves `rafikicode` to is the binary running this check, with symbolic links resolved on both sides, so the link the installer makes into a `PATH` directory is the normal passing case. A second copy earlier on `PATH`, or a stale link from an older install, fails here and the fix prints both paths. A launcher script put on `PATH` by a package manager or a version manager is a `WARN`, because nothing is broken. `skip` in a source checkout, where the process runs from `bun` and there is nothing to compare |
 | `version` | the installed version, its update channel, and how it was installed |
 
 The exit code is 0 when every line is `ok`, `WARN` or `skip`, 4 when a failed line is a network failure, and 1 otherwise, so a pipeline can run it as a first step and stop before spending anything. When the gateway cannot be reached, the key and tier lines are skipped instead of waiting on the same gateway again. `--timeout N` sets the seconds to wait for each network check (default 8). The key value is never printed. Set `RAFIKICODE_GATEWAY_URL` or `RAFIKICODE_CONSOLE_URL` to check a local test server instead; the fix hints name the variable when it is set.

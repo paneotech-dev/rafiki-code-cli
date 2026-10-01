@@ -45,7 +45,7 @@ On a server or in CI, where nobody can open a browser, use an API key instead: c
 
 ```bash
 export RAFIKICODE_API_KEY=...          # the key you created
-rafikicode doctor                      # checks the key, the gateway and your tiers
+rafikicode doctor                      # checks the key, the gateway, your tiers and the install
 rafikicode run "fix the failing test in packages/api" < /dev/null
 ```
 
