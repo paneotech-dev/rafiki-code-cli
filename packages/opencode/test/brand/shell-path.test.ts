@@ -50,8 +50,13 @@ describe("installer PATH entry", () => {
 describe("installer symlink on PATH", () => {
   // install.sh (link_into_path) links from the first of these that is on PATH
   // and writable; uninstall has to look in the same two places.
+  //
+  // The installer reads the home directory through HOME_DIR rather than HOME,
+  // because an unset HOME killed it outright under set -u. The pinned string
+  // follows it: the point of this assertion is that the two sides agree on
+  // which directories are tried, not which variable spells the home.
   test("the directories match what install.sh links from", () => {
-    expect(installer).toContain('for dir in /usr/local/bin "$HOME/.local/bin"; do')
+    expect(installer).toContain('for dir in /usr/local/bin "$HOME_DIR/.local/bin"; do')
     expect(installer).toContain('link="${dir}/${BIN_NAME}"')
     expect(Shell.linkDirs("/home/jane")).toEqual(["/usr/local/bin", "/home/jane/.local/bin"])
     expect(Shell.linkCandidates(`${dir}/rafikicode`, "/home/jane")).toEqual([
