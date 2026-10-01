@@ -7,6 +7,8 @@ import path from "path"
 import { parse as parseJsonc, printParseErrorCode, type ParseError } from "jsonc-parser"
 import { Brand } from "@opencode-ai/core/brand/brand"
 import * as Credentials from "@opencode-ai/core/brand/credentials"
+import * as Trust from "@opencode-ai/core/brand/trust"
+import { which } from "@opencode-ai/core/util/which"
 import { InstallationChannel, InstallationVersion } from "@opencode-ai/core/installation/version"
 import * as Contract from "./contract"
 
@@ -42,9 +44,16 @@ export interface Options {
   version?: string
   channel?: string
   now?: () => number
+  // The working directory the project checks look at; the process cwd by default.
+  cwd?: string
+  // What the shell resolves the command to; the real `which` by default.
+  which?: (command: string) => string | null
+  // Schema validation for config files, loaded from the config decoder by
+  // default (loadValidate). Injected by the tests.
+  validate?: Validate
 }
 
-export const NAMES = ["config", "credential", "gateway", "key", "tiers", "console", "version"] as const
+export const NAMES = ["config", "project", "trust", "credential", "gateway", "key", "tiers", "console", "path", "version"] as const
 
 // Time budget for each network call; a doctor run must never hang.
 export const DEFAULT_TIMEOUT_MS = 8000
@@ -95,35 +104,148 @@ async function body(response: Response): Promise<any> {
   }
 }
 
-export function checkConfig(dir: string): Line {
-  const file = path.join(dir, Brand.configFile)
-  if (!fs.existsSync(file)) return ok("config", `${file} not created yet, built in defaults apply`)
+// Schema check for one config file, with the decoder the loader itself uses, so
+// doctor accepts exactly what a session accepts. Returns the problems, or
+// undefined when the file decodes.
+export type Validate = (data: unknown, source: string) => string[] | undefined
+
+// Loaded lazily: doctor must not drag the config layer graph into every command
+// that imports this module, and a run where the import fails still reports every
+// other check rather than nothing.
+export async function loadValidate(): Promise<Validate | undefined> {
+  try {
+    const [{ ConfigParse }, { ConfigV2Compat }, { ConfigV1 }] = await Promise.all([
+      import("@/config/parse"),
+      import("@/config/v2-compat"),
+      import("@opencode-ai/core/v1/config/config"),
+    ])
+    return (data, source) => {
+      try {
+        ConfigParse.schema(ConfigV1.Info, ConfigV2Compat.lower(ConfigParse.normalizeLoaded(data), source).value, source)
+        return undefined
+      } catch (cause) {
+        return ConfigParse.issuesOf(cause) ?? [detailOf(cause)]
+      }
+    }
+  } catch {
+    return undefined
+  }
+}
+
+// What a config file is worth reporting, read once: a problem the session would
+// hard-fail on, or the model it selects.
+interface Inspected {
+  // Present when the file cannot be used as it stands.
+  problem?: { detail: string; fix: string }
+  model?: string
+}
+
+// How to get a broken config file out of the way, for the check whose file it is.
+// The global file is recreated with defaults; a project file is the repository's,
+// so the escape hatch is the switch that skips it.
+const RECREATED = "it is recreated with defaults on the next run."
+const SKIPPED = `or set ${Brand.env.disableProjectConfig}=1 to start without project configuration for one run.`
+
+// The loader substitutes {env:...} and {file:...} before decoding and this does
+// not; both only ever produce strings, so a file that decodes here decodes there.
+export function inspect(file: string, validate?: Validate, project = false): Inspected | undefined {
+  if (!fs.existsSync(file)) return undefined
+  const aside = project ? SKIPPED : `or move the file aside; ${RECREATED}`
   let text: string
   try {
     text = fs.readFileSync(file, "utf8")
   } catch (cause) {
-    return fail("config", `${file} cannot be read (${detailOf(cause)})`, `Make the file readable by your user, or move it aside; it is recreated with defaults on the next run.`)
+    return {
+      problem: {
+        detail: `${file} cannot be read (${detailOf(cause)})`,
+        fix: project
+          ? `Make the file readable by your user, ${SKIPPED}`
+          : `Make the file readable by your user, or move it aside; ${RECREATED}`,
+      },
+    }
   }
   const errors: ParseError[] = []
   const data = parseJsonc(text, errors, { allowTrailingComma: true })
   if (errors.length) {
     const first = errors[0]!
     const line = text.slice(0, first.offset).split("\n").length
-    return fail(
-      "config",
-      `${file} is not valid JSON (${printParseErrorCode(first.error)} at line ${line})`,
-      "Fix the syntax, or move the file aside; it is recreated with defaults on the next run.",
-    )
+    return {
+      problem: {
+        detail: `${file} is not valid JSON (${printParseErrorCode(first.error)} at line ${line})`,
+        fix: `Fix the syntax, ${aside}`,
+      },
+    }
   }
   if (!data || typeof data !== "object" || Array.isArray(data)) {
-    return fail("config", `${file} does not contain a JSON object`, "Replace the contents with an object, for example {}.")
+    return { problem: { detail: `${file} does not contain a JSON object`, fix: "Replace the contents with an object, for example {}." } }
   }
-  const model = typeof data.model === "string" ? data.model : undefined
-  const note = model ? ` (model ${model})` : ""
-  if (model && !model.startsWith(`${Brand.provider.id}/`)) {
+  const issues = validate?.(data, file)
+  if (issues?.length) {
+    return {
+      problem: {
+        detail: `${file} does not match the configuration schema (${issues.slice(0, 3).join("; ")}${issues.length > 3 ? `; and ${issues.length - 3} more` : ""})`,
+        fix: `Fix the fields named above against ${Brand.schema.config}, ${aside}`,
+      },
+    }
+  }
+  return { model: typeof data.model === "string" ? data.model : undefined }
+}
+
+export function checkConfig(dir: string, validate?: Validate): Line {
+  const file = path.join(dir, Brand.configFile)
+  const found = inspect(file, validate)
+  if (!found) return ok("config", `${file} not created yet, built in defaults apply`)
+  if (found.problem) return fail("config", found.problem.detail, found.problem.fix)
+  const note = found.model ? ` (model ${found.model})` : ""
+  if (found.model && !found.model.startsWith(`${Brand.provider.id}/`)) {
     return ok("config", `${file}${note}, a model outside the ${Brand.provider.name} gateway is not metered on your Rafiki AI account`)
   }
   return ok("config", `${file}${note}`)
+}
+
+// Every project config file a session started in dir would load, in the order
+// the loader merges them: outermost first, so the last entry wins. Mirrors
+// config/paths.ts (files walked up to the worktree root, plus the project
+// directories), and stops where a session stops, at the git root.
+export function projectFiles(dir: string): string[] {
+  if (Brand.project.configDisabled()) return []
+  const start = path.resolve(dir)
+  const stop = Trust.gitRoot(start)
+  const found: string[] = []
+  let current = start
+  while (true) {
+    for (const base of Brand.project.fileNames) {
+      for (const file of [`${base}.jsonc`, `${base}.json`]) {
+        const candidate = path.join(current, file)
+        if (fs.existsSync(candidate)) found.push(candidate)
+      }
+    }
+    for (const name of Brand.project.dirs) {
+      for (const file of Brand.project.files) {
+        const candidate = path.join(current, name, file)
+        if (fs.existsSync(candidate)) found.push(candidate)
+      }
+    }
+    if (current === stop) break
+    const parent = path.dirname(current)
+    if (parent === current) break
+    current = parent
+  }
+  return found.reverse()
+}
+
+// The project config a session started here would load. The global file is
+// checked by checkConfig; this is the one a repository carries, which the
+// session-start failure it causes never names as ours.
+export function checkProject(files: string[], validate?: Validate, disabled = Brand.project.configDisabled()): Line {
+  if (disabled) return skip("project", `${Brand.env.disableProjectConfig} is set, nothing is loaded from the working tree`)
+  if (files.length === 0) return ok("project", "no project configuration in this directory or above it")
+  const inspected = files.map((file) => inspect(file, validate, true))
+  const broken = inspected.find((found) => found?.problem)
+  if (broken?.problem) return fail("project", broken.problem.detail, broken.problem.fix)
+  // The loader merges in order, so the last file that names a model wins.
+  const model = inspected.map((found) => found?.model).findLast((m) => m !== undefined)
+  return ok("project", `${files.join(", ")}${model ? ` (model ${model})` : ""}`)
 }
 
 export interface CredentialResult {
@@ -402,6 +524,101 @@ export async function checkConsole(
   return ok("console", `${consoleURL} reachable (${response.status})`)
 }
 
+// What an untrusted workspace costs, in the order a person meets it.
+export const TRUST_DROPPED =
+  "Project plugins, custom tools, local MCP servers, formatters, language servers and permission rules declared in this directory are not loaded."
+
+// Is the workspace this run starts in trusted, and what does that mean for it?
+// Not a failure: an untrusted workspace still runs, it just drops the code and
+// the settings the directory declares, which is otherwise invisible.
+export function checkTrust(dir: string, by: "env" | "store" | undefined, headless: boolean, hint: string): Line {
+  if (by === "env") return ok("trust", `${dir} is trusted for this run by ${Brand.env.trustWorkspace}`)
+  if (by === "store") return ok("trust", `${dir} is trusted (stored in ${path.join(Brand.configDir(), Trust.storeName)})`)
+  if (Trust.allowsCode({ trusted: false, headless })) {
+    return ok("trust", `${dir} is not trusted, and project code loads anyway on this build`)
+  }
+  return warn("trust", `${dir} is not trusted`, `Run ${Brand.name} trust ${hint}.`, TRUST_DROPPED)
+}
+
+// Symlinks resolved, so the installer's link in a PATH directory compares equal
+// to the binary it points at. A path that cannot be resolved is returned as it
+// is: the comparison then fails, which is the honest answer.
+export function realPath(target: string) {
+  try {
+    return fs.realpathSync.native(target)
+  } catch {
+    return path.resolve(target)
+  }
+}
+
+// Is this file a launcher rather than a build of this product? Some package
+// managers (pnpm, and the shim based version managers) put a small script on PATH
+// that execs the real binary, so the name resolving to something that is not this
+// binary is normal for them. A shadowing install is a compiled executable; a
+// launcher starts with a shebang, or is a .cmd or .ps1 wrapper on Windows.
+export function looksLikeLauncher(file: string) {
+  if (/\.(cmd|bat|ps1|sh)$/i.test(file)) return true
+  try {
+    const handle = fs.openSync(file, "r")
+    try {
+      const head = Buffer.alloc(2)
+      return fs.readSync(handle, head, 0, 2, 0) === 2 && head.toString("latin1") === "#!"
+    } finally {
+      fs.closeSync(handle)
+    }
+  } catch {
+    return false
+  }
+}
+
+// What a launcher on PATH means: nothing is broken, but the two paths are not the
+// same file, so doctor cannot prove the name reaches this build.
+export const PATH_LAUNCHER =
+  "Nothing is wrong if your package manager or version manager puts a launcher script on PATH. If you did not expect one, it is an older install still answering to the name."
+
+// Does the name the person types reach the binary that is running?
+//
+// This is the failure v0.1.5 fixed and the one doctor could not see: a stale
+// symlink from an older install, a copy earlier on PATH, or an install under a
+// prefix the shell never searches. checkVersion reports execPath, which is
+// always right and therefore never catches any of it.
+//
+// A source checkout runs under the bun or node binary, so there is nothing to
+// compare and the check is skipped rather than made up.
+export function checkPath(resolved: string | null, execPath: string, channel: string): Line {
+  const own = path.basename(execPath).replace(/\.exe$/i, "") === Brand.name
+  if (!own || channel === "local") {
+    return skip("path", `not applicable, this process runs from ${execPath}`)
+  }
+  if (!resolved) {
+    return fail(
+      "path",
+      `${Brand.name} is not on PATH, this process runs from ${execPath}`,
+      `Add ${path.dirname(execPath)} to PATH, or reinstall with the installer at ${Brand.release.installer}, which links ${Brand.name} into a directory already on it.`,
+    )
+  }
+  const target = realPath(resolved)
+  const running = realPath(execPath)
+  if (target === running) {
+    const through = resolved === target ? "" : ` (a link to ${target})`
+    return ok("path", `${Brand.name} resolves to ${resolved}${through}, the binary running this check`)
+  }
+  const through = resolved === target ? "" : ` (a link to ${target})`
+  if (looksLikeLauncher(target)) {
+    return warn(
+      "path",
+      `${Brand.name} resolves to ${resolved}${through}, a launcher script, not the binary running this check (${execPath})`,
+      `Check that ${resolved} starts this version: run ${Brand.name} --version in a new terminal.`,
+      PATH_LAUNCHER,
+    )
+  }
+  return fail(
+    "path",
+    `${Brand.name} resolves to ${resolved}${through}, but this process runs from ${execPath}`,
+    `Your shell finds another copy first. Remove ${resolved}, or put ${path.dirname(execPath)} earlier on PATH, then open a new terminal and run ${Brand.name} doctor again.`,
+  )
+}
+
 export function installMethod(execPath: string, channel: string) {
   const normalized = execPath.split("\\").join("/")
   if (normalized.includes(`/${Brand.configDirName}/bin/`)) return `installed by the installer script, ${Brand.name} update applies`
@@ -435,9 +652,15 @@ export async function run(options: Options = {}): Promise<Report> {
   const root = gatewayRoot(options.gatewayURL ?? Brand.gatewayURL())
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
   const now = options.now ?? (() => Date.now())
+  const cwd = options.cwd ?? process.cwd()
+  const execPath = options.execPath ?? process.execPath
+  const channel = options.channel ?? InstallationChannel
+  const validate = options.validate ?? (await loadValidate())
   const lines: Line[] = []
 
-  lines.push(checkConfig(dir))
+  lines.push(checkConfig(dir, validate))
+  lines.push(checkProject(projectFiles(cwd), validate))
+  lines.push(checkTrust(Trust.real(cwd), Trust.trustedBy(cwd), Trust.headless(), Trust.gitRoot(cwd) ?? cwd))
   const credential = checkCredential(env, dir, consoleURL, now())
   lines.push(credential.line)
   const gateway = await checkGateway(root, f, timeoutMs, env, now)
@@ -462,7 +685,12 @@ export async function run(options: Options = {}): Promise<Report> {
   else lines.push(skip("tiers", !credential.key ? "no credential to check" : gateway.network ? "gateway unreachable" : "key check failed"))
 
   lines.push(await checkConsole(consoleURL, credential.key, env, f, timeoutMs, accepted))
-  lines.push(checkVersion(options.version ?? InstallationVersion, options.channel ?? InstallationChannel, options.execPath ?? process.execPath))
+  // util/which also searches the tool cache directory, where downloaded helpers
+  // such as ripgrep live. This binary is never installed there, so what it finds
+  // is what the shell's PATH finds.
+  const resolve = options.which ?? ((command: string) => which(command, env as NodeJS.ProcessEnv))
+  lines.push(checkPath(resolve(Brand.name), execPath, channel))
+  lines.push(checkVersion(options.version ?? InstallationVersion, channel, execPath))
 
   const failed = lines.filter((l) => l.status === "fail").length
   const warned = lines.filter((l) => l.status === "warn").length

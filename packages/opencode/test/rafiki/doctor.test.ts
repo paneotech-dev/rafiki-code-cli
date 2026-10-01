@@ -75,6 +75,8 @@ async function signIn(models = ["rafiki-fast", "rafiki-pro", "rafiki-max"], maxB
   return token as { access_token: string; key_alias: string }
 }
 
+const EXEC_PATH = "/home/someone/.rafikicode/bin/rafikicode"
+
 function options(extra: Partial<Doctor.Options> = {}): Doctor.Options {
   return {
     env: {},
@@ -82,9 +84,14 @@ function options(extra: Partial<Doctor.Options> = {}): Doctor.Options {
     gatewayURL: gateway!.url + "/v1",
     consoleURL: console_!.url,
     timeoutMs: 3000,
-    execPath: "/home/someone/.rafikicode/bin/rafikicode",
+    execPath: EXEC_PATH,
     version: "1.2.3",
     channel: "latest",
+    // The project and PATH checks look at the machine this runs on, which no
+    // assertion below is about: pin them to a directory with no project config
+    // and to a shell that resolves the command to the process running it.
+    cwd: home,
+    which: () => EXEC_PATH,
     ...extra,
   }
 }

@@ -33,6 +33,22 @@ function configIssues(input: Record<string, unknown>): ConfigIssue[] {
     : []
 }
 
+// What to do about a config file this run refuses to load.
+//
+// A schema issue on its own tells the user a field is wrong and leaves them with
+// a tool that will not start: a session start is exactly where they cannot look
+// anything up. doctor says which of the files that apply here is at fault and
+// what to change, the project switch gets them a running session in the same
+// repository so they can fix the file from inside it, and the schema is the list
+// of what the field could have been. The same three lines doctor gives.
+export function configFix() {
+  return [
+    `Fix: run \`${Brand.name} doctor\` to see which configuration file is at fault and what to change.`,
+    `     To start without anything from the working tree for one run: ${Brand.env.disableProjectConfig}=1 ${Brand.name}`,
+    `     Every option, with its type: ${Brand.schema.config}`,
+  ].join("\n")
+}
+
 export function FormatError(input: unknown): string | undefined {
   if (input instanceof Error && isRecord(input.cause) && "body" in input.cause) {
     const formatted = FormatError(input.cause.body)
@@ -80,7 +96,12 @@ export function FormatError(input: unknown): string | undefined {
   const configJson = configData(input, "ConfigJsonError")
   if (configJson) {
     const message = stringField(configJson, "message")
-    return `Config file at ${stringField(configJson, "path")} is not valid JSON(C)` + (message ? `: ${message}` : "")
+    return (
+      `Config file at ${stringField(configJson, "path")} is not valid JSON(C)` +
+      (message ? `: ${message}` : "") +
+      "\n" +
+      configFix()
+    )
   }
 
   // ConfigDirectoryTypoError: { dir: string, path: string, suggestion: string }
@@ -116,6 +137,7 @@ export function FormatError(input: unknown): string | undefined {
     return [
       `Configuration is invalid${path && path !== "config" ? ` at ${path}` : ""}` + (message ? `: ${message}` : ""),
       ...issues.map((issue) => "↳ " + issue.message + " " + issue.path.join(".")),
+      configFix(),
     ].join("\n")
   }
 

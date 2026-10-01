@@ -16,6 +16,7 @@ import { writeHeapSnapshot } from "v8"
 import { ServerAuth } from "@/server/auth"
 import { validateSession } from "../tui/validate-session"
 import { win32InstallCtrlCGuard } from "@opencode-ai/tui/terminal-win32"
+import { installTrustNotices } from "@/rafiki/notice"
 
 declare global {
   const OPENCODE_WORKER_PATH: string
@@ -41,12 +42,39 @@ function createWorkerFetch(client: RpcClient): typeof fetch {
   return fn as typeof fetch
 }
 
-function createEventSource(client: RpcClient): EventSource {
+// How many events are held for an interface that has not subscribed yet. Startup
+// raises a handful; the cap is only there so a session that never subscribes does
+// not accumulate events for hours.
+const BUFFER_LIMIT = 256
+
+// The worker starts emitting global events as soon as it loads a config file,
+// and the interface only subscribes once it has mounted. Anything in between was
+// dropped on the floor: the upgrade notice, and the workspace-trust warnings
+// raised by the very first config load. Collect from the moment the client
+// exists and replay on the first subscribe.
+export function createEventSource(
+  client: RpcClient,
+  limit = BUFFER_LIMIT,
+): EventSource & { emit(event: GlobalEvent): void } {
+  const buffered: GlobalEvent[] = []
+  let deliver: ((event: GlobalEvent) => void) | undefined
+  const push = (event: GlobalEvent) => {
+    if (deliver) return deliver(event)
+    // A source nobody ever subscribes to (an external server owns the events
+    // instead) must not grow without bound for the life of the session.
+    if (buffered.length >= limit) buffered.shift()
+    buffered.push(event)
+  }
+  client.on<GlobalEvent>("global.event", push)
   return {
+    // For an event this process raises itself, so it goes the same way.
+    emit: push,
     subscribe: async (handler) => {
-      return client.on<GlobalEvent>("global.event", (e) => {
-        handler(e)
-      })
+      deliver = handler
+      for (const event of buffered.splice(0)) handler(event)
+      return () => {
+        deliver = undefined
+      }
     },
   }
 }
@@ -215,6 +243,9 @@ export const TuiThreadCommand = cmd({
         ),
       })
       const client = Rpc.client<typeof rpc>(worker)
+      // Built here, not at transport time: buffering has to start before the
+      // worker can emit anything (see createEventSource).
+      const events = createEventSource(client)
       const reload = () => {
         client.call("reload", undefined).catch(() => {})
       }
@@ -229,11 +260,22 @@ export const TuiThreadCommand = cmd({
         worker.terminate()
       }
 
+      // Resolved before the config is read: the interface's own config declares
+      // plugins, so reading it can raise a workspace-trust warning, and where
+      // that warning should go depends on this.
+      const network = resolveNetworkOptionsNoConfig(args)
+      const external = hasArg("--port") || hasArg("--hostname") || network.mdns === true
+
+      // The interface's config is loaded in this process, so the trust warnings
+      // it raises are raised here, on a stderr the interface is about to cover
+      // with the alternate screen. Send them the same way as the worker's. With
+      // an external server the interface takes its events from that server and
+      // this buffer is never read, so there stderr remains the better of the two.
+      if (!external) installTrustNotices((event) => events.emit(event))
+
       const prompt = await input(args.prompt)
       const config = await TuiConfig.get()
 
-      const network = resolveNetworkOptionsNoConfig(args)
-      const external = hasArg("--port") || hasArg("--hostname") || network.mdns === true
       if (external && BrandServe.refused(network)) return await stop()
 
       const headers = external ? ServerAuth.headers() : undefined
@@ -248,7 +290,7 @@ export const TuiThreadCommand = cmd({
         : {
             url: "http://opencode.internal",
             fetch: createWorkerFetch(client),
-            events: createEventSource(client),
+            events,
           }
 
       try {

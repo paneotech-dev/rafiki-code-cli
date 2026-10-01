@@ -55,17 +55,6 @@ function mergeConfigConcatArrays(target: Info, source: Info): Info {
   return merged
 }
 
-function normalizeLoadedConfig(data: unknown) {
-  if (!isRecord(data)) return data
-  const copy = { ...data }
-  const hadLegacy = "theme" in copy || "keybinds" in copy || "tui" in copy
-  if (!hadLegacy) return copy
-  delete copy.theme
-  delete copy.keybinds
-  delete copy.tui
-  return copy
-}
-
 async function substituteWellKnownRemoteConfig(input: {
   value: unknown
   dir: string
@@ -190,7 +179,7 @@ const layer = Layer.effect(
     const readConfigFile = (filepath: string) => fs.readFileStringSafe(filepath).pipe(Effect.orDie)
 
     const decodeConfig = Effect.fnUntraced(function* (input: unknown, source: string) {
-      const result = ConfigV2Compat.lower(normalizeLoadedConfig(input), source)
+      const result = ConfigV2Compat.lower(ConfigParse.normalizeLoaded(input), source)
       yield* Effect.forEach(result.diagnostics, (diagnostic) =>
         Effect.logWarning("configuration compatibility diagnostic", {
           source,
@@ -679,7 +668,7 @@ const layer = Layer.effect(
       let changed: boolean
       if (!file.endsWith(".jsonc")) {
         const existing = ConfigParse.jsonc(before, file)
-        ConfigParse.schema(ConfigV1.Info, ConfigV2Compat.lower(normalizeLoadedConfig(existing), file).value, file)
+        ConfigParse.schema(ConfigV1.Info, ConfigV2Compat.lower(ConfigParse.normalizeLoaded(existing), file).value, file)
         const merged = mergeDeep(isRecord(existing) ? existing : {}, patch)
         const serialized = JSON.stringify(merged, null, 2)
         next = yield* decodeConfig(merged, file)

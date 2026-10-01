@@ -5,8 +5,8 @@
 # installed short circuit, a checksum mismatch that must fail without touching
 # the installed binary, the symlink the installer places in a directory that is
 # already on PATH, the wording of the next steps when no shell startup file was
-# written, and the post-install smoke test that must fail loudly when the
-# installed binary cannot run.
+# written, the doctor step that closes the next steps, and the post-install smoke
+# test that must fail loudly when the installed binary cannot run.
 set -euo pipefail
 
 PORT="${PORT:-4150}"
@@ -137,6 +137,12 @@ out=$(env HOME="$linkhome" SHELL=/bin/bash PATH="$linkhome/.local/bin:$safe_path
 # bare command, which now resolves.
 [[ "$out" != *"To use this one"* ]] && [[ "$out" == *"       rafikicode login"* ]]; check $? "linked install shows the bare command and no PATH step"
 
+# The one command that tells someone whether the install worked, which the
+# installer never mentioned. It has to name the command that resolves here, the
+# same one the sign in step names.
+[[ "$out" == *"       rafikicode doctor"* ]] \
+    && [[ "$out" == *"Check the whole setup"* ]]; check $? "the next steps end by pointing at doctor"
+
 # A file that is not one of the installer's own links is left alone.
 otherhome="$WORK/keephome"
 mkdir -p "$otherhome/.local/bin"
@@ -158,6 +164,10 @@ out=$(env HOME="$nolinkhome" SHELL=/bin/bash PATH="$safe_path" \
     && grep -Fq "export PATH=$nolinkhome/.rafikicode/bin:\$PATH" "$nolinkhome/.bashrc" \
     && [[ "$out" == *"       export PATH=$nolinkhome/.rafikicode/bin:\$PATH"* ]] \
     && [[ "$out" == *"       $nolinkhome/.rafikicode/bin/rafikicode login"* ]]; check $? "without a link, the startup file is written and the next steps use the full path"
+
+# The doctor step carries the same command as the sign in step: the bare name
+# only where it resolves, the absolute path everywhere else.
+[[ "$out" == *"       $nolinkhome/.rafikicode/bin/rafikicode doctor"* ]]; check $? "the doctor step uses the full path when the bare name does not resolve"
 
 # --no-modify-path makes no link even where one is possible, and writes nothing.
 nomodhome="$WORK/nomodhome"

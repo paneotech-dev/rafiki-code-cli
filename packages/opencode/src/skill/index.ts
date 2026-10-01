@@ -1,4 +1,5 @@
 import { Brand } from "@opencode-ai/core/brand/brand"
+import { BrandSkill } from "@opencode-ai/core/brand/skill"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import path from "path"
 import { Effect, Layer, Context, Schema } from "effect"
@@ -25,15 +26,21 @@ const EXTERNAL_SKILL_PATTERN = "skills/**/SKILL.md"
 const OPENCODE_SKILL_PATTERN = "{skill,skills}/**/SKILL.md"
 const SKILL_PATTERN = "**/SKILL.md"
 
-// Built-in skill that ships with opencode. The model's intuition for what an
-// opencode.json should look like is often wrong, and opencode hard-fails on
-// invalid config, so users hit cryptic startup errors. Loading this skill
-// when the model is asked to touch opencode's own config files gives it the
-// actual schemas instead of guesses.
-const CUSTOMIZE_OPENCODE_SKILL_NAME = "customize-opencode"
-const CUSTOMIZE_OPENCODE_SKILL_DESCRIPTION =
-  `Use ONLY when the user is editing or creating ${Brand.name}'s own configuration: ${Brand.project.file}.json, ${Brand.project.file}.jsonc, files under ${Brand.project.dir}/, or files under ~/${Brand.configDirName}/. Also use when creating or fixing ${Brand.name} agents, subagents, skills, plugins, MCP servers, or permission rules. Do not use for the user's own application code, or for any project that is not configuring ${Brand.name} itself.`
-const CUSTOMIZE_OPENCODE_SKILL_BODY = SkillPlugin.CustomizeOpencodeContent
+// Built-in configuration skill. The model's intuition for what a config file
+// should look like is often wrong, and the tool hard-fails on invalid config, so
+// a guess costs the user a refused startup. Loading this skill when the model is
+// asked to touch our own config files gives it the actual shapes.
+//
+// The upstream skill is hidden here (Brand.hiddenSkills): its body teaches
+// upstream file names and a schema URL that do not exist in this product. The
+// replacement is brand/skill.ts, which does the same job with our paths, our
+// schema URL and the workspace-trust rule the upstream one knows nothing about.
+const CUSTOMIZE_SKILL_UPSTREAM_NAME = "customize-opencode"
+const CUSTOMIZE_SKILL_HIDDEN = Brand.hiddenSkills.includes(CUSTOMIZE_SKILL_UPSTREAM_NAME)
+const CUSTOMIZE_SKILL_NAME = CUSTOMIZE_SKILL_HIDDEN ? BrandSkill.name : CUSTOMIZE_SKILL_UPSTREAM_NAME
+const CUSTOMIZE_SKILL_DESCRIPTION = CUSTOMIZE_SKILL_HIDDEN
+  ? BrandSkill.description
+  : `Use ONLY when the user is editing or creating ${Brand.name}'s own configuration: ${Brand.project.file}.json, ${Brand.project.file}.jsonc, files under ${Brand.project.dir}/, or files under ~/${Brand.configDirName}/. Also use when creating or fixing ${Brand.name} agents, subagents, skills, plugins, MCP servers, or permission rules. Do not use for the user's own application code, or for any project that is not configuring ${Brand.name} itself.`
 
 export const Info = Schema.Struct({
   name: Schema.String,
@@ -278,12 +285,14 @@ const layer = Layer.effect(
         const s: State = { skills: {}, dirs: new Set() }
         // Register the built-in skill BEFORE disk discovery so a user-disk
         // skill with the same name can override it.
-        s.skills[CUSTOMIZE_OPENCODE_SKILL_NAME] = {
-          name: CUSTOMIZE_OPENCODE_SKILL_NAME,
-          description: CUSTOMIZE_OPENCODE_SKILL_DESCRIPTION,
+        s.skills[CUSTOMIZE_SKILL_NAME] = {
+          name: CUSTOMIZE_SKILL_NAME,
+          description: CUSTOMIZE_SKILL_DESCRIPTION,
           location: "<built-in>",
-          content: CUSTOMIZE_OPENCODE_SKILL_BODY,
+          content: CUSTOMIZE_SKILL_HIDDEN ? BrandSkill.body() : SkillPlugin.CustomizeOpencodeContent,
         }
+        // Belt and braces: a hidden name must never reach the model, whether it
+        // was registered above or came from somewhere else.
         for (const name of Brand.hiddenSkills) delete s.skills[name]
         yield* loadSkills(s, yield* InstanceState.get(discovered), events)
         return s

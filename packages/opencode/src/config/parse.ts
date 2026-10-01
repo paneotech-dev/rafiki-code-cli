@@ -59,3 +59,41 @@ export function schema<S extends EffectSchema.Decoder<unknown, never>>(
     { cause: error },
   )
 }
+
+// Legacy terminal interface keys a config file may still carry. They belong to
+// the TUI config, not this one, and the loader drops them before decoding.
+// Lives here, beside the decoder, so anything that validates a config file
+// without loading it (rafikicode doctor) normalizes it the same way.
+export function normalizeLoaded(data: unknown): unknown {
+  if (data === null || typeof data !== "object" || Array.isArray(data)) return data
+  const copy = { ...(data as Record<string, unknown>) }
+  const hadLegacy = "theme" in copy || "keybinds" in copy || "tui" in copy
+  if (!hadLegacy) return copy
+  delete copy.theme
+  delete copy.keybinds
+  delete copy.tui
+  return copy
+}
+
+// The issue list of a ConfigInvalidError as plain "<message> at <path>" strings,
+// or undefined when the error is something else.
+export function issuesOf(cause: unknown): string[] | undefined {
+  if (cause === null || typeof cause !== "object") return undefined
+  const data =
+    "data" in cause && cause.data && typeof cause.data === "object"
+      ? (cause.data as Record<string, unknown>)
+      : (cause as Record<string, unknown>)
+  const issues = Array.isArray(data.issues) ? data.issues : []
+  const listed = issues.flatMap((issue) => {
+    if (!issue || typeof issue !== "object") return []
+    const record = issue as Record<string, unknown>
+    if (typeof record.message !== "string") return []
+    const where = Array.isArray(record.path)
+      ? record.path.filter((p): p is string => typeof p === "string").join(".")
+      : ""
+    return [where ? `${record.message} at ${where}` : record.message]
+  })
+  if (listed.length) return listed
+  const message = typeof data.message === "string" ? data.message : undefined
+  return message ? [message] : undefined
+}
