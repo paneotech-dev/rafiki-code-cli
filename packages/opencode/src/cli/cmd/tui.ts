@@ -17,6 +17,7 @@ import { ServerAuth } from "@/server/auth"
 import { validateSession } from "../tui/validate-session"
 import { win32InstallCtrlCGuard } from "@opencode-ai/tui/terminal-win32"
 import { installTrustNotices } from "@/rafiki/notice"
+import * as Startup from "@/rafiki/startup"
 
 declare global {
   const OPENCODE_WORKER_PATH: string
@@ -213,6 +214,16 @@ export const TuiThreadCommand = cmd({
     if (unsupported) {
       UI.error(`${unsupported} requires --mini`)
       process.exitCode = 1
+      return
+    }
+
+    // A terminal that cannot host the full screen interface is named here,
+    // before the renderer is loaded. Left to the renderer it surfaces as an
+    // ioctl or a native library failure, which reads as a bug in rafikicode
+    // rather than as a terminal that cannot do this.
+    const unusable = Startup.terminal()
+    if (unusable) {
+      Startup.report(unusable)
       return
     }
 

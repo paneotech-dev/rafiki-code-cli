@@ -1,3 +1,6 @@
+// First import, and it must stay first: it installs the crash handlers that
+// report a failure during module evaluation (rafiki/startup-guard.ts).
+import "./rafiki/startup-guard"
 import yargs from "yargs"
 import { hideBin } from "yargs/helpers"
 import { RunCommand } from "./cli/cmd/run"
@@ -25,10 +28,10 @@ import { PrCommand } from "./cli/cmd/pr"
 import { GhCommand } from "./cli/cmd/gh"
 import { SessionCommand } from "./cli/cmd/session"
 import { DbCommand } from "./cli/cmd/db"
-import { errorMessage } from "./util/error"
 import { PluginCommand } from "./cli/cmd/plug"
 import { Heap } from "./cli/heap"
 import { Brand } from "@opencode-ai/core/brand/brand"
+import * as Startup from "./rafiki/startup"
 import { DoctorCommand, LoginCommand, LogoutCommand, ProvidersCommand, TrustCommand, WhoamiCommand, markHeadless, refuseMissingKey, refuseUnsafeCredential } from "./rafiki/cmd"
 import * as ExecTmp from "./rafiki/exec-tmp"
 
@@ -134,6 +137,11 @@ const cli = yargs(args)
   .strict()
 
 try {
+  // Startup diagnosis self test: the only way to drive a startup failure of a
+  // given shape through the real binary, which is how the tests assert on what
+  // reaches the terminal. Does nothing unless the variable is set.
+  const injected = process.env["RAFIKICODE_TEST_STARTUP_ERROR"]
+  if (injected) throw new Error(injected)
   if (args.includes("-h") || args.includes("--help")) {
     await cli.parse(args, (err: Error | undefined, _argv: unknown, out: string) => {
       if (err) throw err
@@ -147,8 +155,10 @@ try {
   const formatted = FormatError(e)
   if (formatted) UI.error(formatted)
   if (formatted === undefined) {
-    UI.error("Unexpected error" + EOL)
-    process.stderr.write(errorMessage(e) + EOL)
+    // No "Unexpected error" banner: a failure nobody anticipated is exactly
+    // the one a user needs a diagnosis, a next step and a way out for. The
+    // original error text is part of every report (rafiki/startup.ts).
+    Startup.report(Startup.diagnose(e), e, { argv: args })
   }
   if (process.exitCode === undefined) process.exitCode = 1
 } finally {

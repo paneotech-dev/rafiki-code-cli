@@ -5,6 +5,7 @@ import { errorMessage } from "@opencode-ai/tui/util/error"
 import { validateSession } from "../tui/validate-session"
 import { ServerAuth } from "@/server/auth"
 import * as ServerFile from "@/rafiki/server-file"
+import * as Startup from "@/rafiki/startup"
 
 export const AttachCommand = cmd({
   command: "attach <url>",
@@ -103,6 +104,15 @@ export const AttachCommand = cmd({
     if (unsupported) {
       UI.error(`${unsupported} requires --mini`)
       process.exitCode = 1
+      return
+    }
+
+    // Same preflight as the default command: a terminal that cannot host the
+    // full screen interface is named before the renderer loads, and before a
+    // round trip to the server.
+    const unusable = Startup.terminal()
+    if (unusable) {
+      Startup.report(unusable)
       return
     }
 
