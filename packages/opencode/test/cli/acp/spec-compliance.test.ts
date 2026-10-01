@@ -12,12 +12,18 @@
 //     successfully aborted and pending updates have been sent, the Agent MUST
 //     respond to the original `session/prompt` request with the `cancelled`
 //     stop reason.") `session/cancel` is a notification, so it carries no id
-//     and gets no reply — the proof is the original request's stop reason.
+//     and gets no reply, and the proof is the original request's stop reason.
+//     Both are covered: cancelled mid-stream, and cancelled before the model
+//     has produced anything at all.
+//   - workspace trust under ACP: the warning that project code is being
+//     refused has to reach the user, not only a log file.
 //   - malformed input: an editor that sends a bad line, an unknown method or
 //     wrong params must get a JSON-RPC answer or be ignored, never a crash or
 //     a hang that leaves the editor waiting forever.
 //   - stdout framing: stdout is the protocol transport, so a stray log line
 //     there corrupts ndjson for every client. Nothing but JSON-RPC may appear.
+//     Every test here that reads the stream asserts this of everything it saw,
+//     rather than relying on nothing having been written.
 //   - the first run an editor actually sees: no Rafiki key. initialize must
 //     still answer (so the editor can offer the sign in action) while
 //     session/new answers auth_required.
@@ -40,21 +46,64 @@ const INVALID_PARAMS = -32602
 const AUTH_REQUIRED = -32000
 
 type JsonRpcResponse = { readonly id?: number; readonly result?: unknown; readonly error?: unknown }
+type SessionUpdateNotification = { readonly method?: string; readonly params?: SessionNotification }
 
-// Reads messages until the response to `id` arrives, letting session/update
-// notifications past. The generic `request` helper cannot be used for a turn
-// that has to be cancelled mid-flight: the prompt has to be in the air while
-// we send something else, so the send and the wait are separate here.
+// Reads messages until the response to `id` arrives, keeping every line seen on
+// the way. The generic `request` helper cannot be used for a turn that has to be
+// cancelled mid-flight (the prompt has to be in the air while we send something
+// else, so the send and the wait are separate here), and it also drops the
+// notifications, which are part of what these tests assert.
 function awaitResponse(acp: AcpClient, id: number, timeout = Duration.seconds(30)) {
   return Effect.gen(function* () {
+    const seen: unknown[] = []
     while (true) {
       const received = yield* acp.receive.pipe(Effect.timeout(timeout))
+      seen.push(received)
       if (received && typeof received === "object" && "id" in received) {
         const message = received as JsonRpcResponse
-        if (message.id === id) return message
+        if (message.id === id) return { response: message, seen }
       }
     }
   })
+}
+
+// Whatever else the turn produced after its response, so an assertion about the
+// stream covers all of it and not just the part before the answer.
+function drain(acp: AcpClient, into: unknown[], seconds = 2) {
+  return Effect.gen(function* () {
+    while (true) {
+      into.push(yield* acp.receive.pipe(Effect.timeout(Duration.seconds(seconds))))
+    }
+  }).pipe(Effect.ignore)
+}
+
+// stdout is the protocol transport, so every line on it must be a JSON-RPC
+// message. The fixture turns a line it could not parse into { _rawLine }, so a
+// stray log line fails here rather than passing unnoticed.
+function expectProtocolOnly(messages: readonly unknown[]) {
+  expect(messages.length).toBeGreaterThan(0)
+  for (const message of messages) {
+    expect(message).not.toHaveProperty("_rawLine")
+    expect((message as { jsonrpc?: string }).jsonrpc).toBe("2.0")
+  }
+}
+
+// The text of every agent_message_chunk in a set of received lines: what a
+// client renders into the conversation, which is where a user would read it.
+function agentMessageText(messages: readonly unknown[]) {
+  return messages
+    .filter((message): message is SessionUpdateNotification => {
+      if (!message || typeof message !== "object") return false
+      return (message as SessionUpdateNotification).method === "session/update"
+    })
+    .map((message) => message.params?.update)
+    .filter((update) => update?.sessionUpdate === "agent_message_chunk")
+    .map((update) => {
+      const content = (update as Extract<SessionNotification["update"], { sessionUpdate: "agent_message_chunk" }>)
+        .content
+      return content.type === "text" ? content.text : ""
+    })
+    .join("")
 }
 
 describe("rafikicode acp specification conformance subprocess", () => {
@@ -132,36 +181,37 @@ describe("rafikicode acp specification conformance subprocess", () => {
           params: { sessionId: session.sessionId },
         })
 
-        const response = yield* awaitResponse(acp, promptId)
+        const { response, seen } = yield* awaitResponse(acp, promptId)
         expect(response.error).toBeUndefined()
         expect((response.result as PromptResponse).stopReason).toBe("cancelled")
+
+        // A turn cancelled this late did produce token accounting, so it is
+        // reported. The other cancellation test is the one with none.
+        expect((response.result as PromptResponse).usage).toBeDefined()
+
+        yield* drain(acp, seen)
+        expectProtocolOnly(seen)
       }),
     120_000,
   )
 
-  // KNOWN FAILING — this test documents a real conformance bug, it is not flake.
-  //
-  // Cancelling before the model has produced any token accounting answers
+  // The early cancellation, which used to answer
   //   {"code":-32603,"message":"Internal error: Internal service failure"}
-  // instead of a `cancelled` stop reason, which the specification requires
+  // instead of the `cancelled` stop reason the specification requires
   // unconditionally (Prompt Turn, Cancellation: "After all ongoing operations
   // have been successfully aborted and pending updates have been sent, the
   // Agent MUST respond to the original `session/prompt` request with the
-  // `cancelled` stop reason.").
-  //
-  // Root cause: the aborted assistant message comes back with no `tokens`
-  // field, and UsageService.buildUsage (src/acp/usage.ts:91) dereferences
-  // `message.tokens.cache.read` unconditionally, so it throws
-  //   TypeError: undefined is not an object (evaluating 'message.tokens.cache')
-  // from src/acp/service.ts:848. ACPError.fromUnknownDefect then discards the
-  // defect, which is why even stderr shows nothing but the generic message.
-  //
-  // Two separate faults, both needing a decision:
-  //   1. buildUsage must tolerate a message with no token accounting.
-  //   2. Even without the crash, this message has no MessageAbortedError, so
-  //      promptResponse would fall into its `!info?.error` branch and report
-  //      `end_turn` — also wrong. Cancellation has to be tracked by the agent
-  //      rather than inferred from the backing message's error.
+  // `cancelled` stop reason."). That is why it was written as a failing test
+  // first. Two faults were behind it, and this covers both:
+  //   1. a turn cancelled this early resolves with a message that carries no
+  //      token accounting at all, and UsageService.buildUsage dereferenced it
+  //      unconditionally, so the turn died of a TypeError. It now reports no
+  //      `usage` rather than inventing zeros, which this asserts.
+  //   2. that same message carries no MessageAbortedError, so a stop reason
+  //      inferred from it read as `end_turn`. The agent now records the
+  //      cancellation itself (a per session flag in ACPSession, set when
+  //      session/cancel arrives and cleared at the start of every turn),
+  //      which is what makes this path and the mid-stream one agree.
   cliIt.live(
     "a prompt turn cancelled before the model answers still answers with the cancelled stop reason",
     ({ home, llm, opencode }) =>
@@ -192,9 +242,18 @@ describe("rafikicode acp specification conformance subprocess", () => {
           params: { sessionId: session.sessionId },
         })
 
-        const response = yield* awaitResponse(acp, promptId)
+        const { response, seen } = yield* awaitResponse(acp, promptId)
         expect(response.error).toBeUndefined()
-        expect((response.result as PromptResponse).stopReason).toBe("cancelled")
+        const result = response.result as PromptResponse
+        expect(result.stopReason).toBe("cancelled")
+
+        // No token accounting existed for this turn, and `usage` is optional on
+        // PromptResponse precisely so that can be said. Zeros would claim the
+        // turn is known to have cost nothing, which is a different fact.
+        expect(result.usage ?? undefined).toBeUndefined()
+
+        yield* drain(acp, seen)
+        expectProtocolOnly(seen)
       }),
     120_000,
   )
@@ -258,43 +317,47 @@ describe("rafikicode acp specification conformance subprocess", () => {
           { opencode },
           { OPENCODE_CONFIG_CONTENT: JSON.stringify(verifierConfig(llm.url)) },
         )
-        const seen: unknown[] = []
         yield* initialize(acp)
         const session = yield* newSession(acp, home)
         yield* llm.text("framing holds")
-        expectOk(
-          yield* acp.request<PromptResponse>("session/prompt", {
+
+        // Sent raw so that every line of the turn, including the notifications
+        // the agent streams while answering, is kept and checked. `request`
+        // would read those and throw them away.
+        const promptId = 9004
+        yield* acp.send({
+          jsonrpc: "2.0",
+          id: promptId,
+          method: "session/prompt",
+          params: {
             sessionId: session.sessionId,
             prompt: [{ type: "text", text: "Say something." }],
-          }),
-        )
+          },
+        })
+        const { response, seen } = yield* awaitResponse(acp, promptId)
+        expect(response.error).toBeUndefined()
+        expect((response.result as PromptResponse).stopReason).toBe("end_turn")
 
-        // Drain whatever else the turn produced. The fixture turns any stdout
+        // Then whatever else the turn produced. The fixture turns any stdout
         // line it could not parse into { _rawLine }, so an unparseable line
         // shows up here rather than silently passing.
-        yield* Effect.gen(function* () {
-          while (true) {
-            seen.push(yield* acp.receive.pipe(Effect.timeout(Duration.seconds(2))))
-          }
-        }).pipe(Effect.ignore)
-
-        for (const message of seen) {
-          expect(message).not.toHaveProperty("_rawLine")
-          expect((message as { jsonrpc?: string }).jsonrpc).toBe("2.0")
-        }
+        yield* drain(acp, seen)
+        expectProtocolOnly(seen)
       }),
     120_000,
   )
 
-  // Workspace trust under ACP. The warning must never reach stdout, which is
-  // the protocol transport — a bare line there corrupts ndjson framing for
-  // every client. It goes to stderr instead, and this test pins the
-  // consequence: ACP has no notification for agent diagnostics (the only
-  // SessionUpdate kinds are message/thought chunks, tool calls, plans, usage,
-  // modes, config and commands), so an editor user is told nothing at all
-  // while their project's tools are dropped and the turn reports end_turn.
+  // Workspace trust under ACP. The raw warning must never be written to stdout,
+  // which is the protocol transport: a bare line there corrupts ndjson framing
+  // for every client. stderr alone, though, tells the user nothing, because an
+  // editor captures the agent's stderr to a log file at best. ACP 0.21.0 has no
+  // logging or diagnostic method, so the warning is delivered as the one
+  // session update kind a client is certain to render where the user is
+  // looking, agent_message_chunk, and stderr is kept as well. The turn itself
+  // still succeeds: refusing the project's code is correct behaviour, and only
+  // the silence about it was the bug.
   cliIt.live(
-    "an untrusted workspace warns on stderr only and never on the protocol stream",
+    "an untrusted workspace tells the user over the protocol as well as on stderr",
     ({ home, llm, opencode }) =>
       Effect.gen(function* () {
         // A workspace that is a git checkout and also holds the config
@@ -333,31 +396,48 @@ describe("rafikicode acp specification conformance subprocess", () => {
         const session = yield* newSession(acp, workspace)
 
         yield* llm.text("answered anyway")
-        const protocolMessages: unknown[] = [
-          expectOk(
-            yield* acp.request<PromptResponse>("session/prompt", {
-              sessionId: session.sessionId,
-              prompt: [{ type: "text", text: "Do something." }],
-            }),
-          ),
-        ]
-        yield* Effect.gen(function* () {
-          while (true) {
-            protocolMessages.push(yield* acp.receive.pipe(Effect.timeout(Duration.seconds(2))))
-          }
-        }).pipe(Effect.ignore)
 
-        // The warning exists, and it is on stderr.
+        // Sent without the `request` helper on purpose: that one drops every
+        // notification it reads while waiting, and the notifications are what
+        // this test is about.
+        const promptId = 9003
+        yield* acp.send({
+          jsonrpc: "2.0",
+          id: promptId,
+          method: "session/prompt",
+          params: {
+            sessionId: session.sessionId,
+            prompt: [{ type: "text", text: "Do something." }],
+          },
+        })
+        const { response, seen } = yield* awaitResponse(acp, promptId)
+        yield* drain(acp, seen)
+
+        // The project's code is still refused, and the turn still answers. That
+        // behaviour is correct: markHeadless only marks `run` headless, so an
+        // ACP session is not headless, and an untrusted workspace falls through
+        // to PROJECT_CODE = "trusted", which refuses project code and warns.
+        expect(response.error).toBeUndefined()
+        expect((response.result as PromptResponse).stopReason).toBe("end_turn")
+
+        // The warning still goes to stderr, which stays the right place for a
+        // diagnostic and the fallback when no sink is installed.
         const stderr = acp.stderrText()
         expect(stderr).toContain("not trusted")
         expect(stderr).toContain(`${Brand.name} trust`)
 
-        // Nothing about trust reached the client over the protocol. This is
-        // the gap: the editor cannot tell the user, because the agent never
-        // told the editor.
-        const wire = JSON.stringify(protocolMessages)
-        expect(wire).not.toContain("not trusted")
-        expect(wire).not.toContain("not loading")
+        // And the user is now told, in the one place a client renders for them.
+        // It names what was dropped and how to fix it, under the brand name.
+        const spoken = agentMessageText(seen)
+        expect(spoken).toContain("not trusted")
+        expect(spoken).toContain("not loading")
+        expect(spoken).toContain(`${Brand.name} trust`)
+        expect(spoken).not.toContain("opencode")
+
+        // Still nothing but JSON-RPC on stdout. The warning travels as a
+        // session/update notification, which is protocol; the raw line never
+        // goes near the transport.
+        expectProtocolOnly(seen)
       }),
     120_000,
   )

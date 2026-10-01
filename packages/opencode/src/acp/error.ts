@@ -1,4 +1,5 @@
 import { RequestError } from "@agentclientprotocol/sdk"
+import { Brand } from "@opencode-ai/core/brand/brand"
 import { Schema } from "effect"
 
 export class SessionNotFoundError extends Schema.TaggedErrorClass<SessionNotFoundError>()("ACPSessionNotFoundError", {
@@ -92,6 +93,28 @@ export function toRequestError(error: Error) {
   }
 }
 
-export function fromUnknownDefect(_defect: unknown, safeMessage = "Internal service failure") {
+// A defect that escaped an ACP handler. The client only ever learns
+// `safeMessage`, because a defect's text can carry paths, configuration and
+// provider detail, and because stdout is the protocol transport: a bare line
+// there would corrupt ndjson framing for every client. stderr is the only
+// diagnostic channel an ACP run has, so the defect is written there rather
+// than discarded, which is why the original crash behind this generic message
+// was invisible for so long.
+export function fromUnknownDefect(defect: unknown, safeMessage = "Internal service failure") {
+  process.stderr.write(`${Brand.product} ACP internal error: ${describeDefect(defect)}\n`)
   return new ServiceFailureError({ safeMessage })
+}
+
+function describeDefect(defect: unknown) {
+  if (defect instanceof Error) {
+    const name = defect.name || "Error"
+    const stack = defect.stack ? `\n${defect.stack}` : ""
+    return `${name}: ${defect.message}${stack}`
+  }
+  if (typeof defect === "string") return defect
+  try {
+    return JSON.stringify(defect)
+  } catch {
+    return String(defect)
+  }
 }

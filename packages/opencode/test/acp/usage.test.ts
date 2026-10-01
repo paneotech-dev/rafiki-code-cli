@@ -166,6 +166,19 @@ describe("acp usage", () => {
     })
   })
 
+  // A prompt turn aborted before the model was called resolves with the user
+  // message, which has no token accounting on it at all. `usage` is optional on
+  // PromptResponse, so the honest answer is to leave it out: zeros would say the
+  // turn is known to have cost nothing, and an unknown cost is not a zero cost.
+  test("reports no usage at all for a message with no token accounting", () => {
+    expect(UsageService.buildUsage({ cost: 0 })).toBeUndefined()
+    expect(UsageService.buildUsage({})).toBeUndefined()
+  })
+
+  test("counts no context tokens for a message with no token accounting", () => {
+    expect(UsageService.contextTokens({})).toBe(0)
+  })
+
   test("finds the latest assistant message", () => {
     expect(
       UsageService.latestAssistantMessage([assistant({ cost: 1, modelID: "older" }), user(), assistant({ cost: 2 })]),

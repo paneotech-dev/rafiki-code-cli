@@ -29,6 +29,12 @@ export type Info = {
   model?: SelectedModel
   variant?: string
   modeId?: string
+  // True once session/cancel has been seen for the turn currently in flight.
+  // The agent owns this rather than reading it back off the backing message:
+  // a turn cancelled before the model was called leaves no aborted message to
+  // read, and the specification requires the `cancelled` stop reason either
+  // way. Cleared by beginTurn at the start of every turn.
+  cancelled: boolean
   knownParts: ReadonlyMap<string, KnownMessagePartMetadata>
 }
 
@@ -81,6 +87,13 @@ export type Interface = {
     modeId: string | undefined,
   ) => Effect.Effect<Info, ACPError.SessionNotFoundError>
   readonly getMode: (sessionId: string) => Effect.Effect<string | undefined, ACPError.SessionNotFoundError>
+  // Turn boundary for the cancellation flag. beginTurn clears it, markCancelled
+  // records a session/cancel, cancelled reads it when the turn resolves.
+  readonly beginTurn: (sessionId: string) => Effect.Effect<Info, ACPError.SessionNotFoundError>
+  readonly markCancelled: (sessionId: string) => Effect.Effect<Info, ACPError.SessionNotFoundError>
+  // Not an error when the session is gone: a client may close a session while
+  // its turn is still resolving, and the turn still has to answer something.
+  readonly cancelled: (sessionId: string) => Effect.Effect<boolean>
   readonly recordPartMetadata: (
     input: RecordPartMetadataInput,
   ) => Effect.Effect<KnownMessagePartMetadata, ACPError.SessionNotFoundError>
@@ -150,6 +163,18 @@ const layer = Layer.effect(
       update(sessionId, (session) => ({ ...session, modeId })),
     )
 
+    const beginTurn: Interface["beginTurn"] = Effect.fn("ACP.Session.beginTurn")((sessionId) =>
+      update(sessionId, (session) => ({ ...session, cancelled: false })),
+    )
+
+    const markCancelled: Interface["markCancelled"] = Effect.fn("ACP.Session.markCancelled")((sessionId) =>
+      update(sessionId, (session) => ({ ...session, cancelled: true })),
+    )
+
+    const cancelled: Interface["cancelled"] = Effect.fn("ACP.Session.cancelled")(function* (sessionId) {
+      return (yield* tryGet(sessionId))?.cancelled ?? false
+    })
+
     const recordPartMetadata: Interface["recordPartMetadata"] = Effect.fn("ACP.Session.recordPartMetadata")((input) => {
       const metadata = {
         messageId: input.messageId,
@@ -190,6 +215,9 @@ const layer = Layer.effect(
       getMode: Effect.fn("ACP.Session.getMode")(function* (sessionId) {
         return (yield* get(sessionId)).modeId
       }),
+      beginTurn,
+      markCancelled,
+      cancelled,
       recordPartMetadata,
       getPartMetadata: Effect.fn("ACP.Session.getPartMetadata")(function* (input) {
         return (yield* get(input.sessionId)).knownParts.get(partMetadataKey(input))
@@ -212,6 +240,7 @@ function makeSession(input: StoreInput): Info {
     model: input.model,
     variant: input.variant,
     modeId: input.modeId,
+    cancelled: false,
     knownParts: new Map(),
   }
 }
