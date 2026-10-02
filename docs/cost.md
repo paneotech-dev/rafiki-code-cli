@@ -89,3 +89,5 @@ Every request to the gateway carries three headers, so each line of your usage c
 | `X-Rafiki-Surface` | `cli`, or `ide` under an editor |
 | `X-Rafiki-Tier` | `fast` or `pro`: the tier the request is made on |
 | `X-Rafiki-Escalation` | `0` from the terminal: it never retries a task on another tier by itself |
+
+The requests of a task also carry an `Idempotency-Key` header, which says whether a request is a repeat of one already sent. It is described in [the idempotency key contract](./contracts/idempotency-key.md).
