@@ -140,6 +140,25 @@ describe("the cost plugin", () => {
     expect(tracker.display("ses_root").summary.spent).toBeCloseTo(2.2, 10)
   })
 
+  test("a call that ended without usage is named on the line, in the middle of a task and at its end", async () => {
+    const { tracker, messages } = harness()
+    const cut = (id: string, parentID: string) => ({ ...assistant(id, parentID, "rafiki-fast", tokens(0, 0)), time: { created: ++clock, completed: ++clock } })
+    messages.push(assistant("a1", "u1", "rafiki-fast"), cut("a2", "u2"), assistant("a3", "u2", "rafiki-fast"))
+    await tracker.open("ses_root")
+    expect(Cost.statusLine(tracker.display("ses_root", "rafiki-fast"))).toBe(
+      "fast · about 2.40 USD spent (estimate, 1 call reported no usage and is not included) · at most about 12.40 USD of credits left",
+    )
+    messages.push(cut("a4", "u3"))
+    const view = tracker.display("ses_root", "rafiki-fast")
+    expect(view.summary.unreported).toBe(2)
+    expect(Cost.taskLine(view)).toBe(
+      "Task cost: tiers fast, fast, fast · about 2.40 USD (estimate) · 2 calls reported no usage and are not included · caching saved nothing · at most about 12.40 USD of credits left",
+    )
+    // A call still running is not one of them.
+    messages.push(assistant("a5", "u4", "rafiki-fast", tokens(0, 0)))
+    expect(tracker.display("ses_root", "rafiki-fast").summary.unreported).toBe(2)
+  })
+
   test("a failed reading leaves the line without amounts instead of failing", async () => {
     const api = createTuiPluginApi({
       event: { on: () => () => {} } as TuiPluginApi["event"],
