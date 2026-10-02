@@ -1,4 +1,5 @@
 import { OpenApi } from "effect/unstable/httpapi"
+import { Brand } from "@opencode-ai/core/brand/brand"
 import { OpenCodeHttpApi } from "./api"
 import { QueryBooleanOpenApi } from "./groups/query"
 
@@ -532,6 +533,6 @@ export const PublicApi = OpenCodeHttpApi.annotateMerge(
     title: "opencode",
     version: "1.0.0",
     description: "opencode api",
-    transform: matchLegacyOpenApi,
+    transform: (spec) => Brand.document(matchLegacyOpenApi(spec)),
   }),
 )

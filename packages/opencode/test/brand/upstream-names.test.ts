@@ -5,8 +5,9 @@
 // wording test next to this one reads a fixed list of files, and the help and
 // schema tests read only what they print. This test reads every string
 // literal, template literal and JSX text of the sources that end up in the
-// binary (the terminal interface, the CLI, the shared core) and looks for the
-// upstream name used in one of three ways:
+// binary (the terminal interface, the CLI, the shared core, the SDK the
+// interface talks to the server with) and looks for the upstream name used in
+// one of three ways:
 //
 //   product  the capitalised name, as a sentence would write it
 //   command  the lower case name followed by a word, or alone in a code span:
@@ -27,10 +28,22 @@ import { describe, expect, test } from "bun:test"
 import fs from "fs"
 import path from "path"
 import ts from "typescript"
+import { Brand } from "@opencode-ai/core/brand/brand"
+import { OauthCallbackPage } from "@opencode-ai/core/oauth/page"
+import { McpOAuthProvider } from "../../src/mcp/oauth-provider"
+import type { McpAuth } from "../../src/mcp/auth"
+import { Server } from "../../src/server/server"
 
 const root = path.resolve(import.meta.dir, "../../../..")
 
-const scanned = ["packages/tui/src", "packages/opencode/src", "packages/core/src"]
+// Each directory with the least number of source files it must yield, so
+// that a moved directory fails here instead of passing with nothing read.
+const scanned: Array<[string, number]> = [
+  ["packages/tui/src", 50],
+  ["packages/opencode/src", 50],
+  ["packages/core/src", 50],
+  ["packages/sdk/js/src", 5],
+]
 
 type Kind = "product" | "command" | "site"
 const kinds: Array<[Kind, RegExp]> = [
@@ -62,6 +75,52 @@ const allowed: Entry[] = [
     why: "the referer and title headers upstream providers expect, and the upstream provider's own name; none of these providers is offered here (provider-scope.test.ts)",
   },
   {
+    path: "packages/core/src/v1/config/config.ts",
+    command: 1,
+    site: 2,
+    why: "descriptions of configuration fields, read in the published schema, where script/schema.ts rewrites them with Brand.prompt(); the schema files are read below",
+  },
+  {
+    path: "packages/opencode/src/cli/cmd/github.handler.ts",
+    command: 5,
+    site: 5,
+    why: "the upstream GitHub agent with its workflow file, action, app and API; its command is not registered in this build (src/index.ts registers gh only)",
+  },
+  {
+    path: "packages/opencode/src/cli/cmd/providers.ts",
+    site: 2,
+    why: "prompts of the upstream provider login, a command this build replaces with a notice while the provider scope is closed (provider-scope.test.ts)",
+  },
+  {
+    path: "packages/opencode/src/plugin/digitalocean.ts",
+    product: 1,
+    why: "the sign in prompt of an upstream provider that is not offered here (provider-scope.test.ts)",
+  },
+  {
+    path: "packages/opencode/src/plugin/snowflake-cortex.ts",
+    product: 1,
+    why: "the sign in prompt of an upstream provider that is not offered here (provider-scope.test.ts)",
+  },
+  {
+    path: "packages/opencode/src/provider/provider.ts",
+    product: 1,
+    command: 2,
+    site: 6,
+    why: "the referer, title and billing headers upstream providers expect, and two errors of providers that are not offered here (provider-scope.test.ts)",
+  },
+  {
+    path: "packages/opencode/src/server/routes/instance/httpapi/",
+    product: 21,
+    command: 16,
+    why: "titles and descriptions of the HTTP API as upstream writes them; Brand.document() rewrites them in the OpenAPI document the server publishes, which is read below",
+  },
+  {
+    path: "packages/opencode/src/session/retry.ts",
+    product: 1,
+    site: 2,
+    why: "the upstream subscription offer, built only from the upstream service's own error bodies (FreeUsageLimitError, GoUsageLimitError)",
+  },
+  {
     path: "packages/tui/src/component/dialog-provider.tsx",
     product: 3,
     site: 2,
@@ -79,77 +138,31 @@ const allowed: Entry[] = [
   },
 ]
 
-// Occurrences that are leaks and are still there. They came with the fork and
-// are recorded so that this test could land without rewriting them all in one
-// change. Each is to be fixed in the brand layer and its entry removed; none is
-// to be added.
+// Occurrences that are still open. Each is a value another program depends
+// on, so the text cannot simply be reworded, and each raises a question about
+// behaviour that a wording change does not answer (docs/plans/brand-cleanup.md
+// lists them). An entry leaves this list when its question is decided; none
+// is to be added.
 const known: Entry[] = [
-  {
-    path: "packages/core/src/oauth/page.ts",
-    product: 8,
-    why: "the browser page shown after a provider or MCP sign in names the upstream product",
-  },
-  {
-    path: "packages/core/src/v1/config/config.ts",
-    command: 1,
-    site: 2,
-    why: "descriptions of configuration fields",
-  },
   {
     path: "packages/opencode/src/cli/cmd/account.ts",
     site: 1,
-    why: "the default address of the upstream account service",
-  },
-  {
-    path: "packages/opencode/src/cli/cmd/github.handler.ts",
-    command: 5,
-    site: 5,
-    why: "the upstream GitHub agent: its workflow file, its links and its comments",
-  },
-  {
-    path: "packages/opencode/src/cli/cmd/providers.ts",
-    site: 2,
-    why: "prompts of the provider login for upstream providers",
-  },
-  {
-    path: "packages/opencode/src/mcp/oauth-provider.ts",
-    product: 1,
-    site: 1,
-    why: "the client name and address given to an MCP server when registering for OAuth",
-  },
-  {
-    path: "packages/opencode/src/plugin/digitalocean.ts",
-    product: 1,
-    why: "the sign in prompt of an upstream provider",
-  },
-  {
-    path: "packages/opencode/src/plugin/snowflake-cortex.ts",
-    product: 1,
-    why: "the sign in prompt of an upstream provider",
-  },
-  {
-    path: "packages/opencode/src/provider/provider.ts",
-    product: 1,
-    command: 2,
-    site: 6,
-    why: "headers for upstream providers, and two of their errors that name an upstream command",
-  },
-  {
-    path: "packages/opencode/src/server/routes/instance/httpapi/",
-    product: 21,
-    command: 16,
-    why: "titles and descriptions of the HTTP API, as its OpenAPI document shows them",
+    why: "the default address of `console login`, a hidden command that signs in to the upstream account service",
   },
   {
     path: "packages/opencode/src/server/shared/ui.ts",
     site: 1,
-    why: "the address the web interface is fetched from",
+    why: "the upstream address the web interface is fetched from when the binary carries none",
   },
   {
-    path: "packages/opencode/src/session/retry.ts",
-    product: 1,
-    site: 2,
-    why: "the upstream subscription offer shown when an upstream provider refuses for quota",
+    path: "packages/sdk/js/src/server.ts",
+    command: 1,
+    why: "the line the server helper waits for on the output of the upstream binary it starts; this build prints its own name there",
+  },
+  {
+    path: "packages/sdk/js/src/v2/server.ts",
+    command: 1,
+    why: "the line the server helper waits for on the output of the upstream binary it starts; this build prints its own name there",
   },
 ]
 
@@ -234,12 +247,14 @@ function problems(found: Hit[], list: Entry[]) {
 }
 
 describe("upstream names in user visible strings", () => {
-  const files = scanned.flatMap((dir) => sources(dir))
+  const files = scanned.flatMap(([dir]) => sources(dir))
 
   test("the sources are found", () => {
-    for (const dir of scanned) expect(files.filter((file) => file.startsWith(dir + "/")).length).toBeGreaterThan(50)
+    for (const [dir, least] of scanned)
+      expect(files.filter((file) => file.startsWith(dir + "/")).length).toBeGreaterThanOrEqual(least)
     expect(files).toContain("packages/tui/src/app.tsx")
     expect(files).toContain("packages/opencode/src/provider/error.ts")
+    expect(files).toContain("packages/sdk/js/src/error-interceptor.ts")
   })
 
   test("no string names the upstream product, one of its commands or its site, beyond the two lists", () => {
@@ -250,7 +265,7 @@ describe("upstream names in user visible strings", () => {
     for (const entry of entries) {
       expect(entry.why.length).toBeGreaterThan(20)
       expect(fs.existsSync(path.join(root, entry.path))).toBe(true)
-      expect(scanned.some((dir) => entry.path.startsWith(dir + "/"))).toBe(true)
+      expect(scanned.some(([dir]) => entry.path.startsWith(dir + "/"))).toBe(true)
       expect((entry.product ?? 0) + (entry.command ?? 0) + (entry.site ?? 0)).toBeGreaterThan(0)
     }
     expect(new Set(entries.map((entry) => entry.path)).size).toBe(entries.length)
@@ -300,6 +315,134 @@ describe("upstream names in user visible strings", () => {
       ])
     } finally {
       fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+// Text that is produced when the program runs, or generated from the sources,
+// and that the scan of string literals above therefore cannot judge: a string
+// on the allowed list for being rewritten on the way out is proved rewritten
+// here, and a page built from the brand module is proved to name the product.
+describe("upstream names in what is produced", () => {
+  const named = (text: string) => kinds.filter(([, pattern]) => pattern.test(text)).map(([kind]) => kind)
+
+  // Every string of a JSON value, with the path that leads to it.
+  function strings(value: unknown, at = ""): Array<{ at: string; text: string }> {
+    if (typeof value === "string") return [{ at, text: value }]
+    if (Array.isArray(value)) return value.flatMap((item, index) => strings(item, `${at}[${index}]`))
+    if (typeof value !== "object" || value === null) return []
+    return Object.entries(value).flatMap(([key, item]) => strings(item, `${at}/${key}`))
+  }
+
+  test("the browser page after a sign in names this product", () => {
+    const pages = [
+      OauthCallbackPage.success(),
+      OauthCallbackPage.success({ provider: "MCP" }),
+      OauthCallbackPage.error("the server refused"),
+      OauthCallbackPage.error("the server refused", { provider: "MCP" }),
+      OauthCallbackPage.bootstrap({ tokenPath: "/token" }),
+      OauthCallbackPage.bootstrap({ tokenPath: "/token", provider: "MCP" }),
+    ]
+    for (const page of pages) {
+      expect(named(page)).toEqual([])
+      expect(page).not.toMatch(/opencode/i)
+      expect(page).toContain(`· ${Brand.product}</title>`)
+      expect(page).toContain(`>${Brand.product}</span>`)
+    }
+    expect(pages[0]).toContain(`${Brand.product} is now authorized.`)
+    expect(pages[1]).toContain(`${Brand.product} is now connected to MCP.`)
+    expect(pages[2]).toContain(`${Brand.product} couldn't complete authorization.`)
+    expect(pages[3]).toContain(`${Brand.product} couldn't finish connecting to MCP.`)
+    expect(pages[3]).toContain(`Close this window and try again from ${Brand.product}.`)
+    // The page that finishes in the browser carries the same sentences in its script.
+    expect(pages[5]).toContain(`"${Brand.product} is now connected to "+PROVIDER+"."`)
+    expect(pages[5]).toContain(`"${Brand.product} couldn't complete authorization."`)
+  })
+
+  test("an MCP server is given this product's name and address when registering for OAuth", () => {
+    const provider = new McpOAuthProvider(
+      "sample",
+      "https://mcp.example.com/mcp",
+      {},
+      { onRedirect: async () => {} },
+      {} as McpAuth.Interface,
+    )
+    expect(provider.clientMetadata.client_name).toBe(Brand.product)
+    expect(provider.clientMetadata.client_uri).toBe(Brand.homepage)
+  })
+
+  test("Brand.document rewrites descriptions, summaries and the document title, and nothing else", () => {
+    const sample = {
+      info: { title: "opencode", description: "opencode api" },
+      tags: [{ name: "opencode HttpApi" }],
+      paths: {
+        "/global/upgrade": {
+          post: {
+            operationId: "global.upgrade",
+            tags: ["opencode HttpApi"],
+            summary: "Upgrade opencode",
+            description: "Upgrade opencode to the specified version, see https://opencode.ai/docs/cli for more.",
+            parameters: [{ name: "description", in: "query", schema: { type: "string", title: "opencode" } }],
+          },
+        },
+      },
+      components: {
+        schemas: {
+          Config: {
+            properties: {
+              description: { type: "string", description: "Read from opencode.json by OpenCode." },
+              summary: { type: "string", default: "opencode" },
+            },
+          },
+        },
+      },
+    }
+    const result = Brand.document(structuredClone(sample))
+    expect(result).toEqual({
+      info: { title: "rafikicode", description: "rafikicode api" },
+      tags: [{ name: "opencode HttpApi" }],
+      paths: {
+        "/global/upgrade": {
+          post: {
+            operationId: "global.upgrade",
+            tags: ["opencode HttpApi"],
+            summary: "Upgrade rafikicode",
+            description: `Upgrade rafikicode to the specified version, see ${Brand.docs} for more.`,
+            parameters: [{ name: "description", in: "query", schema: { type: "string", title: "opencode" } }],
+          },
+        },
+      },
+      components: {
+        schemas: {
+          Config: {
+            properties: {
+              description: { type: "string", description: "Read from opencode.json by Rafiki Code." },
+              summary: { type: "string", default: "opencode" },
+            },
+          },
+        },
+      },
+    })
+  })
+
+  test("the OpenAPI document of the local server names this product in every description and summary", async () => {
+    const spec = (await Server.openapi()) as unknown as { info: { title: string; description: string }; paths: object }
+    const texts = strings(spec).filter(({ at }) => /\/(description|summary)$/.test(at) || at === "/info/title")
+    expect(texts.length).toBeGreaterThan(200)
+    expect(texts.filter(({ text }) => named(text).length > 0 || /\bopencode\b/i.test(text))).toEqual([])
+    expect(spec.info.title).toBe(Brand.name)
+    expect(texts.some(({ text }) => text.includes(Brand.product))).toBe(true)
+    // Operation ids and paths are what a client is generated from: unchanged.
+    expect(JSON.stringify(spec.paths)).toContain('"operationId":"global.upgrade"')
+  })
+
+  test("the published schema files name this product in every description", () => {
+    for (const file of ["schema/config.json", "schema/tui.json"]) {
+      const texts = strings(JSON.parse(fs.readFileSync(path.join(root, file), "utf8"))).filter(({ at }) =>
+        at.endsWith("/description"),
+      )
+      expect(texts.length).toBeGreaterThan(10)
+      expect(texts.filter(({ text }) => named(text).length > 0)).toEqual([])
     }
   })
 })
