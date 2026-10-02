@@ -21,11 +21,30 @@
 //   MOCK_GATEWAY_COST=0.001      spend added per successful chat call, in USD
 //   MOCK_GATEWAY_FAIL=budget|revoked|denied|down|rate   fail every chat call that way
 //   MOCK_GATEWAY_EMPTY_LENGTH=1  answer like a reasoning model out of budget: reasoning only, no content, finish length
+//
+// GET /v1/model/info answers with the price list the way LiteLLM does (per
+// token prices under litellm_params), for the models the key may use; the
+// prices option replaces the list, and prices: false makes the route a 404.
+// The usage option replaces the usage block of every chat answer, so a test
+// can report cached tokens.
 import http from "node:http"
 import fs from "node:fs"
 import crypto from "node:crypto"
 
 const MODELS = ["rafiki-fast", "rafiki-pro", "rafiki-max"]
+
+// Round test figures, not anyone's real prices: USD per token.
+export const MOCK_PRICES = {
+  "rafiki-fast": { input_cost_per_token: 0.000001, output_cost_per_token: 0.000002, cache_read_input_token_cost: 0.0000001 },
+  "rafiki-pro": { input_cost_per_token: 0.000004, output_cost_per_token: 0.000008, cache_read_input_token_cost: 0.000001 },
+  "rafiki-max": {
+    input_cost_per_token: 0.00001,
+    output_cost_per_token: 0.00002,
+    cache_read_input_token_cost: 0.000001,
+    cache_creation_input_token_cost: 0.0000125,
+  },
+}
+const USAGE = { prompt_tokens: 12, completion_tokens: 8, total_tokens: 20 }
 
 export function createMockGateway(options = {}) {
   const opts = {
@@ -40,6 +59,8 @@ export function createMockGateway(options = {}) {
     // { name, arguments }: the first turn of a conversation asks for this tool
     // call; once a tool result is in the messages the canned reply follows.
     toolCall: options.toolCall,
+    prices: options.prices ?? MOCK_PRICES,
+    usage: options.usage ?? USAGE,
   }
   // token -> { alias, models, max_budget, budget_duration, rpm_limit, tpm_limit, spend, metadata, deleted }
   const keys = new Map()
@@ -114,7 +135,7 @@ export function createMockGateway(options = {}) {
           ? { index: 0, message: { role: "assistant", content: "", reasoning_content: "Planning the answer..." }, finish_reason: "length" }
           : { index: 0, message: { role: "assistant", content: text }, finish_reason: "stop" },
       ],
-      usage: { prompt_tokens: 12, completion_tokens: 8, total_tokens: 20 },
+      usage: opts.usage,
     }
   }
 
@@ -139,7 +160,7 @@ export function createMockGateway(options = {}) {
     }
     res.write(
       "data: " +
-        JSON.stringify({ id, object: "chat.completion.chunk", created, model, choices: [], usage: { prompt_tokens: 12, completion_tokens: 8, total_tokens: 20 } }) +
+        JSON.stringify({ id, object: "chat.completion.chunk", created, model, choices: [], usage: opts.usage }) +
         "\n\n",
     )
     res.write("data: [DONE]\n\n")
@@ -171,6 +192,8 @@ export function createMockGateway(options = {}) {
     const u = new URL(req.url ?? "/", `http://${req.headers.host}`)
     const auth = req.headers.authorization ? "present" : "missing"
     const surface = req.headers["x-rafiki-surface"]
+    const tier = req.headers["x-rafiki-tier"]
+    const escalation = req.headers["x-rafiki-escalation"]
 
     // LiteLLM's liveness probe: a bare string body, no auth. rafikicode doctor reads it.
     if (req.method === "GET" && u.pathname === "/health/liveliness") {
@@ -187,6 +210,21 @@ export function createMockGateway(options = {}) {
       return json(res, 200, { object: "list", data: list.map((id) => ({ id, object: "model", created: 0, owned_by: "rafiki" })) })
     }
 
+    if (req.method === "GET" && u.pathname === "/v1/model/info") {
+      const token = bearer(req)
+      const key = token ? keys.get(token) : undefined
+      const status = opts.prices === false ? 404 : !token ? 401 : 200
+      record({ method: req.method, path: u.pathname, authorization: auth, surface, status })
+      if (status === 404) return json(res, 404, { error: { message: "not found" } })
+      if (status === 401) return gatewayError(res, 401, "auth_error", "Authentication Error: no bearer token")
+      const list = key && !key.deleted ? key.models : MODELS
+      return json(res, 200, {
+        data: list
+          .filter((id) => opts.prices[id])
+          .map((id) => ({ model_name: id, litellm_params: { model: "mock/" + id, ...opts.prices[id] }, model_info: { id: "mock-" + id } })),
+      })
+    }
+
     if (req.method === "POST" && u.pathname === "/v1/chat/completions") {
       const body = await readBody(req)
       if (!body) return json(res, 400, { error: { message: "invalid JSON body" } })
@@ -201,6 +239,8 @@ export function createMockGateway(options = {}) {
         authorization: auth,
         key_alias: token && keys.get(token)?.alias,
         surface,
+        tier,
+        escalation,
         ua: req.headers["user-agent"],
         model,
         stream: body.stream === true,
@@ -228,7 +268,7 @@ export function createMockGateway(options = {}) {
             created: Math.floor(Date.now() / 1000),
             model,
             choices: [{ index: 0, message: { role: "assistant", content: null, tool_calls: [call] }, finish_reason: "tool_calls" }],
-            usage: { prompt_tokens: 12, completion_tokens: 8, total_tokens: 20 },
+            usage: opts.usage,
           }, headers)
         }
         res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive", ...headers })
@@ -238,7 +278,7 @@ export function createMockGateway(options = {}) {
           res.write("data: " + JSON.stringify({ id, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta, finish_reason: finish }] }) + "\n\n")
         send({ role: "assistant", content: null, tool_calls: [{ index: 0, ...call }] }, null)
         send({}, "tool_calls")
-        res.write("data: " + JSON.stringify({ id, object: "chat.completion.chunk", created, model, choices: [], usage: { prompt_tokens: 12, completion_tokens: 8, total_tokens: 20 } }) + "\n\n")
+        res.write("data: " + JSON.stringify({ id, object: "chat.completion.chunk", created, model, choices: [], usage: opts.usage }) + "\n\n")
         res.write("data: [DONE]\n\n")
         return res.end()
       }

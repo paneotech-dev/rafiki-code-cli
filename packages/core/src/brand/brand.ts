@@ -540,6 +540,10 @@ export const Brand = {
     listed(provider: string, model: string) {
       return provider !== providerID || !Brand.provider.unlisted.includes(model)
     },
+    // The tier of a gateway alias: rafiki-fast is fast. Undefined for any other model.
+    tier(model: string): "fast" | "pro" | "max" | undefined {
+      return (models as readonly string[]).includes(model) ? (model.slice("rafiki-".length) as "fast" | "pro" | "max") : undefined
+    },
     // The tiers offered to people, in tier order.
     offered(): string[] {
       return models.filter((id) => Brand.provider.listed(providerID, id))
@@ -588,6 +592,11 @@ export const Brand = {
                   temperature: true,
                   limit: { context: 128_000, output: request.output },
                   cost: { input: 0, output: 0 },
+                  // Every gateway call names its tier and whether it is an escalation,
+                  // next to X-Rafiki-Surface. The terminal client never moves a task to
+                  // another tier by itself, so the escalation value is always 0 here; a
+                  // service that drives the engine sets the attempt number on its own relay.
+                  headers: { "X-Rafiki-Tier": id.slice("rafiki-".length), "X-Rafiki-Escalation": "0" },
                   ...(request.effort ? { options: { reasoningEffort: request.effort } } : {}),
                   ...(request.variants
                     ? { variants: Object.fromEntries(reasoningEfforts.map((effort) => [effort, { reasoningEffort: effort }])) }
