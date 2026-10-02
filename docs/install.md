@@ -136,13 +136,14 @@ What was run while these channels were written, and what was not:
 
 | Piece | Run | Not run |
 | --- | --- | --- |
-| `install.sh` | its test suites, and the release gate in a Debian container with a real build | the `--target` option on macOS |
+| `install.sh` | its test suites; the release gate in a Debian container with a real build; the twenty cell install matrix (Debian, Ubuntu, Alpine, arm64 under emulation) against the published 0.1.9 archives | on macOS, including the `--target` option |
 | `install.ps1` | nothing new; under PowerShell on Linux in dry run mode only, for 0.1.9 | on Windows, ever; the licence file copy added here |
 | npm package | its tests against a mock release, and an install of the packed package in a Node container with a real build | a publish to the registry; Windows; macOS |
 | Homebrew formula | rendering, checked by tests | `brew install` and `brew test`: Homebrew has not read this formula |
 | winget manifests | rendering, checked by tests | `winget validate`, a submission, an install: winget has not read these manifests |
 | Automatic update | its tests, and a real build updating itself from a local mirror on Linux x64 | on macOS and on Windows. On Windows a running program cannot be overwritten, so the old file is renamed aside first; that path is written and has not been executed |
-| Release gate | `release-gate.sh` in containers on Linux x64, against mock staging endpoints | on hosted runners; against staging; `release-gate.ps1`, which has never been run |
+| Release gate | `release-gate.sh` in Debian and Node containers on Linux x64 with a real build, against mock staging endpoints | on hosted runners; against staging; the Alpine, arm64 and macOS rows; `release-gate.ps1`, which has never been run |
+| Release workflow | nothing: it runs only on a pushed tag | every job of it |
 
 ## For maintainers
 
