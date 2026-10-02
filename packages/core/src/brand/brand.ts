@@ -51,6 +51,13 @@ const requestDefaults: Record<(typeof models)[number], { output: number; effort?
 // so a model set explicitly (config "model", --model, a session already on
 // it) keeps working and stays visible as the current choice.
 const unlistedModels: readonly string[] = ["rafiki-max"]
+// Tiers whose requests carry a prompt cache marker at the end of the stable
+// system text (packages/opencode/src/rafiki/cache-prefix.ts). A tier belongs
+// here when the provider behind it caches only what a request marks. The
+// other tiers cache a repeated prefix by themselves; the gateway hands an
+// unknown message field through to some of them, so they get no marker.
+// RAFIKICODE_CACHE_MARKERS overrides the list for one run.
+const cacheMarkerModels: readonly string[] = ["rafiki-max"]
 
 const outputFloor = 1_024
 const outputCeiling = 128_000
@@ -285,6 +292,8 @@ export const Brand = {
     apiKey: "RAFIKICODE_API_KEY",
     // Overrides the gateway base URL, used for local mocks and staging.
     gatewayURL: "RAFIKICODE_GATEWAY_URL",
+    // Which tiers carry a prompt cache marker: all, off, or tier names separated by commas.
+    cacheMarkers: "RAFIKICODE_CACHE_MARKERS",
     // Overrides the release API URL (mock release servers in tests).
     releaseAPI: "RAFIKICODE_RELEASE_API",
     // Overrides the release download base URL (mock release servers in tests).
@@ -535,6 +544,8 @@ export const Brand = {
     reasoningEfforts,
     // The tiers kept out of the model lists (see unlistedModels).
     unlisted: unlistedModels,
+    // The tiers whose requests carry a prompt cache marker (see cacheMarkerModels).
+    cacheMarkers: cacheMarkerModels,
     // True when a model may be offered in a model list. Models of other
     // providers are not this switch's business.
     listed(provider: string, model: string) {
