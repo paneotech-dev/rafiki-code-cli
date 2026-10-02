@@ -283,3 +283,116 @@ each with a real merge commit.
 | `node docs/check.mjs` | pass |
 | `install/test-install.sh`, `test-install-shells.sh`, `test-install-url.sh`, `test-release-gate.sh` | 54, 10, 54 and 16 passed, 0 failed |
 | `linux-x64` binary, rebuilt | `upgrade --help` lists the six methods above; `licenses --help` prints its help; the earlier checks hold |
+
+## Refresh: small fixes, brand cleanup, release workflow notes
+
+Three branches were built on top of this line and are taken in here. Nothing
+is tagged, released or published, and no workflow run is started.
+
+| Order | Branch | Head | Based on | How it came in | Textual conflicts |
+| --- | --- | --- | --- | --- | --- |
+| 8 | `feature/cli-small-fixes` | `29cbfec49f` | this line at `32fad9d169` | fast forward, no merge commit | none |
+| 9 | `feature/brand-cleanup` | `2fbd2cc12b` | `feature/cli-small-fixes` | merge commit `db9868d997` (`--no-ff`) | none |
+| 10 | `fix/release-workflow` | `6a85ed2052` | `feature/cli-small-fixes` | merge commit `0b264779e6` (`--no-ff`) | none |
+
+The second merge would have been a fast forward as well and was given a merge
+commit so that the branch is visible in the history. The third changes
+`docs/install.md` and adds its plan, and nothing else. Their plans are
+`docs/plans/small-fixes.md`, `docs/plans/brand-cleanup.md` and
+`docs/plans/release-workflow-fix.md`.
+
+### Changes made on this line
+
+1. `install/install.ps1`, the first example of its help. It gave
+   `irm https://get.rafikiai.io/install.ps1 | iex`. That host answers every
+   path with the same redirect, so the address serves the shell installer.
+   The example now gives the address `README.md`, `docs/install.md`,
+   `docs/quickstart.md`, `docs/troubleshooting.md` and the message of
+   `install.sh` on Windows already give:
+   `https://github.com/paneotech-dev/rafiki-code-cli/releases/latest/download/install.ps1`.
+   No other file in the repository gave the wrong address. `CHANGELOG.md` has
+   a line.
+
+   What the host answered on 2 October 2026 at 11:30 UTC, without
+   credentials, for `/` and for `/install.ps1` alike:
+
+   ```text
+   302 (cloudflare)  location: https://github.com/paneotech-dev/rafiki-code-cli/releases/latest/download/install.sh
+   302 (github.com)  location: https://github.com/paneotech-dev/rafiki-code-cli/releases/download/v0.1.9/install.sh
+   302 (github.com)  location: the storage address of the asset
+   200               content-length: 64907
+   ```
+
+   | Body | sha256 |
+   | --- | --- |
+   | `https://get.rafikiai.io/` | `074aa27e00aa9ce7da9fb793aff0aa4ce3a0adc2f6f3b54bed729e1c5470f9d2` |
+   | `https://get.rafikiai.io/install.ps1` | `074aa27e00aa9ce7da9fb793aff0aa4ce3a0adc2f6f3b54bed729e1c5470f9d2` |
+   | `releases/download/v0.1.9/install.sh` | `074aa27e00aa9ce7da9fb793aff0aa4ce3a0adc2f6f3b54bed729e1c5470f9d2` |
+   | `releases/download/v0.1.9/install.ps1` | `e185d09110959cbd350b4e7e887d11b6fd61d6a488d28917ad209216e080a3ee` |
+
+   The redirect itself is not changed here: it is kept outside this
+   repository. If it is ever made to follow the path, the example can go back.
+
+2. `.github/workflows/release.yml`, the step
+   `Check that the latest release serves its installer and checksums` of the
+   publish job. It polled `releases/latest/download/*` and never asked the
+   installer address. After that loop it now requests `https://get.rafikiai.io`
+   up to twelve times, ten seconds apart (the same window), prints the status
+   and the checksum of every attempt, and fails the job when the address does
+   not answer 200 with the bytes of `install/install.sh` of the tag, which is
+   what the job has checked out and uploaded. A pre-release skips the step, as
+   before. `docs/install.md`, section For maintainers, says so in one
+   sentence. No `CHANGELOG.md` line: nothing a user sees changes.
+
+   What was checked: both workflow files parse as YAML. The script of the
+   step was taken out of the parsed file and run on this machine against the
+   public release, with `TAG=v0.1.9`. With `install/install.sh` of `v0.1.9`
+   it passed on the first attempt of each loop. With the `install.sh` of this
+   line, which differs, it printed twelve attempts with the checksum served
+   and the checksum expected and exited 1 (the pause between attempts was
+   replaced by nothing for that run).
+
+   Not proved: that the step passes in a release run. It runs only after a
+   publish, on a hosted runner, and no release was cut. The first release
+   from this line is the proof.
+
+3. `packages/sdk/openapi.json`, regenerated. The generator is the `generate`
+   command of `packages/opencode` (`bun dev generate`, the second step of
+   `script/generate.ts`), which prints the document formatted. Two runs gave
+   the same bytes. Against the committed file 28 lines differ, and compared as
+   JSON 28 values differ: `info.title`, one `summary` and 26 `description`
+   values, each the upstream name replaced by `Rafiki Code` or `rafikicode`.
+   No key, path, operation id, tag or schema differs. These are the 28 lines
+   `docs/plans/brand-cleanup.md` describes. The first step of
+   `script/generate.ts`, which rebuilds the generated client under
+   `packages/sdk/js/src`, was not run: its comments still carry the upstream
+   descriptions, as that plan says.
+
+### Results after the refresh
+
+Run on the tree of `7a751bf0b7`, the last commit before this record.
+
+| Check | Result |
+| --- | --- |
+| `bun turbo typecheck --concurrency=3` | 30 of 30 tasks, all from the cache; again with `--force`: 30 of 30 tasks, none cached |
+| `node docs/check.mjs` | pass, 29 files |
+| `packages/opencode`: `test/brand`, `test/cli/help`, `test/installation` | 179 pass, 0 fail across 16 files; 45 snapshots, none updated |
+| `packages/tui` suite | 204 pass, 1 skip, 0 fail across 46 files |
+| `packages/core`: `test/brand`, `test/oauth-page.test.ts` | 47 pass, 0 fail |
+| `install/test-install.sh`, `test-install-shells.sh`, `test-install-url.sh`, `test-release-gate.sh` | 54, 10, 54 and 16 passed, 0 failed |
+| Full `packages/opencode` suite, once | 4261 pass, 22 skip, 1 todo, 2 fail across 305 files: the two known root only failures and nothing else. The two tests that depend on the load of the machine passed |
+
+Not done in this refresh: no binary was built, so the checks of the built
+binary listed above were not repeated on this head. `install.ps1` has still
+not run on Windows; the change to it is one line of its help text.
+
+### What a release from this line needs
+
+- The four repository secrets the preflight job names, all required for a
+  release that is not a pre-release: `RAFIKICODE_STAGING_API_KEY`, `NPM_TOKEN`,
+  `HOMEBREW_TAP_TOKEN`, `WINGET_TOKEN`.
+- After the run, the check in `docs/install.md`, section For maintainers: the
+  run conclusion is `success`, every job in the table there is present and
+  says `success`, the release lists twenty assets, and the installer address
+  serves the `install.sh` of the tag. A run that ends any other way is not a
+  verified release, whatever the release page shows.
