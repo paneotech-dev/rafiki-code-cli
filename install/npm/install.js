@@ -15,7 +15,6 @@
 const childProcess = require("child_process")
 const crypto = require("crypto")
 const fs = require("fs")
-const os = require("os")
 const path = require("path")
 
 const APP = "rafikicode"
