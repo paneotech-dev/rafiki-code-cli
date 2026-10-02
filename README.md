@@ -32,7 +32,7 @@ The installer detects your platform, downloads the release archive, verifies it 
 
 When it could not link, its next steps open with `export PATH=$HOME/.rafikicode/bin:$PATH` for this terminal and show the binary's full path, `~/.rafikicode/bin/rafikicode`, which works without touching PATH at all.
 
-`rafikicode` is installed with the installer script. It is not published on npm.
+The installer script is one of four channels. `npm install -g rafikicode`, `brew install paneotech-dev/tap/rafikicode` and `winget install --id PaneoTech.RafikiCode --exact` install the same release archives. All four, with what each needs and how each updates, are on one page: [docs/install.md](./docs/install.md).
 
 ### Per platform
 
@@ -61,7 +61,9 @@ To update:
 rafikicode update            # latest release, checksum verified, binary replaced in place
 ```
 
-`rafikicode update <version>` installs a specific release. `rafikicode` never updates itself unless you run this command.
+`rafikicode update <version>` installs a specific release.
+
+A copy installed by the installer script also updates itself: once a day at most it looks for a new release, downloads it in the background, verifies it against the published `SHA256SUMS`, and uses it from the next start. Set `"autoupdate": false` in `~/.rafikicode/config.json` to turn that off. Copies installed by npm, Homebrew or winget are updated by those tools and are only told when a release is out. The details are in [docs/install.md](./docs/install.md#updates).
 
 Release archives are verified by their SHA256 checksum. Beyond that: the macOS
 builds carry an ad-hoc signature, which is what lets them run on Apple Silicon,

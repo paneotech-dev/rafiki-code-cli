@@ -69,7 +69,7 @@ Next steps:
        /root/.rafikicode/bin/rafikicode login
 ```
 
-`rafikicode` is installed with the installer script; it is not published on npm.
+The installer script is one of four ways to install. npm, Homebrew and winget install the same release archives; see [Install and update](./install.md).
 
 ## 2. Sign in
 
