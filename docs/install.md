@@ -112,7 +112,7 @@ rafikicode update            # the latest release
 rafikicode update 0.1.9      # a specific release
 ```
 
-`rafikicode update` works out how the copy was installed and uses that channel: the installer's own download with its checksum check, or `npm`, `brew` or `winget`. `--method` names the channel when the detection is wrong.
+`rafikicode update` works out how the copy was installed and uses that channel: the installer's own download with its checksum check, or `npm` (`pnpm` or `bun` when the package was installed with one of them), `brew` or `winget`. `--method` names the channel when the detection is wrong, and takes `curl` for the installer's download, `npm`, `pnpm`, `bun`, `brew` or `winget`. Nothing else is a channel of this product, so no other name is accepted.
 
 ## Licence
 
