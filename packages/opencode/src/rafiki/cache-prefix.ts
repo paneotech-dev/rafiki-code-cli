@@ -22,9 +22,15 @@ export interface SystemParts {
   skills?: string
 }
 
-// The system text that follows the system prompt, most stable first.
-export function order(parts: SystemParts): string[] {
-  return [...parts.instructions, ...(parts.mcp ? [parts.mcp] : []), ...(parts.skills ? [parts.skills] : []), ...parts.environment]
+// The system text that follows the system prompt, most stable first. The last entry is the volatile line, which
+// the request builder takes out again (split) and sends as a message of its own.
+export function order(parts: SystemParts, now: Date = new Date()): string[] {
+  return [...parts.instructions, ...(parts.mcp ? [parts.mcp] : []), ...(parts.skills ? [parts.skills] : []), ...parts.environment, volatile(now)]
+}
+
+// Separates the volatile lines from the stable system text. A request that carries none (a title, a summary) stays as it is.
+export function split(system: readonly string[]): { stable: string[]; volatile: string[] } {
+  return { stable: system.filter((part) => !isVolatile(part)), volatile: system.filter((part) => isVolatile(part)) }
 }
 
 const VOLATILE_PREFIX = "Today's date: "

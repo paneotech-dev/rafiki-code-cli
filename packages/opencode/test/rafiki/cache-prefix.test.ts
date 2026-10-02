@@ -226,8 +226,14 @@ describe("the pieces", () => {
   const marker = { openaiCompatible: { cache_control: MARKER } }
 
   test("order: project instructions, MCP instructions and skills, then the repository context", () => {
-    expect(CachePrefix.order({ environment: ["env", "references"], instructions: ["agents", "house"], mcp: "mcp", skills: "skills" })).toEqual(["agents", "house", "mcp", "skills", "env", "references"])
-    expect(CachePrefix.order({ environment: ["env"], instructions: [], mcp: undefined, skills: undefined })).toEqual(["env"])
+    const day = new Date(2026, 9, 2)
+    const date = CachePrefix.volatile(day)
+    const ordered = CachePrefix.order({ environment: ["env", "references"], instructions: ["agents", "house"], mcp: "mcp", skills: "skills" }, day)
+    expect(ordered).toEqual(["agents", "house", "mcp", "skills", "env", "references", date])
+    expect(CachePrefix.order({ environment: ["env"], instructions: [], mcp: undefined, skills: undefined }, day)).toEqual(["env", date])
+    // The request builder takes the date out of the stable text again; a request without one is left alone.
+    expect(CachePrefix.split(ordered)).toEqual({ stable: ["agents", "house", "mcp", "skills", "env", "references"], volatile: [date] })
+    expect(CachePrefix.split(["Write a title."])).toEqual({ stable: ["Write a title."], volatile: [] })
   })
 
   test("volatile: the date only, recognisable, and different on another day", () => {

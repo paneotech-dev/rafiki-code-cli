@@ -53,8 +53,9 @@ logic:
   can do), then the repository context (environment block, project
   references). The system prompt itself is already put first by
   `session/llm/request.ts`.
-- `volatile()`: the one line that changes by itself (today's date), as a
-  separate system message that follows the stable one.
+- `volatile()`: the one line that changes by itself (today's date). `order`
+  puts it last; `split` lets the request builder send it as a separate
+  system message that follows the stable one.
 - `mark(messages, model)`: for the gateway provider, on the tiers that take a
   marker, sets `cache_control: {"type": "ephemeral"}` on the last stable
   system message and, as upstream does for Claude models, on the last two
@@ -73,7 +74,7 @@ Upstream files touched, each by a few lines:
 |---|---|
 | `packages/opencode/src/session/system.ts` | The environment block no longer holds the date line. |
 | `packages/opencode/src/session/prompt.ts` | The system parts are ordered by `CachePrefix.order` instead of the inline array. |
-| `packages/opencode/src/session/llm/request.ts` | The volatile system message is appended after the stable one. |
+| `packages/opencode/src/session/llm/request.ts` | The volatile line is taken out of the system text (`CachePrefix.split`) and appended as a system message after the stable one. A request that carries no date (a title, a summary) is unchanged. |
 | `packages/opencode/src/provider/transform.ts` | `message()` calls `CachePrefix.mark` after the upstream marker step. |
 
 Fork files touched: `packages/core/src/brand/brand.ts` (the tier list and the
