@@ -7,9 +7,9 @@ code was edited.
 
 Every request the CLI sends to the gateway starts with the same bytes as the
 request before it in the same task, so the provider can reuse its prompt
-cache: the system prompt, then the project instructions, then the repository
-context, with the tool definitions unchanged next to them, and the
-conversation last. A cache marker sits at the end of that stable part.
+cache: the system prompt, then the project instructions, then the skills
+list, then the repository context, with the tool definitions unchanged next
+to them, and the conversation last. A cache marker sits at the end of that stable part.
 Nothing that changes on its own (a date, a time, a random id) is inside it.
 
 ## What the CLI sends today
@@ -49,9 +49,10 @@ New file `packages/opencode/src/rafiki/cache-prefix.ts`, which holds the
 logic:
 
 - `order(parts)`: the system text in the stable order: project
-  instructions, then the repository context (environment block, project
-  references), then MCP instructions and the skills list. The system prompt
-  itself is already put first by `session/llm/request.ts`.
+  instructions, then MCP instructions and the skills list (what the tools
+  can do), then the repository context (environment block, project
+  references). The system prompt itself is already put first by
+  `session/llm/request.ts`.
 - `volatile()`: the one line that changes by itself (today's date), as a
   separate system message that follows the stable one.
 - `mark(messages, model)`: for the gateway provider, on the tiers that take a
