@@ -27,7 +27,7 @@ All logic lives in two new files, `packages/opencode/src/rafiki/resilience.ts` (
 When a stream fails with a connection error, the stored message is inspected:
 
 - **A tool call had been dispatched** (it is running, completed or failed). The request is not sent again. Tool calls whose arguments were still arriving are removed, the message is closed as a step that ended with tool calls, and the session loop sends the next request with the tool results in the history. The completed tool call does not run twice.
-- **Only text had arrived.** The partial text is kept and the next request carries it as an assistant message followed by one instruction to continue from where it stopped without repeating it. The model generates only the remainder. The instruction is not stored: it is added after every such message each time the history is turned into a request, so later requests keep the same prefix and never contain two assistant messages in a row.
+- **Only text had arrived.** The partial text is kept and the next request carries it as the model's own earlier message (role `assistant`) followed by one instruction to continue from where it stopped without repeating it. The model generates only the remainder. The instruction is not stored: it is added after every such message each time the history is turned into a request, so later requests keep the same prefix and never contain two messages from the model in a row.
 - **Nothing usable had arrived** (no text, no dispatched tool call; reasoning alone does not count). The request is sent again unchanged, as today.
 
 The gateway serves the OpenAI compatible chat completions interface, which has no way to resume a response by id, so the second form (send again with the partial output kept) is the one used.
@@ -53,7 +53,7 @@ The client half is all this repository can do. The key has no effect until the g
 ### 4. Session recovery and `--resume`
 
 - `--resume` becomes an alias of `--continue` on the terminal interface and on `run`.
-- When a stored session is continued or undone and one of its last assistant messages was left open by a process that died, the message is repaired first: tool calls stored as pending or running are marked interrupted, the files changed since the step's snapshot are recorded as a `patch` part so undo restores them, and the message is closed as interrupted. This runs once per session per process, when the first new step is created or an undo is asked for. Files the user edited by hand between the crash and the repair are part of what is recorded.
+- When a stored session is continued or undone and one of its last messages from the model was left open by a process that died, the message is repaired first: tool calls stored as pending or running are marked interrupted, the files changed since the step's snapshot are recorded as a `patch` part so undo restores them, and the message is closed as interrupted. This runs once per session per process, when the first new step is created or an undo is asked for. Files the user edited by hand between the crash and the repair are part of what is recorded.
 
 ## Upstream files touched
 

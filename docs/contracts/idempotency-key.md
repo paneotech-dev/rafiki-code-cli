@@ -16,7 +16,7 @@ On every `POST /v1/chat/completions` that belongs to a task step, `rafikicode` s
 Idempotency-Key: <step id>
 ```
 
-- The step id is the identifier of the stored assistant message the step writes into, for example `msg_c1a2...`. It is 30 characters or fewer, printable ASCII, unique per step on the machine that made it, and carries no user content.
+- The step id is the identifier of the stored message that holds the model's reply for that step. It starts with `msg_`, is 30 characters long, printable ASCII, unique per step on the machine that made it, and carries no user content.
 - The key identifies one logical request: one step of one session. The session is named by the `X-Session-Id` header that is already sent.
 - **Same key:** the request is sent again with a byte for byte identical body because the earlier attempt failed before any usable output arrived (connection refused, connection reset, time out, HTTP 5xx or 429 answer).
 - **New key:** every other request. In particular, after a stream is cut and partial output was received, the program does not repeat the request: it sends a different request (the partial output is included as history and the model is asked to continue) under a new key.
