@@ -282,6 +282,8 @@ describe("the npm wrapper package", () => {
         OPENCODE_VERSION: VERSION,
         OPENCODE_CHANNEL: "latest",
         RAFIKICODE_SHA256SUMS: sumsFile,
+        // Assembled in this test's temporary directory, not in the repository.
+        RAFIKICODE_NPM_OUT: path.join(work, "publish-out"),
         NODE_AUTH_TOKEN: "",
         DRY_RUN: "",
         PACK: "",

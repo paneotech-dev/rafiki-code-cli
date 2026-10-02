@@ -300,6 +300,9 @@ describe("applying a staged update at the next start", () => {
       env: {},
       args: [],
       execPath: at.execPath,
+      // A compiled binary somewhere else in the test's directory, never the
+      // real process.execPath.
+      running: { execPath: path.join(at.root, "running"), compiled: true },
       platform: "linux",
       log: (line) => lines.push(line),
       restart: () => {
@@ -402,11 +405,30 @@ describe("applying a staged update at the next start", () => {
     expect((await $`${at.execPath}`.text()).trim()).toBe(CURRENT)
   })
 
-  test("without a named target, a run from source applies nothing even when told it is a release", async () => {
-    const at = await staged("apply-no-target")
-    const { outcome, restarts } = apply(at, { execPath: undefined })
+  // The default target is the running executable. "The running executable"
+  // here is the fake install's binary, passed in: no test names the real one.
+  test("with no named target, a run from source is skipped even when told it is a release", async () => {
+    const at = await staged("apply-from-source")
+    const { outcome, restarts } = apply(at, { execPath: undefined, running: { execPath: at.execPath, compiled: false } })
     expect(outcome).toBe("skipped")
     expect(restarts.count).toBe(0)
+    expect((await $`${at.execPath}`.text()).trim()).toBe(CURRENT)
+    expect(RafikiAutoupdate.readStaged(at.dir)).toBeDefined()
+  })
+
+  test("a named target that is the runtime of a source run is skipped as well", async () => {
+    const at = await staged("apply-from-source-named")
+    const { outcome } = apply(at, { running: { execPath: at.execPath, compiled: false } })
+    expect(outcome).toBe("skipped")
+    expect((await $`${at.execPath}`.text()).trim()).toBe(CURRENT)
+  })
+
+  test("with no named target, a compiled binary replaces itself", async () => {
+    const at = await staged("apply-compiled")
+    const { outcome, restarts } = apply(at, { execPath: undefined, running: { execPath: at.execPath, compiled: true } })
+    expect(outcome).toBe("applied")
+    expect(restarts.count).toBe(1)
+    expect((await $`${at.execPath}`.text()).trim()).toBe(NEWER)
   })
 
   test("the process started after an apply does not look for another", async () => {

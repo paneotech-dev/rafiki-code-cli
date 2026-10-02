@@ -125,6 +125,9 @@ export interface ApplyInput {
   log?: (line: string) => void
   // Starts the new binary in place of this process. Injected by tests.
   restart?: () => void
+  // The executable this process is. Injected by tests, so that none of them
+  // depends on the real one.
+  running?: RafikiUpdate.Running
 }
 
 export function stateDir() {
@@ -406,10 +409,11 @@ export function applyStaged(input: ApplyInput = {}): ApplyOutcome {
 
   // Whatever a caller says about `release`, the default target is only ever a
   // compiled binary: in a run from source process.execPath is the runtime.
-  const execPath = input.execPath ?? (ExecTmp.compiled() ? process.execPath : undefined)
-  if (!execPath) return "skipped"
+  const run = input.running ?? RafikiUpdate.running()
+  const execPath = input.execPath ?? (run.compiled ? run.execPath : undefined)
+  if (!execPath || RafikiUpdate.refusal(execPath, run)) return "skipped"
   try {
-    RafikiUpdate.replaceSync(binary, execPath, input.platform ?? process.platform)
+    RafikiUpdate.replaceSync(binary, execPath, input.platform ?? process.platform, run)
   } catch (cause) {
     discard(dir)
     try {

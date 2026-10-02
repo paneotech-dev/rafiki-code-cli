@@ -2,6 +2,7 @@
 // and NOTICE, whole, and `rafikicode licenses` prints it.
 import { describe, expect, test } from "bun:test"
 import fs from "fs/promises"
+import os from "os"
 import path from "path"
 import { Licence } from "../../src/rafiki/licence"
 
@@ -22,14 +23,33 @@ describe("the embedded licence", () => {
   })
 
   test("rafikicode licenses prints it and needs no sign-in", async () => {
-    const proc = Bun.spawn(["bun", "run", path.join(root, "packages/opencode/src/index.ts"), "licenses"], {
-      stdin: "ignore",
-      stdout: "pipe",
-      stderr: "pipe",
-      env: { ...process.env, OPENCODE_DISABLE_AUTOUPDATE: "1", RAFIKICODE_API_KEY: "" },
-    })
-    const stdout = await new Response(proc.stdout).text()
-    expect(await proc.exited).toBe(0)
-    expect(stdout).toBe(Licence.text())
+    // A home of its own, so the command reads and writes nothing of this machine's.
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "rafikicode-licence-test-"))
+    try {
+      const env: Record<string, string | undefined> = {
+        ...process.env,
+        HOME: home,
+        OPENCODE_TEST_HOME: home,
+        XDG_DATA_HOME: path.join(home, ".local/share"),
+        XDG_STATE_HOME: path.join(home, ".local/state"),
+        XDG_CACHE_HOME: path.join(home, ".cache"),
+        OPENCODE_DISABLE_AUTOUPDATE: "1",
+        OPENCODE_DISABLE_PROJECT_CONFIG: "1",
+        RAFIKICODE_API_KEY: "",
+      }
+      delete env["XDG_CONFIG_HOME"]
+      const proc = Bun.spawn(["bun", "run", path.join(root, "packages/opencode/src/index.ts"), "licenses"], {
+        cwd: home,
+        stdin: "ignore",
+        stdout: "pipe",
+        stderr: "pipe",
+        env: env as Record<string, string>,
+      })
+      const stdout = await new Response(proc.stdout).text()
+      expect(await proc.exited).toBe(0)
+      expect(stdout).toBe(Licence.text())
+    } finally {
+      await fs.rm(home, { recursive: true, force: true })
+    }
   }, 60_000)
 })

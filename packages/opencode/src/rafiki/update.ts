@@ -26,6 +26,9 @@ export namespace RafikiUpdate {
     variant?: string
     // Fetch implementation, injectable for tests.
     fetch?: typeof fetch
+    // The executable this process is, injectable for tests so that none of
+    // them has to reason about the real one.
+    running?: Running
     // Progress callback with a short human readable line.
     onProgress?: (line: string) => void
   }
@@ -45,6 +48,41 @@ export namespace RafikiUpdate {
   }
 
   export const MAX_REDIRECTS = 10
+
+  // The program this process is running as. compiled is true for a built
+  // rafikicode binary and false for a run from source, where execPath is the
+  // JavaScript runtime that every other program on the machine uses.
+  export interface Running {
+    execPath: string
+    compiled: boolean
+  }
+
+  export function running(): Running {
+    return { execPath: process.execPath, compiled: compiled() }
+  }
+
+  function real(file: string) {
+    try {
+      return fsSync.realpathSync(file)
+    } catch {
+      return path.resolve(file)
+    }
+  }
+
+  // Why target must not be written, or undefined when it may be.
+  //
+  // The only file an update is ever meant to replace is the compiled binary
+  // that is running. In a run from source the running executable is the
+  // runtime, so a replace aimed at it, directly or through a link, is refused
+  // here, at the last step before the write, whoever asked for it. A test once
+  // reached that write through the update command and replaced the machine's
+  // runtime with its own stand-in binary; this is the check that makes that
+  // impossible rather than unlikely.
+  export function refusal(target: string, run: Running = running()): string | undefined {
+    if (run.compiled) return undefined
+    if (real(target) !== real(run.execPath)) return undefined
+    return `This is a run from source, so ${run.execPath} is the runtime and not ${Brand.name}. Nothing was installed.`
+  }
 
   // GET that follows redirects itself, so that every hop is checked with the
   // release URL rule (https, or loopback http with the test switch) before
@@ -186,7 +224,9 @@ export namespace RafikiUpdate {
   // cannot replace a running executable, so the old file is moved aside first.
   // Synchronous because the staged update is applied before anything else in
   // the process has started (rafiki/autoupdate.ts).
-  export function replaceSync(source: string, target: string, platform: NodeJS.Platform) {
+  export function replaceSync(source: string, target: string, platform: NodeJS.Platform, run: Running = running()) {
+    const problem = refusal(target, run)
+    if (problem) throw new UpdateError(problem)
     const staged = `${target}.new`
     fsSync.copyFileSync(source, staged)
     if (platform !== "win32") fsSync.chmodSync(staged, 0o755)
@@ -202,8 +242,8 @@ export namespace RafikiUpdate {
     fsSync.renameSync(staged, target)
   }
 
-  export async function replace(source: string, target: string, platform: NodeJS.Platform) {
-    replaceSync(source, target, platform)
+  export async function replace(source: string, target: string, platform: NodeJS.Platform, run: Running = running()) {
+    replaceSync(source, target, platform, run)
   }
 
   // Called first by the update command, before the install method is detected
@@ -219,20 +259,17 @@ export namespace RafikiUpdate {
 
   // Full update: resolve the version, download, verify, extract, replace.
   export async function apply(opts: Options = {}): Promise<Result> {
-    const problem = Brand.release.overrideProblem()
-    if (problem) throw new UpdateError(`${problem} Nothing was installed.`)
-    // Run from source, process.execPath is the JavaScript runtime, and putting
-    // a release binary there would overwrite the runtime for everything else on
-    // the machine. Only a compiled binary may replace itself; a caller that
-    // names the file to replace has said what it means.
-    if (!opts.execPath && !compiled()) {
-      throw new UpdateError(
-        `This is a run from source, so ${process.execPath} is the runtime and not ${Brand.name}. Nothing was installed.`,
-      )
-    }
+    const override = Brand.release.overrideProblem()
+    if (override) throw new UpdateError(`${override} Nothing was installed.`)
+    // The target is the running executable unless a caller names another file.
+    // refusal() is asked here as well as in replaceSync, so that a run from
+    // source stops before it looks anything up or downloads anything.
+    const run = opts.running ?? running()
+    const execPath = opts.execPath ?? run.execPath
+    const refused = refusal(execPath, run)
+    if (refused) throw new UpdateError(refused)
     const platform = opts.platform ?? process.platform
     const arch = opts.arch ?? process.arch
-    const execPath = opts.execPath ?? process.execPath
     const version = opts.version?.replace(/^v/, "") || (await latest(opts))
     const variant = opts.variant ?? (await detectVariant(platform, arch))
     const asset = assetName(platform, arch, variant)
@@ -240,7 +277,7 @@ export namespace RafikiUpdate {
     const { dir, binary } = await extract(asset, bytes, platform)
     try {
       opts.onProgress?.(`Installing ${Brand.name} ${version} to ${execPath}`)
-      await replace(binary, execPath, platform)
+      await replace(binary, execPath, platform, run)
     } finally {
       await fs.rm(dir, { recursive: true, force: true })
     }

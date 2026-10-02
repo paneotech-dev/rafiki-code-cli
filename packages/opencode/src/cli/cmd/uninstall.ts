@@ -1,4 +1,5 @@
 import { Brand } from "@opencode-ai/core/brand/brand"
+import { RafikiUpdate } from "@/rafiki/update"
 import type { Argv } from "yargs"
 import { UI } from "../ui"
 import * as prompts from "@clack/prompts"
@@ -99,7 +100,9 @@ async function collectRemovalTargets(args: UninstallArgs, method: Installation.M
     { path: Global.Path.state, label: "State", keep: false },
   ]
 
-  const binary = method === "curl" ? process.execPath : null
+  // Only a compiled binary is removed. Run from source, process.execPath is
+  // the runtime, which is not this product's to delete.
+  const binary = method === "curl" && RafikiUpdate.running().compiled ? process.execPath : null
   const shellConfigs = binary ? await RafikiShell.configsWithPath(path.dirname(binary)) : []
   const links = binary ? await RafikiShell.ownedLinks(binary) : []
 

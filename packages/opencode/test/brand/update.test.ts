@@ -231,21 +231,72 @@ describe("RafikiUpdate", () => {
     ).rejects.toThrow(/Could not download SHA256SUMS/)
   })
 
-  // Run from source, process.execPath is the runtime every other program on
-  // the machine uses, so an update without a named target must stop before it
-  // asks the network anything. The fetch here cannot return an archive, so this
-  // test cannot replace anything even if the refusal were removed.
-  test("without a named target, a run from source refuses before any request", async () => {
-    let calls = 0
-    const run = RafikiUpdate.apply({
-      version: VERSION,
-      fetch: (async () => {
-        calls++
-        throw new Error("no network in this test")
-      }) as unknown as typeof fetch,
+  // The rule that keeps an update away from the runtime. In a run from source
+  // the running executable is the JavaScript runtime, and nothing may replace
+  // it. These tests never name the real one: "the running executable" is a
+  // file in the test's own temporary directory, passed in.
+  describe("a run from source never replaces its runtime", () => {
+    async function runtime(name: string) {
+      const dir = path.join(work, name)
+      await fs.mkdir(dir, { recursive: true })
+      const file = path.join(dir, "runtime")
+      await fs.writeFile(file, "the runtime", { mode: 0o755 })
+      const replacement = path.join(dir, "replacement")
+      await fs.writeFile(replacement, "a release binary", { mode: 0o755 })
+      return { dir, file, replacement }
+    }
+
+    test("the write itself is refused when the target is the running executable", async () => {
+      const at = await runtime("refuse-direct")
+      const run = { execPath: at.file, compiled: false }
+      expect(RafikiUpdate.refusal(at.file, run)).toContain("run from source")
+      expect(() => RafikiUpdate.replaceSync(at.replacement, at.file, "linux", run)).toThrow(/run from source/)
+      await expect(RafikiUpdate.replace(at.replacement, at.file, "linux", run)).rejects.toThrow(/run from source/)
+      expect(await fs.readFile(at.file, "utf8")).toBe("the runtime")
+      await expect(fs.access(`${at.file}.new`)).rejects.toThrow()
     })
-    await expect(run).rejects.toThrow(/run from source/)
-    expect(calls).toBe(0)
+
+    test("a link to the running executable is refused too", async () => {
+      const at = await runtime("refuse-link")
+      const link = path.join(at.dir, "runtime-link")
+      await fs.symlink(at.file, link)
+      const run = { execPath: at.file, compiled: false }
+      expect(() => RafikiUpdate.replaceSync(at.replacement, link, "linux", run)).toThrow(/run from source/)
+      expect(await fs.readlink(link)).toBe(at.file)
+      expect(await fs.readFile(at.file, "utf8")).toBe("the runtime")
+    })
+
+    test("an update with no named target stops before any request", async () => {
+      const at = await runtime("refuse-apply")
+      let calls = 0
+      const update = RafikiUpdate.apply({
+        version: VERSION,
+        running: { execPath: at.file, compiled: false },
+        fetch: (async () => {
+          calls++
+          throw new Error("no network in this test")
+        }) as unknown as typeof fetch,
+      })
+      await expect(update).rejects.toThrow(/run from source/)
+      expect(calls).toBe(0)
+      expect(await fs.readFile(at.file, "utf8")).toBe("the runtime")
+    })
+
+    test("another file may be replaced from a source run, and a compiled binary may replace itself", async () => {
+      const at = await runtime("allow")
+      const other = path.join(at.dir, "other")
+      await fs.writeFile(other, "old", { mode: 0o755 })
+      RafikiUpdate.replaceSync(at.replacement, other, "linux", { execPath: at.file, compiled: false })
+      expect(await fs.readFile(other, "utf8")).toBe("a release binary")
+      expect(RafikiUpdate.refusal(at.file, { execPath: at.file, compiled: true })).toBeUndefined()
+      RafikiUpdate.replaceSync(at.replacement, at.file, "linux", { execPath: at.file, compiled: true })
+      expect(await fs.readFile(at.file, "utf8")).toBe("a release binary")
+    })
+
+    test("this test process is itself a run from source", () => {
+      expect(RafikiUpdate.running().compiled).toBe(false)
+      expect(RafikiUpdate.refusal(RafikiUpdate.running().execPath)).toContain("run from source")
+    })
   })
 
   test("automatic updates are on by default", () => {
@@ -255,6 +306,14 @@ describe("RafikiUpdate", () => {
 
 // The command users run, as a subprocess: the https rule must hold on the path
 // "rafikicode update" really takes, not only inside RafikiUpdate.apply().
+//
+// These run the command from source, where the executable is the runtime. None
+// of them gives the command a release it could install: the release base is
+// either refused or a path of the mock server that serves no archive
+// (/nopage). A version of one of these tests once pointed at /dl, the lookup
+// started succeeding, and the command installed the mock archive over the
+// runtime. The updater now refuses that write itself (RafikiUpdate.refusal),
+// and these tests no longer depend on it refusing.
 describe("rafikicode update, the command", () => {
   const root = path.resolve(import.meta.dir, "../..")
 
@@ -272,6 +331,9 @@ describe("rafikicode update, the command", () => {
       OPENCODE_PURE: "1",
       OPENCODE_DISABLE_AUTOUPDATE: "1",
       OPENCODE_DISABLE_MODELS_FETCH: "1",
+      // Whatever this process has set for its own in-process tests, the
+      // command starts from a release base that serves nothing.
+      [Brand.env.releaseBase]: `http://127.0.0.1:${server.port}/nopage`,
       ...extra,
     }
     delete env["XDG_CONFIG_HOME"]
@@ -297,7 +359,7 @@ describe("rafikicode update, the command", () => {
     const before = requests.length
     const result = await update({
       [Brand.env.releaseAPI]: "http://api.example.com",
-      [Brand.env.releaseBase]: `http://127.0.0.1:${server.port}/dl`,
+      [Brand.env.releaseBase]: `http://127.0.0.1:${server.port}/nopage`,
     })
     expect(result.exitCode).toBe(2)
     expect(result.all).toContain(`${Brand.env.releaseAPI} must be an https URL`)

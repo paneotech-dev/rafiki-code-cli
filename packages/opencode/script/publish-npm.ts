@@ -12,6 +12,9 @@
 //   DRY_RUN=1         pack with `npm pack --dry-run` instead of publishing
 //   PACK=1            write the tarball into ./dist/npm and publish nothing
 //                     (the release gate installs that tarball)
+//   RAFIKICODE_SHA256SUMS, RAFIKICODE_NPM_OUT
+//                     the checksum file to read and the directory to assemble
+//                     in, when they are not ./dist/SHA256SUMS and ./dist/npm
 //
 // Publishing needs NODE_AUTH_TOKEN. Without it this stops with a message
 // naming the secret: a release that says it is on npm and is not is worse than
@@ -35,7 +38,8 @@ if (!(await Bun.file(sums).exists())) {
   process.exit(1)
 }
 
-const out = path.resolve("./dist/npm")
+// Where the package is assembled. The default is beside the build output.
+const out = path.resolve(process.env["RAFIKICODE_NPM_OUT"] ?? "./dist/npm")
 await $`node ../../install/npm/build.mjs --version ${version} --sums ${sums} --out ${out}`
 const pkg = path.join(out, "rafikicode")
 const name = (await Bun.file(path.join(pkg, "package.json")).json()).name as string
