@@ -257,6 +257,23 @@ export namespace RafikiUpdate {
     return true
   }
 
+  // Called by the update command just before it would install anything, by any
+  // method. A run from source has no installation of its own to upgrade: the
+  // installer method would aim at the runtime, and a package manager method
+  // would install a global package on the developer's machine as a side effect
+  // of running a command from a checkout (a test did exactly that with
+  // `upgrade --method npm`). True when it refused.
+  export function refusedSourceRun(
+    log: (line: string) => void = (line) => process.stderr.write(line + "\n"),
+    run: Running = running(),
+  ) {
+    const problem = refusal(run.execPath, run)
+    if (!problem) return false
+    log(problem)
+    process.exitCode = Contract.EXIT.usage
+    return true
+  }
+
   // Full update: resolve the version, download, verify, extract, replace.
   export async function apply(opts: Options = {}): Promise<Result> {
     const override = Brand.release.overrideProblem()

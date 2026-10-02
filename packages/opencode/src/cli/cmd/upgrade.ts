@@ -61,6 +61,8 @@ export const UpgradeCommand = {
     }
 
     prompts.log.info(`From ${InstallationVersion} to ${target}`)
+    // Nothing is installed from a run from source, by any method.
+    if (RafikiUpdate.refusedSourceRun((line) => prompts.log.error(line))) return prompts.outro("Done")
     const spinner = prompts.spinner()
     spinner.start("Upgrading...")
     const err = await Installation.upgrade(method, target).catch((err) => err)

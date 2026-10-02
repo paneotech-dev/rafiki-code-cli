@@ -385,6 +385,30 @@ describe("rafikicode update, the command", () => {
     expect(requests.slice(before)).toEqual(["/nopage/latest", "/to-http/releases/latest"])
   }, 60_000)
 
+  // A package manager method from a run from source. The package managers on
+  // PATH here are stand-ins written by this test into its own directory, which
+  // record that they were called and fail, so the real ones cannot be reached
+  // whatever the command decides.
+  test("from a run from source no package manager is run, whatever the method", async () => {
+    const bin = path.join(work, "fake-managers")
+    const calls = path.join(work, "fake-managers.log")
+    await fs.mkdir(bin, { recursive: true })
+    for (const name of ["npm", "pnpm", "brew", "winget"]) {
+      await fs.writeFile(path.join(bin, name), `#!/bin/sh\necho "${name} $*" >> "${calls}"\nexit 1\n`, { mode: 0o755 })
+    }
+    for (const method of ["npm", "pnpm", "brew", "winget"]) {
+      const result = await update({ PATH: `${bin}:${process.env.PATH ?? ""}` }, ["9.9.9", "--method", method])
+      expect(result.exitCode).toBe(2)
+      expect(result.all).toContain(`Using method: ${method}`)
+      expect(result.all).toContain("This is a run from source")
+      expect(result.all).toContain("Nothing was installed.")
+      expect(result.all).not.toContain("Upgrade complete")
+    }
+    // Method detection may list what is installed; nothing may install or upgrade.
+    const logged = await fs.readFile(calls, "utf8").catch(() => "")
+    expect(logged).not.toMatch(/^(npm|pnpm) install|^brew (tap|update|upgrade) |^winget upgrade/m)
+  }, 180_000)
+
   test("an http release base is refused the same way", async () => {
     const before = requests.length
     const result = await update({
