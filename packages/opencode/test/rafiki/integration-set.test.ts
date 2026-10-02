@@ -7,7 +7,9 @@
 //
 // The real session loop and the real HTTP client talk to a scripted local
 // model through a proxy that cuts connections. Nothing leaves this machine.
-import { afterAll, beforeAll, beforeEach, expect } from "bun:test"
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test"
+import { mkdtempSync, rmSync } from "fs"
+import os from "os"
 import { Effect, Layer } from "effect"
 import fs from "fs/promises"
 import path from "path"
@@ -61,6 +63,9 @@ import * as CachePrefix from "../../src/rafiki/cache-prefix"
 import { TestInstance } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
 import { createFaultProxy, seeded, type Cut, type FaultProxy, type Recorded } from "../lib/fault-proxy"
+import { createMockConsole } from "../brand/mock-console.mjs"
+import { createMockGateway } from "../brand/mock-gateway.mjs"
+import { spawnCli } from "./spawn"
 import {
   createScriptedModel,
   events,
@@ -371,3 +376,52 @@ for (const tier of ["max", "fast"] as const) {
     60_000,
   )
 }
+
+// The closing line of `rafikicode run` when the stream of a task was cut: the
+// cut call ends without a usage block, the continuation reports its own. The
+// line must count the first and say it is not in the amount.
+describe("rafikicode run through a connection that is cut once", () => {
+  // What the mock gateway reports for every complete answer: 10,000 prompt
+  // tokens of which 6,000 were read from the cache, 2,000 completion tokens.
+  const USAGE = {
+    prompt_tokens: 10_000,
+    completion_tokens: 2_000,
+    total_tokens: 12_000,
+    prompt_tokens_details: { cached_tokens: 6_000 },
+  }
+
+  test("the closing line names the call that reported no usage", async () => {
+    const home = mkdtempSync(path.join(os.tmpdir(), "rafikicode-set-"))
+    const gateway = createMockGateway({ quiet: true, usage: USAGE })
+    const account = createMockConsole({ quiet: true, anyKey: true })
+    await Promise.all([gateway.ready, account.ready])
+    // Only the model requests of the task are planned and recorded: the price
+    // list lookup and the title request pass through untouched.
+    const wire = await createFaultProxy(gateway.url, {
+      ignore: (request) => !request.path.startsWith("/v1/chat/completions") || isTitleRequest(request.body),
+    })
+    // The role event and two words of the answer arrive, then the connection drops.
+    wire.plan((request) => (request.index === 0 ? { type: "events", events: 3 } : undefined))
+    try {
+      const result = await spawnCli(home, ["run", "say hello"], {
+        RAFIKICODE_API_KEY: "sk-test-not-a-real-key",
+        RAFIKICODE_GATEWAY_URL: wire.url + "/v1",
+        RAFIKICODE_CONSOLE_URL: account.url,
+      })
+      expect(result.exitCode).toBe(0)
+      expect(wire.requests).toHaveLength(2)
+      expect(wire.requests[0].complete).toBe(false)
+      expect(continuing(conversation(wire.requests[1]).at(-1))).toBe(true)
+      expect(key(wire.requests[1])).not.toBe(key(wire.requests[0]))
+      expect(result.stdout).not.toContain("Task cost")
+      expect(result.stderr).toContain(
+        "Task cost: tier fast · about 0.0086 USD (estimate) · 1 call reported no usage and is not included · caching saved about 0.0054 USD · at most about 12.39 USD of credits left",
+      )
+    } finally {
+      await wire.close()
+      await account.close()
+      await gateway.close()
+      rmSync(home, { recursive: true, force: true })
+    }
+  }, 120_000)
+})
