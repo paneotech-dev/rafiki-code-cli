@@ -17,4 +17,7 @@ if (process.versions.bun !== expectedBunVersion) {
   console.warn(`Warning: Bun version ${process.versions.bun} differs from expected ${expectedBunVersion}`);
 }
 '
-bun typecheck
+# The same typecheck of every package, a few at a time: one compiler per
+# package all at once has been killed for memory on a 16 GB machine.
+# TYPECHECK_CONCURRENCY sets how many run together (default 3).
+bun typecheck --concurrency="${TYPECHECK_CONCURRENCY:-3}"
