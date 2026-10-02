@@ -178,6 +178,8 @@ rafikicode run -m rafiki/rafiki-pro "Reply with the single word ok and do nothin
 
 The output starts with `> build · rafiki-pro`. To make a tier your default, add `"model": "rafiki/rafiki-pro"` to `~/.rafikicode/config.json`.
 
+While a task runs the prompt row shows the tier, the estimated spend so far and the credits left, and picking another tier shows an estimate for the next turn before you send it. See [What a task costs](./cost.md).
+
 ## 5. Tell it about your project
 
 Create an `AGENTS.md` at the root of the repository with the conventions you want followed: build and test commands, code style, what not to touch. `rafikicode` reads it into every session. A global `~/.rafikicode/AGENTS.md` applies to every project. Keep it short and factual; it is the most effective way to get better results from `rafiki-fast`.
