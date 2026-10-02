@@ -92,21 +92,33 @@ function database() {
   }
   walk(home)
   expect(found).toHaveLength(1)
-  return new Database(found[0]!, { readonly: true })
+  return new Database(found[0], { readonly: true })
 }
 
 function read(db: Database) {
   const sessions = db.query("select id from session").all() as Array<{ id: string }>
-  const todos = db.query("select content, status from todo order by position").all() as Array<{ content: string; status: string }>
-  const messages = (db.query("select id, data from message order by time_created, id").all() as Array<{ id: string; data: string }>).map(
-    (row) => ({ id: row.id, ...(JSON.parse(row.data) as { role: string; time: { completed?: number }; error?: { name: string } }) }),
-  )
-  const parts = (db.query("select message_id, data from part order by id").all() as Array<{ message_id: string; data: string }>).map(
-    (row) => ({
-      messageID: row.message_id,
-      ...(JSON.parse(row.data) as { type: string; tool?: string; snapshot?: string; files?: string[]; state?: { status: string } }),
+  const todos = db.query("select content, status from todo order by position").all() as Array<{
+    content: string
+    status: string
+  }>
+  const messages = (
+    db.query("select id, data from message order by time_created, id").all() as Array<{ id: string; data: string }>
+  ).map((row) => ({
+    id: row.id,
+    ...(JSON.parse(row.data) as { role: string; time: { completed?: number }; error?: { name: string } }),
+  }))
+  const parts = (
+    db.query("select message_id, data from part order by id").all() as Array<{ message_id: string; data: string }>
+  ).map((row) => ({
+    messageID: row.message_id,
+    ...(JSON.parse(row.data) as {
+      type: string
+      tool?: string
+      snapshot?: string
+      files?: string[]
+      state?: { status: string }
     }),
-  )
+  }))
   return { sessions, todos, messages, parts }
 }
 
@@ -162,9 +174,15 @@ describe("rafikicode run --resume after the process was killed", () => {
     expect(open.time.completed).toBeUndefined()
     const openParts = left.parts.filter((part) => part.messageID === open.id)
     expect(openParts.some((part) => part.type === "step-start" && part.snapshot)).toBe(true)
-    expect(openParts.some((part) => part.type === "tool" && part.tool === "bash" && part.state?.status === "running")).toBe(true)
+    expect(
+      openParts.some((part) => part.type === "tool" && part.tool === "bash" && part.state?.status === "running"),
+    ).toBe(true)
     expect(openParts.some((part) => part.type === "patch")).toBe(false)
-    expect(left.parts.some((part) => part.type === "tool" && part.tool === "todowrite" && part.state?.status === "completed")).toBe(true)
+    expect(
+      left.parts.some(
+        (part) => part.type === "tool" && part.tool === "todowrite" && part.state?.status === "completed",
+      ),
+    ).toBe(true)
 
     const second = start(["run", "--resume", "carry on"])
     const [stdout, stderr] = await Promise.all([new Response(second.stdout).text(), new Response(second.stderr).text()])
@@ -175,7 +193,7 @@ describe("rafikicode run --resume after the process was killed", () => {
     // The task: the model is sent the whole conversation again, with the
     // interrupted command reported as such.
     expect(proxy.requests).toHaveLength(3)
-    const history = (proxy.requests[2]!.body["messages"] as Message[]).filter((message) => message.role !== "system")
+    const history = (proxy.requests[2].body["messages"] as Message[]).filter((message) => message.role !== "system")
     expect(history.map((message) => message.role)).toEqual(["user", "assistant", "tool", "assistant", "tool", "user"])
     expect(textOf(history[0])).toContain("write the marker file")
     expect(textOf(history[4])).toMatch(/interrupted|aborted/i)

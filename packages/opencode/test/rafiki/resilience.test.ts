@@ -5,10 +5,19 @@ import type { SessionV1 } from "@opencode-ai/core/v1/session"
 import * as Resilience from "../../src/rafiki/resilience"
 import * as Resume from "../../src/rafiki/resume"
 
-const reset = { name: "APIError", data: { message: "Connection reset by server", isRetryable: true, metadata: { code: "ECONNRESET" } } }
+const reset = {
+  name: "APIError",
+  data: { message: "Connection reset by server", isRetryable: true, metadata: { code: "ECONNRESET" } },
+}
 const refused = { name: "APIError", data: { message: "Cannot connect to API: Unable to connect", isRetryable: true } }
-const unavailable = { name: "APIError", data: { message: "down", statusCode: 503, metadata: { rafiki_code: "gateway_unavailable" } } }
-const limited = { name: "APIError", data: { message: "slow down", statusCode: 429, metadata: { rafiki_code: "rate_limited" } } }
+const unavailable = {
+  name: "APIError",
+  data: { message: "down", statusCode: 503, metadata: { rafiki_code: "gateway_unavailable" } },
+}
+const limited = {
+  name: "APIError",
+  data: { message: "slow down", statusCode: 429, metadata: { rafiki_code: "rate_limited" } },
+}
 
 let saved: string | undefined
 
@@ -111,7 +120,10 @@ describe("wording", () => {
 
 describe("idempotency key", () => {
   test("is the step id, on the Rafiki provider only, and leaves the input untouched", () => {
-    const input = { model: { providerID: "rafiki", headers: { "X-Other": "1" } }, messages: [] }
+    const input = {
+      model: { providerID: "rafiki", headers: { "X-Other": "1" } as Record<string, string> },
+      messages: [],
+    }
     const stamped = Resilience.stamp(input, "msg_abc")
     expect(stamped.model.headers).toEqual({ "X-Other": "1", "Idempotency-Key": "msg_abc" })
     expect(input.model.headers).toEqual({ "X-Other": "1" })
@@ -136,14 +148,27 @@ function assistant(parts: Array<Record<string, unknown>>, info: Record<string, u
 }
 
 const user = {
-  info: { id: "msg_u", sessionID: "ses_1", role: "user", agent: "build", model: { providerID: "rafiki", modelID: "rafiki-fast" }, time: { created: 0 } },
+  info: {
+    id: "msg_u",
+    sessionID: "ses_1",
+    role: "user",
+    agent: "build",
+    model: { providerID: "rafiki", modelID: "rafiki-fast" },
+    time: { created: 0 },
+  },
   parts: [{ id: "prt_u", sessionID: "ses_1", messageID: "msg_u", type: "text", text: "do it" }],
 } as unknown as SessionV1.WithParts
 
 const start = { type: "step-start" }
 const finish = { type: "step-finish" }
 const text = (value: string) => ({ type: "text", text: value })
-const tool = (status: string, extra: Record<string, unknown> = {}) => ({ type: "tool", tool: "bash", callID: "c", state: { status }, ...extra })
+const tool = (status: string, extra: Record<string, unknown> = {}) => ({
+  type: "tool",
+  tool: "bash",
+  callID: "c",
+  state: { status },
+  ...extra,
+})
 
 describe("boundary of a cut stream", () => {
   test("a dispatched tool call is a boundary, an incomplete one is not", () => {
@@ -151,7 +176,9 @@ describe("boundary of a cut stream", () => {
     expect(Resume.boundary(assistant([start, tool("running")]).parts)).toBe("tools")
     expect(Resume.boundary(assistant([start, tool("error")]).parts)).toBe("tools")
     expect(Resume.boundary(assistant([start, tool("pending")]).parts)).toBe("none")
-    expect(Resume.boundary(assistant([start, tool("completed", { metadata: { providerExecuted: true } })]).parts)).toBe("none")
+    expect(Resume.boundary(assistant([start, tool("completed", { metadata: { providerExecuted: true } })]).parts)).toBe(
+      "none",
+    )
   })
 
   test("text is a boundary whether stored or still arriving, blank text and reasoning are not", () => {
@@ -165,7 +192,9 @@ describe("boundary of a cut stream", () => {
   test("a cut text step is one that started, never ended, has no error and holds only text", () => {
     expect(Resume.isCutText(assistant([start, text("partial")]))).toBe(true)
     expect(Resume.isCutText(assistant([start, text("whole"), finish], { finish: "stop" }))).toBe(false)
-    expect(Resume.isCutText(assistant([start, text("partial")], { error: { name: "MessageAbortedError", data: {} } }))).toBe(false)
+    expect(
+      Resume.isCutText(assistant([start, text("partial")], { error: { name: "MessageAbortedError", data: {} } })),
+    ).toBe(false)
     expect(Resume.isCutText(assistant([start, text("partial"), tool("completed")]))).toBe(false)
     expect(Resume.isCutText(assistant([start, text("partial")], { time: { created: 1 } }))).toBe(false)
     expect(Resume.isCutText(assistant([start, text("partial")], { providerID: "openai" }))).toBe(false)
@@ -180,10 +209,10 @@ describe("boundary of a cut stream", () => {
     const next = assistant([start, tool("completed"), finish], { id: "msg_b", finish: "tool-calls" })
     const out = Resume.withContinuations([user, cut, next])
     expect(out.map((message) => message.info.role)).toEqual(["user", "assistant", "user", "assistant"])
-    const inserted = out[2]!
+    const inserted = out[2]
     expect(inserted.parts).toHaveLength(1)
     expect(inserted.parts[0]).toMatchObject({ type: "text", text: Resume.CONTINUE_PROMPT, synthetic: true })
-    expect(inserted.info.role === "user" && inserted.info.model).toEqual({ providerID: "rafiki", modelID: "rafiki-fast" })
+    expect((inserted.info as { model?: unknown }).model).toEqual({ providerID: "rafiki", modelID: "rafiki-fast" })
     expect(inserted.info.id).not.toBe(user.info.id)
   })
 

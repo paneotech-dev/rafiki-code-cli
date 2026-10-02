@@ -38,7 +38,9 @@ export function events(reply: Reply): string[] {
   if (reply.tool) {
     out.push(
       chunk({
-        tool_calls: [{ index: 0, id: reply.tool.id, type: "function", function: { name: reply.tool.name, arguments: "" } }],
+        tool_calls: [
+          { index: 0, id: reply.tool.id, type: "function", function: { name: reply.tool.name, arguments: "" } },
+        ],
       }),
     )
     for (const args of reply.tool.args) out.push(chunk({ tool_calls: [{ index: 0, function: { arguments: args } }] }))
@@ -56,7 +58,11 @@ export function textOf(message: Message | undefined): string {
   if (typeof message.content === "string") return message.content
   if (!Array.isArray(message.content)) return ""
   return message.content
-    .map((part) => (part && typeof part === "object" && typeof (part as { text?: unknown }).text === "string" ? (part as { text: string }).text : ""))
+    .map((part) =>
+      part && typeof part === "object" && typeof (part as { text?: unknown }).text === "string"
+        ? (part as { text: string }).text
+        : "",
+    )
     .join("")
 }
 

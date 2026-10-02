@@ -54,7 +54,14 @@ import * as RafikiResume from "../../src/rafiki/resume"
 import { TestInstance } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
 import { createFaultProxy, seeded, type Cut, type FaultProxy, type Recorded } from "../lib/fault-proxy"
-import { createScriptedModel, events, isTitleRequest, textOf, type Message, type ScriptedModel } from "../lib/scripted-model"
+import {
+  createScriptedModel,
+  events,
+  isTitleRequest,
+  textOf,
+  type Message,
+  type ScriptedModel,
+} from "../lib/scripted-model"
 
 const summary = Layer.succeed(
   SessionSummary.Service,
@@ -231,7 +238,8 @@ const tools = (messages: SessionV1.WithParts[]) =>
     .flatMap((message) => message.parts)
     .filter((part): part is SessionV1.ToolPart => part.type === "tool")
 
-const sent = (request: Recorded) => (request.body["messages"] as Message[]).filter((message) => message.role !== "system")
+const sent = (request: Recorded) =>
+  (request.body["messages"] as Message[]).filter((message) => message.role !== "system")
 
 const key = (request: Recorded) => request.headers[RafikiResilience.IDEMPOTENCY_HEADER.toLowerCase()]
 
@@ -257,7 +265,9 @@ it.instance(
     Effect.gen(function* () {
       const { chat, send } = yield* boot()
       model.script((messages) =>
-        continuing(messages.at(-1)) ? { text: ["two, ", "as computed."] } : { text: ["The answer ", "is forty ", "two, ", "as computed."] },
+        continuing(messages.at(-1))
+          ? { text: ["two, ", "as computed."] }
+          : { text: ["The answer ", "is forty ", "two, ", "as computed."] },
       )
       // The role event and two text deltas arrive, then the connection drops.
       proxy.plan((request) => (request.index === 0 ? { type: "events", events: 3 } : undefined))
@@ -265,7 +275,7 @@ it.instance(
       const result = yield* send("what is the answer")
 
       expect(proxy.requests).toHaveLength(2)
-      const again = sent(proxy.requests[1]!)
+      const again = sent(proxy.requests[1])
       expect(again.at(-2)).toMatchObject({ role: "assistant", content: "The answer is forty " })
       expect(continuing(again.at(-1))).toBe(true)
 
@@ -276,9 +286,9 @@ it.instance(
       expect(result.info.role === "assistant" && result.info.error).toBeFalsy()
 
       // A continuation is a different request, so it carries a new key.
-      expect(key(proxy.requests[0]!)).toMatch(/^msg/)
-      expect(key(proxy.requests[1]!)).toMatch(/^msg/)
-      expect(key(proxy.requests[1]!)).not.toBe(key(proxy.requests[0]!))
+      expect(key(proxy.requests[0])).toMatch(/^msg/)
+      expect(key(proxy.requests[1])).toMatch(/^msg/)
+      expect(key(proxy.requests[1])).not.toBe(key(proxy.requests[0]))
     }),
   { git: true },
   60_000,
@@ -310,7 +320,7 @@ it.instance(
       expect(calls.map((part) => part.callID)).toEqual(["call_2"])
       expect(calls[0]?.state.status).toBe("completed")
       // The request after the tool keeps the same history the continuation was built on.
-      const last = sent(proxy.requests[2]!)
+      const last = sent(proxy.requests[2])
       expect(last.map((message) => message.role)).toEqual(["user", "assistant", "user", "assistant", "tool"])
       expect(result.info.role === "assistant" && result.info.finish).toBe("stop")
     }),
@@ -335,8 +345,8 @@ it.instance(
 
       expect(yield* lines(directory)).toEqual(["line"])
       expect(proxy.requests).toHaveLength(2)
-      expect(sent(proxy.requests[1]!).map((message) => message.role)).toEqual(["user", "assistant", "tool"])
-      expect(key(proxy.requests[1]!)).not.toBe(key(proxy.requests[0]!))
+      expect(sent(proxy.requests[1]).map((message) => message.role)).toEqual(["user", "assistant", "tool"])
+      expect(key(proxy.requests[1])).not.toBe(key(proxy.requests[0]))
       const messages = yield* stored(chat.id)
       expect(tools(messages).map((part) => part.state.status)).toEqual(["completed"])
       expect(texts(messages)).toBe("Done.")
@@ -366,12 +376,12 @@ it.instance(
       expect(proxy.requests).toHaveLength(4)
       const [, first, second, third] = proxy.requests
       // The same request sent again: same body, same key.
-      expect(second!.raw).toBe(first!.raw)
-      expect(third!.raw).toBe(first!.raw)
-      expect(key(first!)).toMatch(/^msg/)
-      expect(key(second!)).toBe(key(first!))
-      expect(key(third!)).toBe(key(first!))
-      expect(key(first!)).not.toBe(key(proxy.requests[0]!))
+      expect(second.raw).toBe(first.raw)
+      expect(third.raw).toBe(first.raw)
+      expect(key(first)).toMatch(/^msg/)
+      expect(key(second)).toBe(key(first))
+      expect(key(third)).toBe(key(first))
+      expect(key(first)).not.toBe(key(proxy.requests[0]))
       const messages = yield* stored(chat.id)
       expect(tools(messages).map((part) => part.state.status)).toEqual(["completed"])
       expect(result.info.role === "assistant" && result.info.error).toBeFalsy()
@@ -461,7 +471,10 @@ function task(messages: Message[]) {
     .join("")
   if (done) return { text: remainder(AFTER, written) }
   const attempt = messages.filter((message) => message.role === "tool").length + 1
-  return { text: remainder(BEFORE, written), tool: { id: `call_${attempt}_${messages.length}`, name: "bash", args: ARGS } }
+  return {
+    text: remainder(BEFORE, written),
+    tool: { id: `call_${attempt}_${messages.length}`, name: "bash", args: ARGS },
+  }
 }
 
 const SIZE = events(task([])).join("").length
@@ -501,7 +514,10 @@ for (const seed of [11, 23, 37, 41, 59, 97]) {
         expect(completed, context).toHaveLength(1)
         expect(written.length, context).toBeGreaterThanOrEqual(1)
         expect(written.length, context).toBeLessThanOrEqual(1 + interrupted.length)
-        expect(calls.every((part) => part.state.status !== "pending" && part.state.status !== "running"), context).toBe(true)
+        expect(
+          calls.every((part) => part.state.status !== "pending" && part.state.status !== "running"),
+          context,
+        ).toBe(true)
       }),
     { git: true },
     120_000,
@@ -522,7 +538,13 @@ const leaveOpenStep = (sessionID: SessionID, snapshot: string | undefined) =>
       model: ref,
       time: { created: Date.now() },
     })
-    yield* sessions.updatePart({ id: PartID.ascending(), messageID: user.id, sessionID, type: "text", text: "change the notes" })
+    yield* sessions.updatePart({
+      id: PartID.ascending(),
+      messageID: user.id,
+      sessionID,
+      type: "text",
+      text: "change the notes",
+    })
     const dead: SessionV1.Assistant = {
       id: MessageID.ascending(),
       role: "assistant",
@@ -602,13 +624,13 @@ it.instance(
 
       expect(result.info.role === "assistant" && result.info.error).toBeFalsy()
       expect(proxy.requests).toHaveLength(1)
-      const history = sent(proxy.requests[0]!)
+      const history = sent(proxy.requests[0])
       expect(history.map((message) => message.role)).toEqual(["user", "assistant", "tool", "user"])
       expect(textOf(history[2])).toMatch(/interrupted|aborted/i)
       const repaired = (yield* stored(chat.id)).find((message) => message.info.id === dead.id)!
-      expect(repaired.parts.some((part) => part.type === "patch" && part.files.some((item) => item.endsWith("notes.txt")))).toBe(
-        true,
-      )
+      expect(
+        repaired.parts.some((part) => part.type === "patch" && part.files.some((item) => item.endsWith("notes.txt"))),
+      ).toBe(true)
       expect(repaired.parts.some((part) => part.type === "tool" && part.state.status === "running")).toBe(false)
     }),
   { git: true },

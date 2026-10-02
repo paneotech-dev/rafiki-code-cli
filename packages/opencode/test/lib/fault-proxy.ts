@@ -59,12 +59,15 @@ export function listen(server: http.Server): Promise<number> {
   const first = PORT_FIRST + Math.floor(Math.random() * (PORT_LAST - PORT_FIRST + 1))
   const attempt = (offset: number): Promise<number> =>
     new Promise((resolve, reject) => {
-      if (offset > PORT_LAST - PORT_FIRST) return reject(new Error("no free port between 4100 and 4199"))
+      if (offset > PORT_LAST - PORT_FIRST) {
+        reject(new Error("no free port between 4100 and 4199"))
+        return
+      }
       const port = PORT_FIRST + ((first - PORT_FIRST + offset) % (PORT_LAST - PORT_FIRST + 1))
       const failed = (error: NodeJS.ErrnoException) => {
         server.off("listening", ready)
-        if (error.code === "EADDRINUSE" || error.code === "EACCES") return resolve(attempt(offset + 1))
-        reject(error)
+        if (error.code === "EADDRINUSE" || error.code === "EACCES") resolve(attempt(offset + 1))
+        else reject(error)
       }
       const ready = () => {
         server.off("error", failed)
@@ -109,7 +112,10 @@ function endOfEvent(buffer: Buffer, n: number) {
   return from
 }
 
-export async function createFaultProxy(target: string, options?: { ignore?: (request: Recorded) => boolean }): Promise<FaultProxy> {
+export async function createFaultProxy(
+  target: string,
+  options?: { ignore?: (request: Recorded) => boolean },
+): Promise<FaultProxy> {
   const requests: Recorded[] = []
   const sockets = new Set<import("node:net").Socket>()
   let plan: Plan | undefined
@@ -175,8 +181,11 @@ export async function createFaultProxy(target: string, options?: { ignore?: (req
       }
 
       let seen = Buffer.alloc(0)
-      for await (const piece of upstream.body) {
-        const chunk = Buffer.from(piece)
+      const reader = upstream.body.getReader()
+      while (true) {
+        const piece = await reader.read()
+        if (piece.done) break
+        const chunk = Buffer.from(piece.value)
         if (!cut) {
           res.write(chunk)
           record.forwarded += chunk.length

@@ -50,7 +50,8 @@ function isCut(message: WithParts) {
   if (!message.info.time.completed) return false
   if (!RafikiGateway.isRafikiProvider(message.info.providerID)) return false
   return (
-    message.parts.some((part) => part.type === "step-start") && !message.parts.some((part) => part.type === "step-finish")
+    message.parts.some((part) => part.type === "step-start") &&
+    !message.parts.some((part) => part.type === "step-finish")
   )
 }
 
@@ -68,7 +69,7 @@ export function isCutText(message: WithParts) {
 export function streak(messages: readonly WithParts[]) {
   let count = 0
   for (let i = messages.length - 1; i >= 0; i--) {
-    if (!isCut(messages[i]!)) break
+    if (!isCut(messages[i])) break
     count++
   }
   return count
@@ -126,7 +127,7 @@ export const atBoundary = Effect.fnUntraced(function* (
     .pipe(Effect.catch(() => Effect.succeed([] as WithParts[])))
   const index = recent.findIndex((message) => message.info.id === input.message.id)
   if (index === -1) return yield* again
-  const parts = recent[index]!.parts
+  const parts = recent[index].parts
   const kind = boundary(parts, input.text)
   if (kind === "none") return yield* again
 
