@@ -5,6 +5,7 @@ import type * as Provider from "./provider"
 import type * as ModelsDev from "@opencode-ai/core/models-dev"
 import { iife } from "@/util/iife"
 import { Brand } from "@opencode-ai/core/brand/brand"
+import * as CachePrefix from "@/rafiki/cache-prefix"
 
 type Modality = NonNullable<ModelsDev.Model["modalities"]>["input"][number]
 
@@ -483,6 +484,8 @@ export function message(msgs: ModelMessage[], model: Provider.Model, options: Re
   ) {
     msgs = applyCaching(msgs, model)
   }
+  // The gateway's tiers do not name a provider: the marker for them is set by tier (src/rafiki/cache-prefix.ts).
+  msgs = CachePrefix.mark(msgs, model)
 
   // Remap providerOptions keys from stored providerID to expected SDK key
   const key = sdkKey(model.api.npm)

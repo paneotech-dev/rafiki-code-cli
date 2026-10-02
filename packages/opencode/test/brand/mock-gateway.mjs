@@ -40,10 +40,13 @@ export function createMockGateway(options = {}) {
     // { name, arguments }: the first turn of a conversation asks for this tool
     // call; once a tool result is in the messages the canned reply follows.
     toolCall: options.toolCall,
+    // true keeps every chat request body as received (bytes, parsed JSON and the session header) in `bodies`.
+    bodies: options.bodies ?? false,
   }
   // token -> { alias, models, max_budget, budget_duration, rpm_limit, tpm_limit, spend, metadata, deleted }
   const keys = new Map()
   const requests = []
+  const bodies = []
   let url = ""
 
   function record(entry) {
@@ -91,11 +94,14 @@ export function createMockGateway(options = {}) {
 
   function readBody(req) {
     return new Promise((resolve) => {
-      let raw = ""
-      req.on("data", (part) => (raw += part))
+      const parts = []
+      req.on("data", (part) => parts.push(part))
       req.on("end", () => {
+        const bytes = Buffer.concat(parts)
         try {
-          resolve(JSON.parse(raw || "{}"))
+          const parsed = JSON.parse(bytes.toString("utf8") || "{}")
+          if (opts.bodies && req.url?.startsWith("/v1/chat/completions")) bodies.push({ raw: bytes, json: parsed, session: req.headers["x-session-id"] })
+          resolve(parsed)
         } catch {
           resolve(undefined)
         }
@@ -360,6 +366,7 @@ export function createMockGateway(options = {}) {
       return url
     },
     requests,
+    bodies,
     keys,
     close: () => new Promise((resolve) => server.close(() => resolve())),
   }

@@ -15,6 +15,7 @@ import { jsonSchema, tool as aiTool, type ModelMessage, type Tool } from "ai"
 import type { Plugin } from "@/plugin"
 import { mergeDeep } from "remeda"
 import { Brand } from "@opencode-ai/core/brand/brand"
+import * as CachePrefix from "@/rafiki/cache-prefix"
 
 const USER_AGENT = `opencode/${InstallationVersion}`
 
@@ -56,10 +57,11 @@ const mergeOptions = (target: Record<string, any>, source: Record<string, any> |
 
 export const prepare = Effect.fn("LLMRequestPrep.prepare")(function* (input: PrepareInput) {
   const isOpenaiOauth = input.provider.id === "openai" && input.auth?.type === "oauth"
+  const parts = CachePrefix.split(input.system)
   const system = [
     [
       ...(input.agent.prompt ? [input.agent.prompt] : SystemPrompt.provider(input.model)),
-      ...input.system,
+      ...parts.stable,
       ...(input.user.system ? [input.user.system] : []),
     ]
       .filter((x) => x)
@@ -77,6 +79,8 @@ export const prepare = Effect.fn("LLMRequestPrep.prepare")(function* (input: Pre
     system.length = 0
     system.push(header, rest.join("\n"))
   }
+  // What changes by itself (today's date) follows the stable system text in a message of its own.
+  system.push(...parts.volatile)
 
   const variant =
     !input.small && input.model.variants && input.user.model.variant
