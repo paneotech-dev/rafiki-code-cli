@@ -30,7 +30,9 @@ Error: could not download SHA256SUMS for v0.0.9 from https://github.com/paneotec
 
 Run the installer without `--version` to get the latest release.
 
-**`npm install -g rafikicode` fails, or the npm registry answers 404 for `rafikicode`.** `rafikicode` is installed with the installer script only.
+**`npm install -g rafikicode` fails during install.** The npm package holds no binary: it downloads the archive for your machine from the GitHub release of the same version and checks its SHA-256. A message starting `Could not download` means the release page was not reachable from this machine; `Checksum mismatch` means the bytes that arrived are not the published ones, usually a proxy or a download cut short. Nothing is installed in either case. Run the install again, or use another channel from [Install and update](./install.md). If the registry answers 404 for `rafikicode` itself, that version is not on npm: the installer script is always published first.
+
+**`rafikicode` updated itself and I did not ask it to.** A copy installed by the installer script looks for a new release once a day, downloads it in the background, verifies it against the published `SHA256SUMS`, and uses it from the next start, printing `rafikicode updated from <old> to <new>.` when it does. Set `"autoupdate": false` in `~/.rafikicode/config.json` to turn that off, or `RAFIKICODE_DISABLE_AUTOUPDATE=1` for one process. See [Install and update](./install.md#updates).
 
 **Checksum mismatch during install.** The downloaded archive did not match the published `SHA256SUMS`. Nothing was installed. Run the installer again; if it repeats, a proxy or mirror is altering downloads, and you should fetch from the release page directly.
 

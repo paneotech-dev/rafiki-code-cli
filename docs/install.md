@@ -89,7 +89,9 @@ A copy installed by the installer script keeps itself up to date:
 
 1. Once a day at most, when the interactive interface starts, `rafikicode` asks the release page for the newest version. Headless commands such as `rafikicode run` never check.
 2. A newer release is downloaded in the background while you work. The archive is verified against the `SHA256SUMS` published with that release. A download that does not match is discarded.
-3. The verified binary waits in `~/.local/state/rafikicode/update`. The next time you start `rafikicode`, it checks that file's SHA-256 again, puts it in place of the installed binary, prints one line saying so, and continues as the new version.
+3. The verified binary waits in `~/.local/state/rafikicode/update`. The next time you start `rafikicode`, with any command, it checks that file's SHA-256 again, puts it in place of the installed binary, prints `rafikicode updated from <old> to <new>.` on standard error, and continues as the new version. `rafikicode update` and `rafikicode uninstall` leave a waiting update alone and do their own work.
+
+Only an interactive session downloads an update, so a machine that only ever runs `rafikicode run` stays on the version it was installed with until you update it.
 
 A copy installed by npm, Homebrew or winget is never replaced this way. The daily check shows one notice naming the command of your package manager.
 
