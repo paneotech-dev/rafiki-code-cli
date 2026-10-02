@@ -183,7 +183,7 @@ RAFIKICODE_GATEWAY_URL=http://127.0.0.1:4180/v1 RAFIKICODE_API_KEY=stub \
 
 ### Fork discipline
 
-Everything Rafiki specific lives in `packages/core/src/brand/` and `packages/opencode/src/rafiki/`. Upstream files import from those modules through single line touchpoints and nothing else. `script/fork-diff-report.sh` lists the files that differ from `upstream/dev`; keep that list short so upstream merges stay cheap.
+Everything Rafiki specific lives in `packages/core/src/brand/` and `packages/opencode/src/rafiki/`. Upstream files import from those modules through single line touchpoints and nothing else. [Relation to the upstream project](./docs/upstream.md) lists every upstream file this fork edits, with the reason and the line counts, and describes how upstream is merged. `node script/upstream.mjs` fails when an upstream file is edited without being listed; keep that list short so upstream merges stay cheap. `script/fork-diff-report.sh` prints every file that differs from `upstream/dev`, including the files that exist only here.
 
 ## Attribution
 
