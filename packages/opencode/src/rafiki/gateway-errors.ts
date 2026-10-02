@@ -81,6 +81,12 @@ export function unreachableMessage(detail?: string) {
   return `Cannot reach the model gateway at ${Brand.gatewayURL()}${cause}. Check the network${override}.`
 }
 
+// What to do about a sign in that is missing or has expired, in one sentence.
+// provider/error.ts ends its message for a proxy's 401 page with the same one.
+export function signInStep() {
+  return `Run ${Brand.name} login, or set ${Brand.env.apiKey} for servers and CI.`
+}
+
 // Undefined means "not a condition the contract names": upstream handling applies.
 export function classify(input: GatewayErrorInput): GatewayFailure | undefined {
   const status = input.statusCode
@@ -108,7 +114,7 @@ export function classify(input: GatewayErrorInput): GatewayFailure | undefined {
       code: Contract.ERROR.keyRevoked,
       message: Brand.hasKey()
         ? Contract.MESSAGE[Contract.ERROR.keyRevoked]!
-        : `Not signed in. Run ${Brand.name} login, or set ${Brand.env.apiKey} for servers and CI.`,
+        : `Not signed in. ${signInStep()}`,
       exitCode: Contract.EXIT.usage,
       isRetryable: false,
     }

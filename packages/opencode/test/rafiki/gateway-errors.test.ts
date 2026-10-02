@@ -3,6 +3,9 @@
 import { describe, expect, test } from "bun:test"
 import * as GatewayErrors from "../../src/rafiki/gateway-errors"
 import * as Contract from "../../src/rafiki/contract"
+import { APICallError } from "ai"
+import { ProviderV2 } from "@opencode-ai/core/provider"
+import { ProviderError } from "../../src/provider/error"
 
 const body = (type: string, message: string) => JSON.stringify({ error: { message, type, param: null, code: "400" } })
 
@@ -96,6 +99,37 @@ describe("gateway error mapping", () => {
     expect(GatewayErrors.retryLimit("rafiki", { name: "APIError", data: { metadata: { rafiki_code: "gateway_unavailable" } } }, 5)).toBe(1)
     expect(GatewayErrors.retryLimit("rafiki", down, 5)).toBe(5)
     expect(GatewayErrors.retryLimit("openai", unreachable, 5)).toBe(5)
+  })
+
+  // A proxy or a single sign on gate in front of a provider answers with its
+  // own HTML page. The message for it is written in provider/error.ts and used
+  // to name the upstream project's command, which does not exist here.
+  test("an HTML 401 or 403 page from a proxy names this product's sign in command and no other", () => {
+    const page = (statusCode: number, message: string) =>
+      ProviderError.parseAPICallError({
+        providerID: ProviderV2.ID.make("corporate-proxy"),
+        error: new APICallError({
+          message,
+          url: "https://proxy.example/v1/chat/completions",
+          requestBodyValues: {},
+          statusCode,
+          responseHeaders: { "content-type": "text/html" },
+          responseBody: "<!doctype html><html><body>Sign in</body></html>",
+          isRetryable: false,
+        }),
+      }).message
+
+    const unauthorized = page(401, "Unauthorized")
+    expect(unauthorized).toBe(
+      "Unauthorized: request was blocked by a gateway or proxy. Your authentication token may be missing or expired. Run rafikicode login, or set RAFIKICODE_API_KEY for servers and CI.",
+    )
+    const forbidden = page(403, "Forbidden")
+    expect(forbidden).toStartWith("Forbidden: request was blocked by a gateway or proxy.")
+    for (const message of [unauthorized, forbidden]) {
+      expect(message).not.toMatch(/opencode/i)
+      expect(message).not.toMatch(/[\u2013\u2014]/)
+      expect(message).not.toContain("<html")
+    }
   })
 
   test("the provider check is by id", () => {
