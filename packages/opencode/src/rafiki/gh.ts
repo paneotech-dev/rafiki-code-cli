@@ -10,9 +10,9 @@
  */
 import { Brand } from "@opencode-ai/core/brand/brand"
 import { Effect } from "effect"
-import { UI } from "../ui"
-import { cmd } from "./cmd"
-import { effectCmd, fail } from "../effect-cmd"
+import { UI } from "@/cli/ui"
+import { cmd } from "@/cli/cmd/cmd"
+import { effectCmd, fail } from "@/cli/effect-cmd"
 import {
   branchArgs,
   branchExists,
