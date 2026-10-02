@@ -251,6 +251,10 @@ export function diagnose(
   }
 }
 
+// The size drawn at when a terminal does not say how large it is. The render
+// library falls back to the same figures on its own.
+export const DEFAULT_SIZE = { columns: 80, rows: 24 } as const
+
 // Terminal checks that run before the full screen interface is loaded. The
 // renderer's own failure in this case is a native library or ioctl error,
 // which reads as a bug rather than as "this terminal cannot do it", so the
@@ -285,10 +289,16 @@ export function terminal(
       exitCode: Contract.EXIT.terminal,
     }
 
+  // A dimension reported as 0, or not reported, means the size is not known,
+  // not that there is no room: `docker run -t` with no terminal on the client
+  // side, some CI runners and a terminal that has only just been attached all
+  // report 0 by 0 on a terminal that draws perfectly well. The render library
+  // draws at the default size in that case, so the same figures are assumed
+  // here and the start carries on.
+  const columns = out.columns || DEFAULT_SIZE.columns
+  const rows = out.rows || DEFAULT_SIZE.rows
   // Deliberately far below any usable window: the point is to name a terminal
-  // that reports no usable size at all, not to pick a minimum for people.
-  const columns = out.columns ?? 0
-  const rows = out.rows ?? 0
+  // that says it is too small to draw in, not to pick a minimum for people.
   if (columns < 20 || rows < 6)
     return {
       kind: "terminal",

@@ -25,8 +25,7 @@ const root = path.resolve(import.meta.dir, "../..")
 const NOEXEC =
   'Failed to initialize OpenTUI render library: Failed to open library "/tmp/.9adb7abbf6e5efff-00000001.so": /tmp/.9adb7abbf6e5efff-00000001.so: failed to map segment from shared object'
 
-async function run(args: string[], extra: Record<string, string | undefined> = {}) {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), "rafikicode-startup-"))
+function environment(home: string, extra: Record<string, string | undefined> = {}) {
   const env: Record<string, string | undefined> = {
     ...process.env,
     COLUMNS: "120",
@@ -52,12 +51,17 @@ async function run(args: string[], extra: Record<string, string | undefined> = {
     if (value === undefined) delete env[key]
     else env[key] = value
   }
+  return env as Record<string, string>
+}
+
+async function run(args: string[], extra: Record<string, string | undefined> = {}) {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "rafikicode-startup-"))
   const proc = Bun.spawn(["bun", "run", path.join(root, "src/index.ts"), ...args], {
     cwd: root,
     stdout: "pipe",
     stderr: "pipe",
     stdin: "ignore",
-    env: env as Record<string, string>,
+    env: environment(home, extra),
   })
   const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])
   const exitCode = await proc.exited
@@ -65,6 +69,58 @@ async function run(args: string[], extra: Record<string, string | undefined> = {
     fs.rmSync(home, { recursive: true, force: true })
   } catch {}
   return { exitCode, stdout, stderr, all: stdout + stderr }
+}
+
+// The sequence a full screen program sends to take the screen over.
+const ALTERNATE_SCREEN = "\x1b[?1049h"
+
+// Starts the real entry point on a pseudo terminal of the given size and
+// reports what reached that terminal. The size is set from inside, with stty,
+// because that is the only way to get a terminal that reports 0 by 0: it is
+// what `docker run -t` hands a container when nothing on the client side is a
+// terminal. The run ends when the interface takes the screen over, when the
+// process exits, or after `wait` milliseconds. Nothing is listening on the
+// gateway and console addresses, so no request leaves the machine.
+async function runOnTerminal(size: { rows: number; columns: number }, wait = 60_000) {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "rafikicode-startup-"))
+  const chunks: string[] = []
+  const entry = path.join(root, "src/index.ts")
+  const proc = Bun.spawn(
+    ["sh", "-c", `stty rows ${size.rows} cols ${size.columns} && exec bun run "$0"`, entry],
+    {
+      cwd: root,
+      env: environment(home, {
+        TERM: "xterm-256color",
+        COLUMNS: undefined,
+        LINES: undefined,
+        RAFIKICODE_DISABLE_AUTOUPDATE: "1",
+        RAFIKICODE_GATEWAY_URL: "http://127.0.0.1:9",
+        RAFIKICODE_CONSOLE_URL: "http://127.0.0.1:9",
+      }),
+      terminal: {
+        cols: 80,
+        rows: 24,
+        data(_terminal, data) {
+          chunks.push(Buffer.from(data).toString())
+        },
+      },
+    },
+  )
+  const exited = proc.exited.then((code) => code)
+  const deadline = Date.now() + wait
+  const drawn = () => chunks.join("").includes(ALTERNATE_SCREEN)
+  let exitCode: number | undefined
+  while (Date.now() < deadline && !drawn() && exitCode === undefined) {
+    exitCode = await Promise.race([exited, Bun.sleep(200).then(() => undefined)])
+  }
+  if (exitCode === undefined) {
+    proc.kill("SIGKILL")
+    await exited
+  }
+  try {
+    fs.rmSync(home, { recursive: true, force: true })
+  } catch {}
+  return { exitCode, drawn: drawn(), output: chunks.join("") }
 }
 
 describe("startup diagnosis in the terminal", () => {
@@ -186,6 +242,36 @@ describe("startup diagnosis in the terminal", () => {
     expect(result.exitCode).toBe(7)
   }, 30_000)
 
+  // `docker run -t` with no terminal on the client side, some CI runners and a
+  // terminal that has only just been attached. Refused from 0.1.8 until this
+  // case was written, with "0 columns by 0 rows, which is too small".
+  test.skipIf(process.platform === "win32")(
+    "a terminal that reports 0 columns by 0 rows gets the interface, at the default size",
+    async () => {
+      const result = await runOnTerminal({ rows: 0, columns: 0 })
+
+      expect(result.output).not.toContain("cannot start its full screen interface")
+      expect(result.output).not.toContain("Unexpected error")
+      // Still running when it took the screen over: it was not refused.
+      expect(result.exitCode).toBeUndefined()
+      expect(result.drawn).toBe(true)
+    },
+    90_000,
+  )
+
+  test.skipIf(process.platform === "win32")(
+    "a terminal that reports a real size too small to draw in is still told so",
+    async () => {
+      const result = await runOnTerminal({ rows: 2, columns: 8 })
+
+      expect(result.output).toContain("cannot start its full screen interface in a terminal this size")
+      expect(result.output).toContain("8 columns by 2 rows")
+      expect(result.drawn).toBe(false)
+      expect(result.exitCode).toBe(7)
+    },
+    90_000,
+  )
+
   test("a failure with no diagnosis still gets a way out and keeps its text", async () => {
     const message = "Cannot find package 'react' imported from /opt/rafikicode/tui/config/index.tsx"
     const result = await run([], { RAFIKICODE_TEST_STARTUP_ERROR: message })
@@ -248,6 +334,18 @@ describe("startup diagnosis", () => {
     )
     expect(Startup.terminal(env, { isTTY: true, columns: 8, rows: 2 })?.cause).toContain("8 columns by 2 rows")
     expect(Startup.terminal(env, { isTTY: true, columns: 80, rows: 24 })).toBeUndefined()
+    // No size is not a small size: 0, or nothing, on a real terminal means
+    // unknown, for each dimension on its own.
+    expect(Startup.terminal(env, { isTTY: true, columns: 0, rows: 0 })).toBeUndefined()
+    expect(Startup.terminal(env, { isTTY: true })).toBeUndefined()
+    expect(Startup.terminal(env, { isTTY: true, columns: 120, rows: 0 })).toBeUndefined()
+    expect(Startup.terminal(env, { isTTY: true, columns: 0, rows: 2 })?.cause).toContain("80 columns by 2 rows")
+    expect(Startup.DEFAULT_SIZE).toEqual({ columns: 80, rows: 24 })
+    // Unknown size does not make a terminal out of something that is not one.
+    expect(Startup.terminal(env, { isTTY: false, columns: 0, rows: 0 })?.headline).toContain(
+      "standard output is not a terminal",
+    )
+    expect(Startup.terminal(env, { isTTY: false, columns: 0, rows: 0 })?.exitCode).toBe(7)
     // The switch the test suites use to drive the full screen interface.
     expect(Startup.terminal({ ...env, RAFIKICODE_TEST_TTY: "1" }, { isTTY: false })).toBeUndefined()
   })

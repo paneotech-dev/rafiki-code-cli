@@ -193,18 +193,20 @@ fi
 # enough to stop the interface starting, and then every cell would pass this
 # facet for the wrong reason. stderr goes to a file instead: that is where the
 # render library failure is reported, and capturing it costs nothing.
-# A terminal has a size, and the one `docker run -t` makes does not when
-# nothing on the client side is a terminal, which is how a CI job and any
-# background run start this: it reports 0 columns by 0 rows. Since 0.1.8 the
-# binary refuses to draw in a terminal that reports no usable size and says so
-# ("cannot start its full screen interface in a terminal this size"), which is
-# the right answer to that terminal and says nothing about the machine the
-# cell stands for. So the cell gets the size of an ordinary window before the
-# interface is started. The first matrix run made without a terminal failed
-# this facet in every cell that reached it, the three noexec cells included,
-# for this reason alone.
-stty rows 40 cols 120 0<&1 2>/dev/null || true
-echo "=== tui: ${TUI_WAIT}s with a terminal ($(stty size 0<&1 2>/dev/null || echo "size unknown")) and a credential ==="
+# The terminal `docker run -t` makes has no size when nothing on the client
+# side is a terminal, which is how a CI job and any background run start this:
+# it reports 0 columns by 0 rows. That is left exactly as it is, because it is
+# what a user gets who starts the interface the same way. 0.1.8 and 0.1.9
+# refused such a terminal ("cannot start its full screen interface in a
+# terminal this size") and fail this facet in every cell that reaches it, for
+# that reason alone and correctly; from the release after them a size of 0
+# means "not known" and the interface draws at 80 by 24. While those two
+# versions were the ones under test this probe gave the terminal a size first.
+# The size is read through a copy of standard output: inside the substitution
+# standard output is a pipe, and asking the pipe always said "size unknown".
+exec 3>&1
+echo "=== tui: ${TUI_WAIT}s with a terminal ($(stty size 0<&3 2>/dev/null || echo "size unknown")) and a credential ==="
+exec 3>&-
 tui_started=$(date +%s)
 # --foreground matters more than it looks. Without it GNU timeout runs the
 # command in a new process group, which is then not the terminal's foreground
