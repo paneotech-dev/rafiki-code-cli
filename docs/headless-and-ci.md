@@ -41,7 +41,7 @@ Flags that matter in automation, all listed by `rafikicode run --help`:
 | `--model rafiki/rafiki-pro` | choose the tier for this run (default `rafiki/rafiki-fast`) |
 | `--dir PATH` | run in another directory |
 | `--title TEXT` | name the session for later `rafikicode session` and `rafikicode export` use |
-| `--continue` and `--session ID` | continue an earlier session |
+| `--continue` (or `--resume`) and `--session ID` | continue an earlier session, including one whose run was killed or lost its connection |
 | `-f FILE` | attach a file to the message |
 
 Standard input is read as the message when it is not a terminal, so a script that pipes nothing should redirect `< /dev/null` or pass the message as arguments.

@@ -27,14 +27,14 @@ All logic lives in two new files, `packages/opencode/src/rafiki/resilience.ts` (
 When a stream fails with a connection error, the stored message is inspected:
 
 - **A tool call had been dispatched** (it is running, completed or failed). The request is not sent again. Tool calls whose arguments were still arriving are removed, the message is closed as a step that ended with tool calls, and the session loop sends the next request with the tool results in the history. The completed tool call does not run twice.
-- **Only text had arrived.** The partial text is kept, a reasoning block that was not finished is removed, and the next request carries the partial text as an assistant message followed by one instruction to continue from where it stopped without repeating it. The model generates only the remainder.
-- **Nothing usable had arrived** (no text, no dispatched tool call). The request is sent again unchanged, as today.
+- **Only text had arrived.** The partial text is kept and the next request carries it as an assistant message followed by one instruction to continue from where it stopped without repeating it. The model generates only the remainder. The instruction is not stored: it is added after every such message each time the history is turned into a request, so later requests keep the same prefix and never contain two assistant messages in a row.
+- **Nothing usable had arrived** (no text, no dispatched tool call; reasoning alone does not count). The request is sent again unchanged, as today.
 
 The gateway serves the OpenAI compatible chat completions interface, which has no way to resume a response by id, so the second form (send again with the partial output kept) is the one used.
 
 A tool that is still running at the moment of the cut is stopped by the existing cancellation of the request scope and is reported to the model as interrupted; only completed tool calls are a boundary. Letting it finish instead needs a change inside `llm.ts` and is left out (see open questions).
 
-Repeated cuts are bounded by the retry window below: if the connection keeps dropping for longer than the window, the task stops and the user is told.
+Repeated cuts are bounded by a count, not by the window, because each one made progress: from the second cut in a row the next request waits (the same backoff with jitter), and at the fifth cut in a row without a completed step the task stops and the user is told. Every continuation sends the conversation again, so this must not go on for ever.
 
 ### 2. Retry window
 
@@ -53,7 +53,7 @@ The client half is all this repository can do. The key has no effect until the g
 ### 4. Session recovery and `--resume`
 
 - `--resume` becomes an alias of `--continue` on the terminal interface and on `run`.
-- When a stored session is continued or undone and its last assistant message was left open by a process that died, the message is repaired first: tool calls stored as pending or running are marked interrupted, the files changed since the step's snapshot are recorded as a `patch` part so undo restores them, and the message is closed as interrupted.
+- When a stored session is continued or undone and one of its last assistant messages was left open by a process that died, the message is repaired first: tool calls stored as pending or running are marked interrupted, the files changed since the step's snapshot are recorded as a `patch` part so undo restores them, and the message is closed as interrupted. This runs once per session per process, when the first new step is created or an undo is asked for. Files the user edited by hand between the crash and the repair are part of what is recorded.
 
 ## Upstream files touched
 
@@ -61,9 +61,9 @@ Each is a one or two line call into the fork layer.
 
 | File | Change |
 | --- | --- |
-| `packages/opencode/src/session/processor.ts` | call the stream boundary hook before the retry policy; stamp the idempotency key on the request; pass the error through the wording function |
-| `packages/opencode/src/session/retry.ts` | pass the elapsed time to the existing `retryLimit` hook and let it shorten the wait |
-| `packages/opencode/src/session/prompt.ts` | append the continuation instruction when the last stored message is a cut one; call the recovery at the start of the loop |
+| `packages/opencode/src/session/processor.ts` | four lines: the recovery call when a step is created, the request wrapper that stamps the idempotency key, the stream boundary hook before the retry policy, and the wording function on the final error |
+| `packages/opencode/src/session/retry.ts` | the existing `retryLimit` call becomes `keepRetrying`, which also sees the elapsed time, and the wait passes through `wait` |
+| `packages/opencode/src/session/prompt.ts` | one call: the history passes through `withContinuations` before it becomes a request |
 | `packages/opencode/src/session/revert.ts` | call the recovery before an undo |
 | `packages/opencode/src/cli/cmd/tui.ts`, `packages/opencode/src/cli/cmd/run.ts` | `resume` alias on the `continue` option |
 
@@ -79,8 +79,9 @@ Each is a one or two line call into the fork layer.
   - seeded random cuts over a whole task: the task completes and its tool ran exactly once per requested call;
   - the idempotency key: equal on an identical request sent again, different after a continuation;
   - the retry window: retries continue inside the window and stop after it, with the saved session message.
-- `packages/opencode/test/rafiki/resilience.test.ts`: unit tests of the window, the wait, the wording and the boundary classification.
-- `packages/opencode/test/rafiki/resume.test.ts`: a `run` process killed during a tool call, then `--resume`: the task, the task list and the file checkpoint are restored, and undo restores the file.
+- `packages/opencode/test/rafiki/resilience.test.ts`: unit tests of the window, the wait, the wording, the key, the boundary classification and the count of cuts in a row.
+- In `network-resilience.test.ts` as well: a step left open by a dead process, then undo (the file is restored) and then a new message (the model is told the tool call was interrupted).
+- `packages/opencode/test/rafiki/resume.test.ts`: a `run` process killed with SIGKILL during a tool call, then `run --resume`: same session, the whole conversation is sent again with the command reported as interrupted, the task list is intact, and the file checkpoint of the cut step is recorded.
 
 ## What stays for the gateway side
 
@@ -92,3 +93,5 @@ Each is a one or two line call into the fork layer.
 1. After the retry window the task stops with a message. An interactive question ("keep trying?") is possible in the terminal interface but would block `run` in scripts. The message was chosen.
 2. The window applies only after the gateway has answered once in the process. Applying it from the first request would make a wrong gateway address take two minutes to report.
 3. A tool still running when the stream is cut is stopped, as on any failed request today. Letting it finish needs a hook inside `llm.ts`.
+4. An HTTP 502, 503 or 504 answer in the middle of a task (the gateway restarting behind its proxy) is not treated as a connection error: it keeps the single retry it had. Extending the window to those answers is one condition in `rafiki/resilience.ts`.
+5. The repeated cut limit is five in a row. It is a constant, not a setting.

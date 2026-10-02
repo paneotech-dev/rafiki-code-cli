@@ -184,6 +184,27 @@ git config --global user.email "you@example.com"
 
 **Slow first request.** The first run in a repository indexes the project and starts language servers. Later requests are faster.
 
+## When the connection drops
+
+A task survives a lost connection. Nothing below needs a setting.
+
+**The answer stops in the middle and then carries on.** The connection to the gateway was cut while the model was answering. The text that had arrived is kept and the model is asked to continue from where it stopped; a command or edit that had already run is not run again. In the session you see the answer in two parts.
+
+**The status line says the request is being retried.** The gateway could not be reached. The request is sent again after 2 seconds, then 4, 8, 16 and every 30 seconds, each wait with a random part added, for up to 2 minutes (`RAFIKICODE_RETRY_WINDOW`, in seconds, changes that). A closed laptop lid or a change of network is covered by this.
+
+**`The connection to the model gateway was lost and did not come back for 2 minutes. The session is saved`.** The retries ran out. Nothing is lost: the conversation, the task list and the file checkpoints are stored on this machine as each step happens. When the network is back, send any message in the same session (for example `continue`), or start again later with:
+
+```bash
+rafikicode --resume
+rafikicode run --resume "continue"
+```
+
+`--resume` is the same as `--continue`: it opens the most recent session of the folder you are in. `--session ID` opens a particular one; `rafikicode session list` shows the ids.
+
+**The program was killed, or the machine restarted, in the middle of a task.** Run `rafikicode --resume`. A command that was running when the program died is shown as interrupted and the model is told so; it is not assumed to have finished. The files that step had changed are recorded when the session is opened again, so undo restores them. Edits you made yourself to those same files between the crash and the resume are part of what undo reverts.
+
+**A gateway address that is wrong, or no network when the task starts.** This is reported after one retry, in a few seconds, with `Cannot reach the model gateway`. The two minute wait applies only once the gateway has answered in the running program.
+
 ## Configuration
 
 **A command stops at start with `Configuration is invalid ...` or `Config file at ... is not valid JSON(C)`.** A configuration file cannot be loaded, so nothing starts. The message ends with three fix lines: run `rafikicode doctor` to see which file is at fault and what to change, `RAFIKICODE_DISABLE_PROJECT_CONFIG=1 rafikicode` to start one run without anything from the working tree, and the address of the schema that lists every option with its type. `doctor` checks both places a file can come from: the `config` line is `~/.rafikicode/config.json`, and the `project` line is every project file a session started in this directory would load, named in the order they merge.
