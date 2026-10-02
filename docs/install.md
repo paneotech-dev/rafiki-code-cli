@@ -164,3 +164,51 @@ The gate for one build can be run by hand against a directory of archives:
 RAFIKICODE_STAGING_API_KEY=... install/release-gate.sh \
   --target linux-x64 --version 0.2.0 --assets packages/opencode/dist
 ```
+
+### When a release counts as published
+
+A release is published and verified only when both of these hold:
+
+1. The run of the release workflow for the tag ended with the conclusion `success`.
+2. The assets and the installer were checked from outside the run.
+
+Assets that download prove only the second point. The runs for 0.1.8 and 0.1.9 published every archive and ended `failure`: the install matrix never started, so nothing had tested those archives and the npm job was skipped. The release pages looked complete all the same.
+
+The run and its jobs, with the tag in place of `v0.2.0` and the run id the first command prints in the second:
+
+```bash
+gh run list --repo paneotech-dev/rafiki-code-cli --workflow release.yml --branch v0.2.0 --limit 1 --json databaseId,status,conclusion
+gh run view RUN_ID --repo paneotech-dev/rafiki-code-cli --json conclusion,jobs --jq '.conclusion, (.jobs[] | "\(.conclusion)\t\(.name)")'
+```
+
+The first line of the second command must be `success`. Below it, every one of these jobs must be there and must say `success`:
+
+| Job | Count |
+| --- | --- |
+| `preflight` | 1 |
+| `build all platforms` | 1 |
+| `gate <build> (installer)` and `gate linux-x64 (npm)` | 13 |
+| `install matrix / install matrix` | 1 |
+| `publish GitHub release` | 1 |
+| `publish npm package` | 1 |
+| `update the Homebrew tap` | 1 |
+| `install from the tap on macOS` | 1 |
+| `submit the winget manifest` | 1 |
+
+`install matrix / installer and gate script suites` says `skipped` in a release run, and that is correct. For a version with a pre-release part, the last four jobs say `skipped` as well. Any other `skipped`, `cancelled` or `failure` is a release that is not verified, whatever the release page shows.
+
+A job that is missing from the list is a failure too. That is how 0.1.8 and 0.1.9 looked: a failed run, no failed job, and no line for the install matrix. The reason is then an annotation on the run page and not a job log. For those two runs it was a deadlock on a concurrency group: `install-matrix.yml` is called by `release.yml`, and inside a called workflow `github.workflow` is the name of the caller, so the two files asked for the same group. The group in `install-matrix.yml` carries the prefix `install-matrix-` for that reason, and it must stay different from the group in `release.yml`.
+
+Then the assets and the installer:
+
+```bash
+gh release view v0.2.0 --repo paneotech-dev/rafiki-code-cli --json isDraft,isPrerelease,assets --jq '.isDraft, .isPrerelease, (.assets[].name)'
+curl -fsSL https://get.rafikiai.io | sha256sum
+curl -fsSL https://github.com/paneotech-dev/rafiki-code-cli/releases/download/v0.2.0/install.sh | sha256sum
+```
+
+The release is not a draft and lists twenty assets: the twelve archives, `SHA256SUMS`, `PLATFORM-COVERAGE.md`, `INSTALL-MATRIX.md`, `RELEASE-GATE.md`, `install.sh`, `install.ps1`, `LICENSE` and `NOTICE`. The two checksums are equal, which shows that the installer address serves the installer of this release. A pre-release never becomes the latest release, so for one the two checksums differ and only the asset list is checked.
+
+Do not request the asset addresses of a tag before the run has published it. Wait on the run with the first command instead. During 0.1.9 the two addresses a script had been requesting every twenty seconds answered 404 for about a minute after the release was public, while the assets nobody had requested answered at once. The cause was not established, and an answer kept from the earlier requests is the likeliest one. The step `Check that the latest release serves its installer and checksums` in the publish job now makes the same requests from the runner after publishing, for up to two minutes, and prints one line per attempt, so its log says how long the installer address took to serve the new release.
+
+Without `gh`, the public API gives the same two answers for this repository: `https://api.github.com/repos/paneotech-dev/rafiki-code-cli/actions/runs?event=push&branch=v0.2.0` and, for a run id, `https://api.github.com/repos/paneotech-dev/rafiki-code-cli/actions/runs/RUN_ID/jobs`.
