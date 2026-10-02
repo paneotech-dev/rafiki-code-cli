@@ -25,6 +25,8 @@ import { isRecord } from "@/util/record"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { Database } from "@opencode-ai/core/database/database"
 import { Usage, type LLMEvent } from "@opencode-ai/llm"
+import * as RafikiResilience from "@/rafiki/resilience"
+import * as RafikiResume from "@/rafiki/resume"
 
 const DOOM_LOOP_THRESHOLD = 3
 export type Result = "compact" | "stop" | "continue"
@@ -99,6 +101,7 @@ const layer = Layer.effect(
       // Pre-capture snapshot before the LLM stream starts. The AI SDK
       // may execute tools internally before emitting start-step events,
       // so capturing inside the event handler can be too late.
+      yield* RafikiResume.recover({ sessionID: input.sessionID, current: input.assistantMessage.id, session, snapshot })
       const initialSnapshot = yield* snapshot.track()
       const ctx: ProcessorContext = {
         assistantMessage: input.assistantMessage,
@@ -617,7 +620,7 @@ const layer = Layer.effect(
           error: errorMessage(e),
           stack: e instanceof Error ? e.stack : undefined,
         })
-        const error = parse(e)
+        const error = RafikiResilience.describe(parse(e), e)
         if (SessionV1.ContextOverflowError.isInstance(error)) {
           if ((yield* config.get()).compaction?.auto === false && !ctx.assistantMessage.summary) {
             ctx.assistantMessage.error = error
@@ -651,7 +654,7 @@ const layer = Layer.effect(
             ctx.currentText = undefined
             ctx.reasoningMap = {}
             yield* status.set(ctx.sessionID, { type: "busy" })
-            const stream = llm.stream(streamInput)
+            const stream = RafikiResilience.request(llm, streamInput, ctx.assistantMessage.id)
 
             yield* stream.pipe(
               Stream.tap((event) => handleEvent(event)),
@@ -671,6 +674,7 @@ const layer = Layer.effect(
               (cause) => !Cause.hasInterruptsOnly(cause),
               (cause) => Effect.fail(Cause.squash(cause)),
             ),
+            Effect.catch((cause) => RafikiResume.atBoundary(cause, parse(cause), ctx, session, status)),
             Effect.retry(
               SessionRetry.policy({
                 provider: input.model.providerID,

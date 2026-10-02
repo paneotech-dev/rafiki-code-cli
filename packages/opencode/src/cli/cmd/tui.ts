@@ -115,7 +115,7 @@ export const TuiThreadCommand = cmd({
         describe: "model to use in the format of provider/model",
       })
       .option("continue", {
-        alias: ["c"],
+        alias: ["c", "resume"],
         describe: "continue the last session",
         type: "boolean",
       })
