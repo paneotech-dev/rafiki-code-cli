@@ -110,6 +110,12 @@ terminal interface package uses it and cannot import from `packages/opencode`:
 - `remaining(balanceAtStart, spentNow, spentAtStart)`.
 - The texts: status line, sidebar rows, the end of task line.
 
+A call that ended without token counts (a stream cut before its usage block,
+a failed request) is not dropped: it is counted, every text that shows an
+amount says how many such calls are not included, the credits figure reads
+"at most", and the next turn estimate reads "at least". Its input is not
+guessed from what was sent: a guess could be too low without saying so.
+
 Every amount derived from the price list is labelled as an estimate in the
 text. The remaining balance is "balance when the task started minus the
 estimated spend" and is labelled the same way.

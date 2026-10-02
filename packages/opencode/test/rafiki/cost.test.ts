@@ -179,6 +179,53 @@ describe("the end of task line", () => {
     ])
   })
 
+  // A stream cut before its usage block leaves an ended message with no
+  // token counts. The line counts it and says it is not in the amount.
+  const none = { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } }
+  const session = (list: { id: string; parentID: string; tokens: typeof tokens; completed?: number }[]) => ({
+    session: {
+      messages: async () => ({
+        data: list.map((item, index) => ({
+          info: {
+            id: item.id,
+            sessionID: "root",
+            role: "assistant",
+            parentID: item.parentID,
+            modelID: "rafiki-fast",
+            providerID: "rafiki",
+            tokens: item.tokens,
+            time: { created: 300 + index, completed: item.completed },
+          },
+          parts: [],
+        })),
+      }),
+      children: async () => ({ data: [] }),
+    },
+  })
+
+  test("a call without usage in the middle of a task is counted and named in the line", async () => {
+    const client = session([
+      { id: "a1", parentID: "u1", tokens, completed: 310 },
+      { id: "a2", parentID: "u2", tokens: none, completed: 320 },
+      { id: "a3", parentID: "u2", tokens, completed: 330 },
+    ])
+    const calls = await RafikiCost.collect(client as never, "root")
+    expect(RafikiCost.line(calls, { balance: 1, prices, at: 200 }, 200)).toBe(
+      "Task cost: tiers fast, fast · about 0.0172 USD (estimate) · 1 call reported no usage and is not included · caching saved about 0.0108 USD · at most about 0.9828 USD of credits left",
+    )
+  })
+
+  test("a call without usage at the end of a task is counted and named in the line", async () => {
+    const client = session([
+      { id: "a1", parentID: "u1", tokens, completed: 310 },
+      { id: "a2", parentID: "u2", tokens: none, completed: 320 },
+    ])
+    const calls = await RafikiCost.collect(client as never, "root")
+    expect(RafikiCost.line(calls, { balance: 1, prices, at: 200 }, 200)).toBe(
+      "Task cost: tiers fast, fast · about 0.0086 USD (estimate) · 1 call reported no usage and is not included · caching saved about 0.0054 USD · at most about 0.9914 USD of credits left",
+    )
+  })
+
   test("rafikicode run prints the line after the answer, from the gateway's usage and price list", async () => {
     const source = await mocks()
     const result = await spawnCli(home, ["run", "say hello"], {

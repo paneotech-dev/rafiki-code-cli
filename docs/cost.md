@@ -43,6 +43,12 @@ Task cost: tiers fast, fast, pro · about 0.0312 USD (estimate) · caching saved
 - `caching saved`: what the same input tokens would have cost at the full input price, minus the estimate. `caching saved nothing yet` means the provider wrote to its cache and nothing has read from it so far.
 - `rafikicode run --format json` prints no such line.
 
+A model call can end without the gateway reporting its tokens, for example when the connection is cut before the end of an answer. Such a call may still have been charged, and the terminal has no figure for it. It is counted and named wherever an amount is shown, and the credits figure becomes an upper bound:
+
+```text
+Task cost: tiers fast, fast · about 0.0172 USD (estimate) · 1 call reported no usage and is not included · caching saved about 0.0108 USD · at most about 12.38 USD of credits left
+```
+
 When the gateway does not send its price list, no amount is shown. The line gives token counts instead:
 
 ```text

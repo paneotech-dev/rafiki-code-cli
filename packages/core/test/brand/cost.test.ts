@@ -131,7 +131,7 @@ describe("callsOf", () => {
       { id: "u1", role: "user", time: { created: 1 } },
       { id: "a1", role: "assistant", parentID: "u1", modelID: "rafiki-fast", tokens: t(10, 2), time: { created: 2 } },
     ]
-    expect(Cost.callsOf(messages, true)).toEqual([{ id: "a1", root: true, turn: "u1", model: "rafiki-fast", tokens: t(10, 2), time: 2 }])
+    expect(Cost.callsOf(messages, true)).toEqual([{ id: "a1", root: true, turn: "u1", model: "rafiki-fast", tokens: t(10, 2), time: 2, done: false }])
     expect(Cost.callsOf(messages, false)[0]!.turn).toBeUndefined()
   })
 })
@@ -190,6 +190,83 @@ describe("display", () => {
   test("before the first answer the balance is shown as read", () => {
     const view = Cost.display({ calls: [call("rafiki-fast", "u1", t(0, 0))], prices, start: { balance: 12.4, spent: 0 } })
     expect(Cost.statusLine(view)).toBe("fast · nothing spent yet · 12.40 USD of credits")
+  })
+})
+
+describe("a call that ended without reporting usage", () => {
+  // What a stream cut before its usage block leaves behind: an ended call
+  // with no token counts. The provider may have charged for it.
+  const cut = (turn: string, model = "rafiki-fast"): Cost.Call => ({ ...call(model, turn, t(0, 0)), done: true })
+  const full = (turn: string, model = "rafiki-fast") => call(model, turn, t(1_000_000, 100_000))
+
+  test("in the middle of a task: counted, named in the closing line, left out of no amount silently", () => {
+    const calls = [full("u1"), cut("u2"), full("u2"), full("u3")]
+    const view = Cost.display({ calls, prices, start: { balance: 12.4, spent: 0 } })
+    expect(view.summary.unreported).toBe(1)
+    expect(view.summary.priced).toBe(3)
+    expect(view.summary.path).toEqual(["fast", "fast", "fast"])
+    expect(view.summary.spent).toBeCloseTo(3.6, 10)
+    expect(Cost.taskLine(view)).toBe(
+      "Task cost: tiers fast, fast, fast · about 3.60 USD (estimate) · 1 call reported no usage and is not included · caching saved nothing · at most about 8.80 USD of credits left",
+    )
+    expect(Cost.statusLine(view)).toBe(
+      "fast · about 3.60 USD spent (estimate, 1 call reported no usage and is not included) · at most about 8.80 USD of credits left",
+    )
+  })
+
+  test("at the end of a task: the closing line says the estimate is short of it", () => {
+    const calls = [full("u1"), full("u2"), cut("u2"), cut("u3", "rafiki-pro")]
+    const view = Cost.display({ calls, prices, start: { balance: 12.4, spent: 0 } })
+    expect(view.summary.unreported).toBe(2)
+    expect(view.summary.path).toEqual(["fast", "fast", "pro"])
+    expect(view.summary.tier).toBe("pro")
+    expect(Cost.taskLine(view)).toBe(
+      "Task cost: tiers fast, fast, pro · about 2.40 USD (estimate) · 2 calls reported no usage and are not included · caching saved nothing · at most about 10.00 USD of credits left",
+    )
+  })
+
+  test("every form of the status line that shows an amount names the calls left out", () => {
+    const view = Cost.display({ calls: [full("u1"), cut("u2")], prices, start: { balance: 12.4, spent: 0 }, selected: "rafiki-fast" })
+    for (const room of [200, 100, 90, 80, 60, 50]) {
+      const text = Cost.statusLine(view, room)
+      if (text.includes("USD")) expect(text).toMatch(/1 call (reported no usage and is )?not included/)
+    }
+    expect(Cost.statusLine(view, 90)).toBe("fast · about 1.20 USD (estimate, 1 call not included) · at most about 11.20 USD left")
+    expect(Cost.statusLine(view, 60)).toBe("fast · about 1.20 USD (estimate, 1 call not included)")
+    expect(Cost.statusLine(view, 50)).toBe("fast")
+  })
+
+  test("the estimate for the next turn is a floor when the last turn had such a call", () => {
+    const view = Cost.display({ calls: [full("u1"), cut("u1")], prices, selected: "rafiki-pro" })
+    expect(view.next).toEqual({ tier: "pro", estimate: 4.8, floor: true })
+    expect(Cost.nextText(view.next)).toBe("next turn on pro: at least about 4.80 USD (estimate)")
+  })
+
+  test("a task whose only call reported no usage is not shown as free", () => {
+    const view = Cost.display({ calls: [cut("u1")], prices, start: { balance: 12.4, spent: 0 } })
+    expect(Cost.spentText(view.summary)).toBe("cost unknown (1 call reported no usage)")
+    expect(Cost.taskLine(view)).toBe("Task cost: tier fast · cost unknown · 1 call reported no usage and is not included")
+    expect(Cost.statusLine(view)).toBe("fast · cost unknown (1 call reported no usage) · 12.40 USD of credits when the task started")
+  })
+
+  test("a call still running is not one that reported no usage", () => {
+    const view = Cost.display({ calls: [full("u1"), call("rafiki-fast", "u2", t(0, 0))], prices })
+    expect(view.summary.unreported).toBe(0)
+    expect(Cost.taskLine(view)).toBe("Task cost: tiers fast, fast · about 1.20 USD (estimate) · caching saved nothing")
+  })
+
+  test("a message is ended once it has a completion time or an error", () => {
+    const base = { role: "assistant", parentID: "u1", modelID: "rafiki-fast", tokens: t(0, 0) }
+    const calls = Cost.callsOf(
+      [
+        { ...base, id: "running", time: { created: 1 } },
+        { ...base, id: "cut", time: { created: 2, completed: 3 } },
+        { ...base, id: "failed", time: { created: 4 }, error: { name: "APIError" } },
+      ],
+      true,
+    )
+    expect(calls.map((item) => item.done)).toEqual([false, true, true])
+    expect(Cost.summarize(calls, prices).unreported).toBe(2)
   })
 })
 
