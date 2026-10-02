@@ -186,6 +186,7 @@ afterAll(async () => {
     if (saved[name] === undefined) delete process.env[name]
     else process.env[name] = saved[name]
   }
+  RafikiResilience.markAnswered(false)
   await proxy.close()
   await model.close()
 })
