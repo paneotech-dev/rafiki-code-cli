@@ -46,7 +46,11 @@ echo "whoami:  $(id -un 2>/dev/null || id -u)"
 echo "home:    ${HOME-<unset>}"
 echo "umask:   $(umask)"
 echo "shell:   ${SHELL-<unset>}"
-echo "tty:     $([ -t 1 ] && echo yes || echo no) (stdin: $([ -t 0 ] && echo yes || echo no))"
+# Tested here, not inside $( ): in a command substitution standard output is
+# the pipe the substitution reads, so the answer there is always no.
+tty_out=no; [ -t 1 ] && tty_out=yes
+tty_in=no; [ -t 0 ] && tty_in=yes
+echo "tty:     $tty_out (stdin: $tty_in)"
 echo "arch:    $(uname -m) ($(uname -s))"
 echo "libc:    $(ldd --version 2>&1 | head -1)"
 echo "tmpdir:  ${TMPDIR-<unset>}"

@@ -452,6 +452,26 @@ export const Brand = {
       .replaceAll("OpenCode", Brand.product)
       .replace(/(?<![\w./-])opencode(?![\w-]|\.jsonc?)/g, Brand.name)
   },
+  // The same rewrite for a generated document that people read (the OpenAPI
+  // document the local server publishes at /doc): every description and
+  // summary, and the title of the document itself. Names, tags, operation
+  // ids, paths and schema titles are read by other programs and stay as they
+  // are. Changes the value in place and returns it.
+  document<T>(value: T): T {
+    const visit = (node: unknown) => {
+      if (Array.isArray(node)) return node.forEach(visit)
+      if (typeof node !== "object" || node === null) return
+      const record = node as Record<string, unknown>
+      for (const [key, item] of Object.entries(record)) {
+        if ((key === "description" || key === "summary") && typeof item === "string") record[key] = Brand.prompt(item)
+        else visit(item)
+      }
+    }
+    visit(value)
+    const info = (value as { info?: { title?: unknown } } | null)?.info
+    if (info && typeof info.title === "string") info.title = Brand.prompt(info.title)
+    return value
+  },
   // Gateway base URL: the override env var, else the URL the Console handed
   // out at login, else the default.
   // Either one is used only when it is https, or http on this machine
