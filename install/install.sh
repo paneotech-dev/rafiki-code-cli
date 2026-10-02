@@ -171,6 +171,8 @@ Options:
     -v, --version <version>  Install a specific version (for example 1.0.3)
     -p, --prefix <dir>       Install into <dir> instead of ${INSTALL_DIR}
     -b, --binary <path>      Install from a local binary instead of downloading
+    -t, --target <name>      Install a named build instead of the detected one,
+                             for example linux-x64-baseline or linux-arm64-musl
         --no-modify-path     Do not edit shell startup files, only print the PATH note
         --no-login           Do not start the sign in after installing, only print how to
         --dry-run            Resolve the version and print what would happen, download nothing
@@ -194,6 +196,7 @@ no_modify_path=false
 no_login=false
 dry_run=false
 binary_path=""
+requested_target=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -225,6 +228,15 @@ while [[ $# -gt 0 ]]; do
                 shift 2
             else
                 echo -e "${RED}Error: --binary requires a path argument${NC}" >&2
+                exit 1
+            fi
+            ;;
+        -t|--target)
+            if [[ -n "${2:-}" ]]; then
+                requested_target="$2"
+                shift 2
+            else
+                echo -e "${RED}Error: --target requires a build name, for example linux-x64-baseline${NC}" >&2
                 exit 1
             fi
             ;;
@@ -573,7 +585,48 @@ detect_platform() {
     target="$os-$arch"
     if [ "$needs_baseline" = "true" ]; then target="$target-baseline"; fi
     if [ "$is_musl" = "true" ]; then target="$target-musl"; fi
+
+    # --target names the build outright. It is for the cases detection cannot
+    # settle: the baseline build on a CPU that reports AVX2 but should not use
+    # it, and the release gate, which has to install every published build and
+    # not only the one its runner would be given. The name is checked against
+    # the builds that exist, because it becomes part of a URL.
+    if [ -n "$requested_target" ]; then
+        case "$requested_target" in
+          linux-x64|linux-x64-baseline|linux-x64-musl|linux-x64-baseline-musl|linux-arm64|linux-arm64-musl) ;;
+          darwin-arm64|darwin-x64|darwin-x64-baseline) ;;
+          windows-x64|windows-x64-baseline|windows-arm64) ;;
+          *)
+            fail "--target ${requested_target} is not a build of ${APP}. The builds are: linux-x64, linux-x64-baseline, linux-x64-musl, linux-x64-baseline-musl, linux-arm64, linux-arm64-musl, darwin-arm64, darwin-x64, darwin-x64-baseline, windows-x64, windows-x64-baseline, windows-arm64."
+            ;;
+        esac
+        case "$requested_target" in
+          "$os"-*) ;;
+          *) fail "--target ${requested_target} is a build for another operating system: this machine is ${os}." ;;
+        esac
+        target="$requested_target"
+    fi
     filename="$APP-$target$archive_ext"
+}
+
+# The licence and the notice travel with the binary. The archive carries both
+# beside it; they are kept in the product's own directory, which is where the
+# configuration already lives and which `uninstall` removes. An archive from
+# before they were packed has neither, and that is not an error. With no home
+# directory there is nowhere of ours to put them, and the binary prints the same
+# text with `licenses`.
+install_licences() {
+    local from=$1 dest
+    [ -n "$HOME_DIR" ] || return 0
+    [ -f "$from/LICENSE" ] || [ -f "$from/NOTICE" ] || return 0
+    dest="${HOME_DIR}/.${APP}/licenses"
+    mkdir -p "$dest" 2>/dev/null || return 0
+    local name
+    for name in LICENSE NOTICE; do
+        if [ -f "$from/$name" ]; then
+            cp "$from/$name" "$dest/$name" 2>/dev/null && chmod 644 "$dest/$name" 2>/dev/null || true
+        fi
+    done
 }
 
 # Version resolution. Produces specific_version and url.
@@ -764,6 +817,7 @@ download_and_install() {
     # Stage next to the target and rename over it so the path never disappears.
     mv "$tmp_dir/$BIN_NAME" "${INSTALL_DIR}/${BIN_NAME}.new"
     mv -f "${INSTALL_DIR}/${BIN_NAME}.new" "${INSTALL_DIR}/${BIN_NAME}"
+    install_licences "$tmp_dir"
 }
 
 install_from_binary() {

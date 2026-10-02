@@ -649,5 +649,52 @@ out=$(env RAFIKICODE_RELEASE_API="http://127.0.0.1:${RL_PORT}/api" \
 kill "$RL_PID" 2>/dev/null
 wait "$RL_PID" 2>/dev/null
 
+# --target and the licence files. A release whose only archive is the baseline
+# build, packed the way the release workflow packs it: the binary with LICENSE
+# and NOTICE beside it. Detection on this machine asks for another name, so the
+# install can only succeed by honouring --target.
+named="${os}-x64-baseline"
+ndir="$WORK/site/dl/download/v1.3.0"
+mkdir -p "$ndir" "$WORK/build-1.3.0"
+printf '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "1.3.0"; exit 0; fi\necho "rafikicode fake baseline"\n' > "$WORK/build-1.3.0/rafikicode"
+chmod 755 "$WORK/build-1.3.0/rafikicode"
+printf 'licence text of the fake release\n' > "$WORK/build-1.3.0/LICENSE"
+printf 'notice text of the fake release\n' > "$WORK/build-1.3.0/NOTICE"
+if [ "$ext" = ".tar.gz" ]; then
+    tar -czf "$ndir/rafikicode-${named}${ext}" -C "$WORK/build-1.3.0" .
+else
+    (cd "$WORK/build-1.3.0" && zip -q "$ndir/rafikicode-${named}${ext}" rafikicode LICENSE NOTICE)
+fi
+(cd "$ndir" && if command -v sha256sum >/dev/null 2>&1; then sha256sum "rafikicode-${named}${ext}"; else shasum -a 256 "rafikicode-${named}${ext}"; fi > SHA256SUMS)
+
+thome="$WORK/home-target"
+mkdir -p "$thome"
+out=$(env HOME="$thome" RAFIKICODE_INSTALL_DIR="$WORK/prefix-target/bin" \
+    bash "$INSTALLER" --no-login --no-modify-path --version 1.3.0 --target "$named" 2>&1 | plain) && rc=0 || rc=$?
+[ "$rc" = "0" ] && [ "$("$WORK/prefix-target/bin/rafikicode" --version)" = "1.3.0" ]; check $? "--target installs the named build instead of the detected one"
+
+[ "$(cat "$thome/.rafikicode/licenses/LICENSE" 2>/dev/null)" = "licence text of the fake release" ] \
+    && [ "$(cat "$thome/.rafikicode/licenses/NOTICE" 2>/dev/null)" = "notice text of the fake release" ] \
+    && [ ! -e "$WORK/prefix-target/bin/LICENSE" ]; check $? "LICENSE and NOTICE from the archive are kept in ~/.rafikicode/licenses, not beside the binary"
+
+out=$(env HOME="$thome" RAFIKICODE_INSTALL_DIR="$WORK/prefix-target/bin" \
+    bash "$INSTALLER" --no-login --no-modify-path --version 1.3.0 --target solaris-sparc 2>&1 | plain) && rc=0 || rc=$?
+[ "$rc" != "0" ] && [[ "$out" == *"--target solaris-sparc is not a build of rafikicode"* ]] \
+    && [[ "$out" == *"linux-x64-baseline-musl"* ]]; check $? "--target with a name that is not a build is refused and the builds are listed"
+
+other=windows-x64
+out=$(env HOME="$thome" RAFIKICODE_INSTALL_DIR="$WORK/prefix-target/bin" \
+    bash "$INSTALLER" --no-login --no-modify-path --version 1.3.0 --target "$other" 2>&1 | plain) && rc=0 || rc=$?
+[ "$rc" != "0" ] && [[ "$out" == *"is a build for another operating system"* ]]; check $? "--target naming another operating system's build is refused"
+
+# An archive from before the licence files were packed: not an error, and
+# nothing is invented in their place.
+ohome="$WORK/home-old-archive"
+mkdir -p "$ohome"
+out=$(env HOME="$ohome" RAFIKICODE_INSTALL_DIR="$WORK/prefix-old-archive/bin" \
+    bash "$INSTALLER" --no-login --no-modify-path --version 1.2.2 2>&1 | plain) && rc=0 || rc=$?
+[ "$rc" = "0" ] && [ "$("$WORK/prefix-old-archive/bin/rafikicode" --version)" = "1.2.2" ] \
+    && [ ! -e "$ohome/.rafikicode/licenses" ]; check $? "an archive without licence files still installs, and no licence directory is made up"
+
 echo "install tests: ${pass} passed, ${fail} failed"
 [ "$fail" = "0" ]
