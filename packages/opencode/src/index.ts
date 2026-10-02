@@ -32,7 +32,7 @@ import { PluginCommand } from "./cli/cmd/plug"
 import { Heap } from "./cli/heap"
 import { Brand } from "@opencode-ai/core/brand/brand"
 import * as Startup from "./rafiki/startup"
-import { DoctorCommand, LoginCommand, LogoutCommand, ProvidersCommand, TrustCommand, WhoamiCommand, markHeadless, refuseMissingKey, refuseUnsafeCredential } from "./rafiki/cmd"
+import { DoctorCommand, LoginCommand, LogoutCommand, ProvidersCommand, TrustCommand, UsageCommand, WhoamiCommand, markHeadless, refuseMissingKey, refuseUnsafeCredential } from "./rafiki/cmd"
 import * as ExecTmp from "./rafiki/exec-tmp"
 
 // The terminal interface unpacks a native library into the temporary directory
@@ -105,6 +105,7 @@ const cli = yargs(args)
   .command(LoginCommand)
   .command(LogoutCommand)
   .command(WhoamiCommand)
+  .command(UsageCommand)
   .command(DoctorCommand)
   .command(TrustCommand)
   .command(ProvidersCommand)

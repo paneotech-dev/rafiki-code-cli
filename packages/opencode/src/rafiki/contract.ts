@@ -34,6 +34,8 @@ export const PATH = {
   deviceRefresh: "/api/v1/device/refresh",
   verify: "/device",
   me: "/api/v1/me",
+  usage: "/api/v1/usage",
+  usagePage: "/usage",
   keys: "/api/v1/keys",
   keysPage: "/keys",
 } as const
