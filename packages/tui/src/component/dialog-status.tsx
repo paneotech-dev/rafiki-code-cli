@@ -1,6 +1,7 @@
 import { Brand } from "@opencode-ai/core/brand/brand"
 import { TextAttributes } from "@opentui/core"
 import { fileURLToPath } from "bun"
+import path from "path"
 import { useTheme } from "../context/theme"
 import { useDialog } from "../ui/dialog"
 import { useSync } from "../context/sync"
@@ -20,9 +21,9 @@ export function DialogStatus() {
     const result = list.map((item) => {
       const value = typeof item === "string" ? item : item[0]
       if (value.startsWith("file://")) {
-        const path = fileURLToPath(value)
-        const parts = path.split("/")
-        const filename = parts.pop() || path
+        const filePath = fileURLToPath(value)
+        const parts = filePath.split(path.sep)
+        const filename = parts.pop() || filePath
         if (!filename.includes(".")) return { name: filename }
         const basename = filename.split(".")[0]
         if (basename === "index") {

@@ -120,7 +120,8 @@ describe("substitution in project config", () => {
     const home = path.join(dir, "home")
     fs.mkdirSync(path.join(home, ".rafikicode"), { recursive: true })
     const mcp = (name: string) => ({
-      [name]: { type: "remote", url: "https://mcp.example.com/mcp", enabled: false, headers: { T: "{env:SUBST_TOKEN}", F: `{file:${outside}}`, P: "{env:SUBST_PLAIN}" } },
+      // Values are read back from `environment`: `debug config` masks every header value.
+      [name]: { type: "local", command: ["true"], enabled: false, environment: { T: "{env:SUBST_TOKEN}", F: `{file:${outside}}`, P: "{env:SUBST_PLAIN}" } },
     })
     fs.writeFileSync(path.join(home, ".rafikicode", "config.json"), JSON.stringify({ mcp: mcp("global-mcp") }))
     fs.writeFileSync(path.join(repo, "rafikicode.json"), JSON.stringify({ mcp: mcp("project-mcp") }))
@@ -147,8 +148,8 @@ describe("substitution in project config", () => {
     const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])
     expect(await proc.exited).toBe(0)
     const config = JSON.parse(stdout.slice(stdout.indexOf("{")))
-    expect(config.mcp["global-mcp"].headers).toEqual({ T: "token-value", F: "outside-secret-value", P: "plain-value" })
-    expect(config.mcp["project-mcp"].headers).toEqual({ T: "", F: "", P: "plain-value" })
+    expect(config.mcp["global-mcp"].environment).toEqual({ T: "token-value", F: "outside-secret-value", P: "plain-value" })
+    expect(config.mcp["project-mcp"].environment).toEqual({ T: "", F: "", P: "plain-value" })
     expect(stderr).toContain(`Warning: ignored {env:SUBST_TOKEN} in ${path.join(Trust.real(repo), "rafikicode.json")}`)
     expect(stdout + stderr).not.toContain("outside-secret-value\"}")
   }, 120_000)
@@ -229,8 +230,9 @@ describe("substitution limits for every config file kind", () => {
   }, 60_000)
 
   test("debug config: HOME set to a checkout limits its .rafikicode config.json, opencode.json and rafikicode.json", async () => {
-    const headers = { T: "{env:SUBST_TOKEN}", F: `{file:${outside}}`, P: "{env:SUBST_PLAIN}" }
-    const mcp = (name: string) => ({ mcp: { [name]: { type: "remote", url: "https://mcp.example.com/mcp", enabled: false, headers } } })
+    // Values are read back from `environment`: `debug config` masks every header value.
+    const environment = { T: "{env:SUBST_TOKEN}", F: `{file:${outside}}`, P: "{env:SUBST_PLAIN}" }
+    const mcp = (name: string) => ({ mcp: { [name]: { type: "local", command: ["true"], enabled: false, environment } } })
     fs.mkdirSync(path.join(repo, ".rafikicode"), { recursive: true })
     fs.writeFileSync(path.join(repo, ".rafikicode", "config.json"), JSON.stringify(mcp("home-config")))
     fs.writeFileSync(path.join(repo, ".rafikicode", "opencode.json"), JSON.stringify(mcp("home-opencode")))
@@ -260,7 +262,7 @@ describe("substitution limits for every config file kind", () => {
     expect(await proc.exited).toBe(0)
     const config = JSON.parse(stdout.slice(stdout.indexOf("{")))
     for (const name of ["home-config", "home-opencode", "home-rafikicode"]) {
-      expect(config.mcp[name]?.headers, name).toEqual({ T: "", F: "", P: "plain-value" })
+      expect(config.mcp[name]?.environment, name).toEqual({ T: "", F: "", P: "plain-value" })
     }
     const home = path.join(Trust.real(repo), ".rafikicode")
     expect(stderr).toContain(`Warning: ignored {env:SUBST_TOKEN} in ${path.join(home, "config.json")}`)

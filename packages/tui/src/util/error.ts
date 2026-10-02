@@ -48,6 +48,17 @@ export function cliErrorMessage(input: unknown): string | undefined {
   const frontmatter = configData(input, "ConfigFrontmatterError")
   if (frontmatter) return field(frontmatter, "message") ?? ""
 
+  const remoteAuth = configData(input, "ConfigRemoteAuthError")
+  if (remoteAuth) {
+    const url = field(remoteAuth, "url")
+    const remote = field(remoteAuth, "remote")
+    return [
+      `Failed to load remote config${remote ? ` from ${remote}` : ""}: the server returned a login page instead of JSON.`,
+      "Authentication is missing or has expired (the endpoint is likely behind an SSO or identity-aware proxy).",
+      ...(url ? [`Provide credentials for ${url}, or point \`config\` at a URL that needs none.`] : []),
+    ].join("\n")
+  }
+
   const invalid = configData(input, "ConfigInvalidError")
   if (invalid) {
     const path = field(invalid, "path")
