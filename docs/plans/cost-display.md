@@ -94,7 +94,9 @@ Fetched once when a task starts (the session opens in the interface, or
 
 ### Accounting (pure)
 
-`packages/core/src/brand/cost.ts` (new, no I/O):
+`packages/core/src/brand/cost.ts` (new, no I/O). It lives in the brand layer
+of `packages/core`, not under `packages/opencode/src/rafiki/`, because the
+terminal interface package uses it and cannot import from `packages/opencode`:
 
 - `tierOf(modelID)`.
 - `price(tokens, tierPrice)`: charged cost and what the same tokens would
@@ -123,7 +125,11 @@ estimated spend" and is labelled the same way.
 - `sidebar_content`: the same figures in rows, with the tier path, the cache
   saving and the balance when the task started.
 - Subagent calls: counted from the message events of child sessions, and
-  from one listing of the children when a session is opened.
+  from a listing of the children when a session is opened and when a turn
+  ends.
+- The line takes the room the prompt row has: the longest form that fits is
+  used, and before a tier change the new tier and its estimate are the last
+  thing dropped.
 - Without a price list the line shows the tier and token counts and says the
   cost is unknown. It never shows a zero as if it were a charge.
 

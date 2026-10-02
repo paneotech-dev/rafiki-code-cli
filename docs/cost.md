@@ -19,7 +19,7 @@ A task is one session, from its first request to its last. Calls made by subagen
 
 The sidebar has the same figures in a `Cost` block, with the tier of each turn so far (`Tiers: fast, fast, pro`) and what caching saved.
 
-The line needs a terminal at least 100 columns wide; the sidebar block has no such limit.
+When the prompt row has less room, the line is shortened rather than cut: first to `fast · about 0.0312 USD (estimate) · about 12.37 USD left`, then without the credits, then to the tier alone. The sidebar block always has every figure.
 
 ## Before a tier change
 
@@ -29,7 +29,7 @@ When you pick another tier for the next turn (`/models`), the line leads with th
 next turn on pro: about 0.0450 USD (estimate) · fast · about 0.0312 USD spent (estimate) · about 12.37 USD of credits left
 ```
 
-The terminal never moves a task to another tier by itself.
+When the row has less room, the tier change and its estimate are what stays (`next turn on pro: about 0.0450 USD (estimate)`). The terminal never moves a task to another tier by itself.
 
 ## After a task
 
