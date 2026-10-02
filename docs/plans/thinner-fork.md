@@ -34,7 +34,7 @@ lines removed.
 | | Upstream-owned files edited | Changed lines | Added | Removed |
 | --- | ---: | ---: | ---: | ---: |
 | Before (`ecc288d952`) | 178 | 6,552 | 3,689 | 2,863 |
-| After | recorded below | | | |
+| After | 177 | 6,342 | 3,603 | 2,739 |
 
 ## The nine follow-ups
 
@@ -170,4 +170,71 @@ runtime first on `PATH` and a temporary home.
 
 ## Record
 
-Filled in when the work is done.
+### What changed
+
+| Commit | Change |
+| --- | --- |
+| `refactor(cli): move the gh commands into the folder of this fork` | `src/cli/cmd/gh.ts` and `gh.shared.ts` are now `src/rafiki/gh.ts` and `src/rafiki/gh.shared.ts`. Import paths only. |
+| `refactor(cli): replace the upstream uninstall command instead of editing it` | The command is `src/rafiki/uninstall.ts`, identical to the edited file apart from two import paths and a header comment. `src/cli/cmd/uninstall.ts` is upstream's text again and nothing imports it. |
+| `chore(upstream): record every edited upstream file and check the record` | `script/upstream.json`, `script/upstream.mjs`, `docs/upstream.md`, the hook in `docs/check.mjs`, `test/brand/upstream-files.test.ts`, one paragraph of the README. |
+
+### Figures
+
+Measured with `node script/upstream.mjs report` (and `--at ecc288d952` for
+the first row), which runs the command given under "What is measured".
+
+| | Upstream-owned files edited | Changed lines | Added | Removed |
+| --- | ---: | ---: | ---: | ---: |
+| Before (`ecc288d952`) | 178 | 6,552 | 3,689 | 2,863 |
+| After | 177 | 6,342 | 3,603 | 2,739 |
+
+One file left the list (`cli/cmd/uninstall.ts`, 212 lines) and `src/index.ts`
+gained two changed lines for the two import paths. The fork-only layer grew
+by the moved files; that is where the code belongs.
+
+By class after the change: 35 files hold calls into this fork's modules (507
+lines), 43 hold names and wording (360), 12 hold behaviour changed in place
+(681), 33 are adapted tests (731), 3 are generated (547), 9 are package
+identity (499), 23 are documentation (1,371), 6 are tooling (31) and 13 are
+the editor extension (1,615). The twelve files with behaviour changed in
+place are the ones worth thinning next.
+
+### The nine follow-ups, final state
+
+| # | State |
+| --- | --- |
+| 1 | Open. Not done; design above. |
+| 2 | Done. |
+| 3 | Open. Not done; what remains are trust and substitution hooks. |
+| 4 | Open. An offer to upstream is outside this repository; the candidate list is above. |
+| 5 | Open. Not done; design above. |
+| 6 | Done. |
+| 7 | Left as it is on purpose: one line, guarded by a test that drives a real run. |
+| 8 | Already closed on this line by `test/brand/upstream-names.test.ts`. |
+| 9 | The procedure is `docs/upstream.md` and the trial merge command. How often it is run is a matter of practice. |
+
+### The trial merge, tried on real history
+
+- Against the upstream branch as fetched on 2026-10-02 (`1ddb0873ae`): one
+  upstream commit to merge, two files changed upstream, no conflict, no
+  edited or replaced file touched.
+- Replayed on the last sync (the `v0.1.9` tree against `a79ecfe109`, with the
+  list of this branch): 126 commits, 277 files, and the same eight conflicts
+  that sync resolved by hand, sorted as two calls, one wording file, one file
+  with behaviour changed in place, one generated file, one package file, one
+  extension file and one file that is no longer edited. It also named the
+  nine files that merged cleanly on both sides and the one workflow upstream
+  added, which is what that sync found by reading.
+
+### Verification
+
+| Step | Result |
+| --- | --- |
+| `bun turbo typecheck --concurrency=3` | 30 of 30 |
+| `node docs/check.mjs` | passed, 31 files, with the upstream check |
+| `packages/opencode`: `test/brand`, `test/cli/help`, `test/cli/gh.test.ts`, `test/installation` | 222 pass, 0 fail, 45 snapshots, none changed |
+| `packages/tui` | 204 pass, 1 skip, 0 fail |
+| Full `packages/opencode` suite, once | 4,274 pass, 22 skip, 1 todo, 2 fail of 4,299 in 306 files. The two failures are the two known ones that occur only as root. |
+
+Not run: the installer tests and a binary build. No installer, build script
+or workflow is changed by this branch.
