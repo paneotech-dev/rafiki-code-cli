@@ -181,6 +181,7 @@ Options:
 Environment:
     VERSION                  Same as --version
     RAFIKICODE_INSTALL_DIR   Same as --prefix
+    RAFIKICODE_INSTALL_TARGET  Same as --target
     RAFIKICODE_RELEASE_API   Release API base (default ${RELEASE_API})
     RAFIKICODE_RELEASE_BASE  Release download base (default ${RELEASE_BASE})
 
@@ -196,7 +197,7 @@ no_modify_path=false
 no_login=false
 dry_run=false
 binary_path=""
-requested_target=""
+requested_target="${RAFIKICODE_INSTALL_TARGET:-}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in

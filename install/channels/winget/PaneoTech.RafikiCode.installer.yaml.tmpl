@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
+# Rendered by install/channels/render.mjs in the rafiki-code-cli repository.
+# The installers are the Windows archives of the GitHub release, and each
+# InstallerSha256 is the value published in that release's SHA256SUMS.
+PackageIdentifier: PaneoTech.RafikiCode
+PackageVersion: {{VERSION}}
+InstallerType: zip
+NestedInstallerType: portable
+NestedInstallerFiles:
+  - RelativeFilePath: rafikicode.exe
+    PortableCommandAlias: rafikicode
+Commands:
+  - rafikicode
+UpgradeBehavior: install
+Installers:
+  - Architecture: x64
+    InstallerUrl: {{BASE}}/download/v{{VERSION}}/rafikicode-windows-x64.zip
+    InstallerSha256: {{SHA256_UPPER:rafikicode-windows-x64.zip}}
+  - Architecture: arm64
+    InstallerUrl: {{BASE}}/download/v{{VERSION}}/rafikicode-windows-arm64.zip
+    InstallerSha256: {{SHA256_UPPER:rafikicode-windows-arm64.zip}}
+ManifestType: installer
+ManifestVersion: 1.6.0

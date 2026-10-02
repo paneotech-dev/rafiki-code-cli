@@ -1,0 +1,38 @@
+{
+  "name": "rafikicode",
+  "version": "0.0.0",
+  "description": "Rafiki Code terminal coding agent",
+  "homepage": "https://code.rafikiai.io",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/paneotech-dev/rafiki-code-cli.git"
+  },
+  "bugs": "https://github.com/paneotech-dev/rafiki-code-cli/issues",
+  "license": "MIT",
+  "bin": {
+    "rafikicode": "bin/rafikicode.js"
+  },
+  "scripts": {
+    "postinstall": "node install.js"
+  },
+  "files": [
+    "bin/rafikicode.js",
+    "install.js",
+    "checksums.json",
+    "LICENSE",
+    "NOTICE",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "cpu": [
+    "arm64",
+    "x64"
+  ]
+}
