@@ -38,7 +38,7 @@
     Resolve the version and report what would happen. Download nothing.
 
 .EXAMPLE
-    irm https://get.rafikiai.io/install.ps1 | iex
+    irm https://github.com/paneotech-dev/rafiki-code-cli/releases/latest/download/install.ps1 | iex
 
 .EXAMPLE
     .\install.ps1 -Version 0.1.7 -Baseline
