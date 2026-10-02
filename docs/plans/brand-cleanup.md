@@ -70,3 +70,128 @@ changed. New code goes to the brand module and to the test.
    suite; the test of the OAuth page in `packages/core`.
 3. The full `packages/opencode` suite once. Two failures are known and occur
    only as root.
+
+## Results
+
+Run at `49dcbbb93b` on 2 October 2026.
+
+### The list, entry by entry
+
+82 occurrences were read: the 78 on the `known` list and 4 found in
+`packages/sdk/js/src`.
+
+Fixed in the source, 12 occurrences:
+
+| file | what changed |
+|---|---|
+| `packages/core/src/oauth/page.ts` (8) | the title, the messages and the footnote of the browser page take the product name from the brand module, in the page and in the script that finishes a sign in inside the browser; the drawn upstream wordmark is replaced by the product name as text |
+| `packages/opencode/src/mcp/oauth-provider.ts` (2) | `client_name` and `client_uri` of the OAuth registration are the product name and its homepage. A server that is already signed in keeps the client id it was given, so nothing registers again |
+| `packages/sdk/js/src/error-interceptor.ts` (1), `packages/sdk/js/src/v2/client.ts` (1) | an empty answer and an answer in HTML are reported as coming from "the server" |
+
+Allowed with a reason, 66 occurrences:
+
+| entry | reason |
+|---|---|
+| `packages/opencode/src/server/routes/instance/httpapi/` (37) | fixed where it is read: `Brand.document()` rewrites the title, every description and every summary of the OpenAPI document the server publishes at `/doc`. 28 lines of that document changed and nothing else; paths, operation ids, tags and schemas are the same. The source strings stay as upstream writes them |
+| `packages/core/src/v1/config/config.ts` (3) | `packages/opencode/script/schema.ts` already rewrites these descriptions in the published schema; the test now reads `schema/config.json` and `schema/tui.json` |
+| `packages/opencode/src/cli/cmd/github.handler.ts` (10) | the upstream GitHub agent with its workflow file, action, app and API. Its command is not registered: `rafikicode github install --help` prints the general help |
+| `packages/opencode/src/provider/provider.ts` (9) | seven are the referer, title and billing headers upstream providers expect; two are errors of providers this build does not offer |
+| `packages/opencode/src/cli/cmd/providers.ts` (2), `plugin/digitalocean.ts` (1), `plugin/snowflake-cortex.ts` (1) | sign in prompts of upstream providers, behind a command this build replaces with a notice |
+| `packages/opencode/src/session/retry.ts` (3) | the upstream subscription offer, built only from the upstream service's own error bodies |
+
+Left as they are, with a question, 4 occurrences (the `known` list of the
+test, which now has four entries):
+
+1. `packages/opencode/src/cli/cmd/account.ts`: `rafikicode console login`
+   is a hidden command that is still registered, and with no address it signs
+   in to the upstream account service. Is the command to stay in this build?
+2. `packages/opencode/src/server/shared/ui.ts`: when the binary carries no
+   web interface (a run from source, a build made with
+   `--skip-embed-web-ui`, or `OPENCODE_DISABLE_EMBEDDED_WEB_UI`), the server
+   fetches the upstream web application from the upstream address. Should it
+   refuse instead?
+3. `packages/sdk/js/src/server.ts` and `packages/sdk/js/src/v2/server.ts`:
+   the server helper of the SDK starts the upstream binary by name and waits
+   for the line that binary prints. `rafikicode serve` prints its own name on
+   that line, so the helper cannot start this product. Is the helper to
+   support it? That is a change of behaviour, not of wording.
+
+Three more things were seen and not changed:
+
+- The tag `opencode HttpApi` groups a few operations in the OpenAPI document.
+  A tag is a grouping name a generated client can depend on, so it stays.
+- `packages/sdk/openapi.json` and the comments of the generated SDK files
+  still carry the upstream descriptions. They are produced by the SDK build,
+  which was not run here; the next run rewrites them.
+- `packages/cli/src/commands/commands.ts` and two descriptions in
+  `packages/protocol/src/groups/session.ts` name the upstream product. The
+  two descriptions are covered by the rewrite of the OpenAPI document. The
+  first is outside the directories the test reads, and whether that package
+  is shipped was not checked.
+
+The test was proved by mutation: an upstream command put into a file of the
+SDK, the upstream name put back into the page, and the rewrite of the
+document removed each made it fail and name the place; all three were
+reverted.
+
+### The probe
+
+Line 49 of `install/test-matrix-probe.sh`, run on a terminal and then with its
+output piped:
+
+```text
+before, on a terminal:   tty:     no (stdin: yes)
+before, piped:           tty:     no (stdin: no)
+after, on a terminal:    tty:     yes (stdin: yes)
+after, piped:            tty:     no (stdin: no)
+```
+
+### The lint error
+
+Not fixed. `packages/session-ui/src/v2/components/prompt-input/index.tsx` is
+byte for byte the file of upstream's `dev` branch (the same blob,
+`ff4ff0f1d4`), on the base as well, and the line came with upstream's rewrite
+of that component. The text `\200B` sits in a JSX attribute, where a backslash
+is not an escape: it reaches the stylesheet as written and is the CSS escape
+for a zero width space, which is what the class needs. Writing it another way
+would change a line of a file this fork does not otherwise touch, for a
+package the CLI does not ship. It is for upstream to silence or reword.
+
+### Upstream files touched
+
+| file | lines |
+|---|---|
+| `packages/core/src/oauth/page.ts` | 11 added, 26 removed |
+| `packages/opencode/src/mcp/oauth-provider.ts` | 3 added, 2 removed |
+| `packages/opencode/src/server/routes/instance/httpapi/public.ts` | 2 added, 1 removed |
+| `packages/sdk/js/src/error-interceptor.ts` | 1 changed |
+| `packages/sdk/js/src/v2/client.ts` | 1 changed |
+
+`install/test-matrix-probe.sh`, `packages/core/src/brand/brand.ts` and the
+test are this fork's own files.
+
+### Checks
+
+- Typecheck with `--concurrency=3`: 30 of 30 tasks, none cached.
+- `node docs/check.mjs`: passed, 28 files.
+- `packages/opencode`, `test/brand`: 163 pass, 0 fail across 14 files.
+- `packages/opencode`, `test/cli/help`: 1 pass, 45 snapshots, none updated.
+  This branch changes no help text. The suite needs a short `TMPDIR`: with a
+  long one the default of `--cwd` wraps onto a second line before the path is
+  normalised, and one snapshot differs for that reason alone.
+- `packages/tui`: 204 pass, 1 skip, 0 fail across 46 files.
+- `packages/core`, `test/oauth-page.test.ts`: 1 pass.
+- Full `packages/opencode` suite, run twice. The second run: 4261 pass,
+  22 skip, 1 todo, 2 fail across 305 files; the two failures are the known
+  ones that occur only as root, "continues loading tui config when legacy
+  source cannot be stripped" and "tool.write, throws error when OS denies
+  write access". The first run, on a busier machine, had two more failures,
+  in `test/rafiki/integration-set.test.ts` (the cut connection) and
+  `test/cli/acp/spec-compliance.test.ts` (a cancelled turn), files this
+  branch does not touch; both files passed three times when rerun alone.
+- `bun lint`: one error, the one described above, and no new one.
+
+Not verified: how the sign in page looks in a browser (its text is tested,
+its layout was not opened), an OAuth registration against a real MCP server,
+and `install/test-matrix.sh` as a whole after the change to the probe (the
+changed lines were run on a terminal and through a pipe).
