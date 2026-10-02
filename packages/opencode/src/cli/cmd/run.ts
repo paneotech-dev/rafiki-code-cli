@@ -29,6 +29,7 @@ import * as RafikiGateway from "@/rafiki/gateway-errors"
 import * as RafikiPermission from "@/rafiki/permission-hint"
 import * as RafikiMissingKey from "@/rafiki/missing-key"
 import * as RafikiAttach from "@/rafiki/attach"
+import * as RafikiCost from "@/rafiki/cost"
 import * as ServerFile from "@/rafiki/server-file"
 import { INTERACTIVE_INPUT_ERROR, resolveInteractiveStdin } from "./run/runtime.stdin"
 
@@ -858,8 +859,10 @@ export const RunCommand = effectCmd({
             process.exitCode = 1
           })
           await connected
+          const cost = RafikiCost.tracker()
           async function finish() {
             const error = await completed
+            if (args.format !== "json") await cost.report(client, sessionID)
             if (error) process.exitCode = process.exitCode || 1
           }
 

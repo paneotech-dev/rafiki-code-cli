@@ -13,6 +13,12 @@
 //   MOCK_CONSOLE_RATE_LIMIT_ONCE=1 answer 429 with Retry-After on the first poll of every code
 //   MOCK_CONSOLE_UNAVAILABLE=1     answer 503 on the token endpoint
 //   MOCK_CONSOLE_LOG=/path.jsonl   append one JSON line per request
+//
+// GET /api/v1/usage answers per the usage option: "daily" (the default: the
+// window's totals, the per model split and the per day and per tier split),
+// "window" (what a console without the per day split serves: no by_day),
+// "absent" (404), or an object to send as is. The anyKey option accepts any
+// bearer token as a server key, for tests that skip the device flow.
 import http from "node:http"
 import fs from "node:fs"
 import crypto from "node:crypto"
@@ -62,6 +68,46 @@ function userCode() {
   return out.slice(0, 4) + "-" + out.slice(4)
 }
 
+// Round test figures. Two tier aliases and one other model, over two days.
+export function mockUsage(days = 30) {
+  return {
+    object: "usage",
+    period: { days, since: "2026-09-02T10:00:00.000Z" },
+    totals: {
+      calls: 15,
+      tokens_in: 168000,
+      tokens_out: 15500,
+      cost_usd: 0.2521,
+      prompt_cache: { calls: 6, cache_read_tokens: 90000, cache_write_tokens: 0, charged_usd: 0.02, uncached_usd: 0.095, saved_usd: 0.075 },
+    },
+    by_model: [
+      { model: "rafiki-pro", name: "rafiki-pro", provider: "Unknown", calls: 3, tokens_in: 40000, tokens_out: 6000, cost_usd: 0.2 },
+      { model: "claude-opus", name: "Claude Opus", provider: "Anthropic", calls: 3, tokens_in: 8000, tokens_out: 1500, cost_usd: 0.042 },
+      { model: "rafiki-fast", name: "rafiki-fast", provider: "Unknown", calls: 9, tokens_in: 120000, tokens_out: 8000, cost_usd: 0.0101 },
+    ],
+    by_day: [
+      {
+        day: "2026-09-30",
+        calls: 7,
+        cost_usd: 0.0471,
+        by_tier: [
+          { tier: "fast", calls: 4, tokens_in: 50000, tokens_out: 3000, cost_usd: 0.0051 },
+          { tier: "other", calls: 3, tokens_in: 8000, tokens_out: 1500, cost_usd: 0.042 },
+        ],
+      },
+      {
+        day: "2026-10-01",
+        calls: 8,
+        cost_usd: 0.205,
+        by_tier: [
+          { tier: "fast", calls: 5, tokens_in: 70000, tokens_out: 5000, cost_usd: 0.005 },
+          { tier: "pro", calls: 3, tokens_in: 40000, tokens_out: 6000, cost_usd: 0.2 },
+        ],
+      },
+    ],
+  }
+}
+
 function normalize(code) {
   return String(code ?? "").toUpperCase().replace(/-/g, "")
 }
@@ -80,6 +126,9 @@ export function createMockConsole(options = {}) {
     quiet: options.quiet ?? false,
     gatewayURL: options.gatewayURL ?? "https://gateway.rafikiai.io/v1",
     owner: options.owner ?? { id: "usr_mock", email: "jane@example.com", name: "Jane" },
+    usage: options.usage ?? "daily",
+    anyKey: options.anyKey ?? false,
+    balance: options.balance ?? 12.4,
     // Injectable clock so in-process tests can drive polling without waiting.
     now: options.now ?? (() => Date.now()),
   }
@@ -133,7 +182,9 @@ export function createMockConsole(options = {}) {
     const header = req.headers.authorization ?? ""
     const match = /^Bearer\s+(.+)$/i.exec(header)
     if (!match) return undefined
-    return keys.get(match[1].trim())
+    const known = keys.get(match[1].trim())
+    if (known || !opts.anyKey) return known
+    return { id: "key_any", alias: "rafikicode-any", label: "any key", kind: "server", created: opts.now(), tiers: ["fast", "pro"] }
   }
 
   function approve(code, tiers) {
@@ -265,10 +316,26 @@ export function createMockConsole(options = {}) {
           created_at: new Date(k.created).toISOString(),
           expires_at: new Date(k.created + SESSION_TTL * 1000).toISOString(),
         },
-        wallet: { balance_usd: 12.4, credited_usd: 20, spent_usd: 7.6 },
+        wallet: { balance_usd: opts.balance, credited_usd: 20, spent_usd: 7.6 },
         limits: { max_budget_usd: 2.5, spend_usd: 0.31, budget_duration: null, rpm_limit: 60, tpm_limit: 200000 },
         tiers: k.tiers,
       })
+    }
+
+    if (method === "GET" && path === "/api/v1/usage") {
+      const k = bearer(req)
+      const days = Number(u.searchParams.get("days") ?? "30")
+      record({ method, path, days, authorization: req.headers.authorization ? "present" : "missing", known_key: Boolean(k) })
+      if (opts.usage === "absent") return json(res, 404, { error: { message: "Not found.", type: "invalid_request_error" } })
+      if (!k) return error(res, 401, "unauthenticated")
+      if (k.revoked) return error(res, 401, "key_revoked")
+      if (!Number.isInteger(days) || days < 1 || days > 365) {
+        return json(res, 400, { error: { message: "`days` must be a whole number between 1 and 365.", type: "invalid_request_error" } })
+      }
+      if (typeof opts.usage === "object") return json(res, 200, opts.usage)
+      const full = mockUsage(days)
+      if (opts.usage === "window") delete full.by_day
+      return json(res, 200, full)
     }
 
     if (method === "DELETE" && path.startsWith("/api/v1/keys/")) {

@@ -15,6 +15,9 @@ import * as DeviceFlow from "./device-flow"
 import * as Doctor from "./doctor"
 import * as MissingKey from "./missing-key"
 
+// rafikicode usage lives in its own file; registered with the others in src/index.ts.
+export { UsageCommand } from "./usage"
+
 function tryFlow<A>(what: Promise<A>) {
   return Effect.tryPromise({
     try: () => what,

@@ -19,9 +19,13 @@ export const GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code"
 export const TIERS = ["fast", "pro", "max"] as const
 export type Tier = (typeof TIERS)[number]
 
-// Every gateway call names the surface it comes from (contract, Gateway usage).
+// Every gateway call names the surface it comes from (contract, Gateway usage),
+// the tier it is made on and whether it is an escalation: 0 for a first
+// attempt, otherwise the attempt number.
 export const HEADER = {
   surface: "X-Rafiki-Surface",
+  tier: "X-Rafiki-Tier",
+  escalation: "X-Rafiki-Escalation",
 } as const
 
 export const PATH = {
@@ -30,6 +34,8 @@ export const PATH = {
   deviceRefresh: "/api/v1/device/refresh",
   verify: "/device",
   me: "/api/v1/me",
+  usage: "/api/v1/usage",
+  usagePage: "/usage",
   keys: "/api/v1/keys",
   keysPage: "/keys",
 } as const

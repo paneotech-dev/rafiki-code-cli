@@ -1,7 +1,7 @@
 import type { AssistantMessage } from "@opencode-ai/sdk/v2"
 import type { TuiPlugin, TuiPluginApi } from "@opencode-ai/plugin/tui"
 import type { BuiltinTuiPlugin } from "../builtins"
-import { createMemo } from "solid-js"
+import { createMemo, Show } from "solid-js"
 
 const id = "internal:sidebar-context"
 
@@ -41,7 +41,10 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
       </text>
       <text fg={theme().textMuted}>{state().tokens.toLocaleString()} tokens</text>
       <text fg={theme().textMuted}>{state().percent ?? 0}% used</text>
-      <text fg={theme().textMuted}>{money.format(cost())} spent</text>
+      {/* The Rafiki tiers carry no price here, so this would always read $0.00; the cost block below it has the estimate. */}
+      <Show when={cost() > 0}>
+        <text fg={theme().textMuted}>{money.format(cost())} spent</text>
+      </Show>
     </box>
   )
 }
