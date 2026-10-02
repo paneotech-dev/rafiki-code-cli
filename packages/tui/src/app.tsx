@@ -5,6 +5,7 @@ import { Deferred, Effect } from "effect"
 import { Global } from "@opencode-ai/core/global"
 import { Flag } from "@opencode-ai/core/flag/flag"
 import { Brand } from "@opencode-ai/core/brand/brand"
+import * as RafikiCost from "@opencode-ai/core/brand/cost"
 import { InstallationVersion } from "@opencode-ai/core/installation/version"
 import { ClipboardProvider, useClipboard } from "./context/clipboard"
 import { ExitProvider, useExit } from "./context/exit"
@@ -359,7 +360,7 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
     win32FlushInputBuffer()
     if (result.reason !== undefined)
       process.stderr.write((cliErrorMessage(result.reason) ?? errorFormat(result.reason)) + "\n")
-    if (result.epilogue) process.stdout.write(result.epilogue + "\n")
+    if (result.epilogue) process.stdout.write(result.epilogue + "\n" + RafikiCost.epilogue())
   })
 })
 
