@@ -74,3 +74,16 @@ No behaviour changes, so `CHANGELOG.md` gets no line.
 That a release run on this line ends `success`. Only a pushed tag proves it.
 The check to make on that run is the one this branch writes into
 `docs/install.md`.
+
+## Results
+
+- `node docs/check.mjs`: passed, 28 files.
+- Both workflow files parse as YAML. For a tag `v0.2.0` the group of
+  `release.yml` is `release-refs/tags/v0.2.0` and the group of
+  `install-matrix.yml` is `install-matrix-release-refs/tags/v0.2.0`. No job in
+  either file declares a group.
+- `actionlint` is not on the machine and was not run.
+- The second pair of commands in the new section was run against 0.1.9: the
+  installer address and `releases/download/v0.1.9/install.sh` gave the same
+  checksum. The `gh` commands were not run: `gh` is not on the machine. The
+  public API addresses given beside them were, and returned the failed run.
