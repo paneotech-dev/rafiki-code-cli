@@ -32,8 +32,14 @@ import { PluginCommand } from "./cli/cmd/plug"
 import { Heap } from "./cli/heap"
 import { Brand } from "@opencode-ai/core/brand/brand"
 import * as Startup from "./rafiki/startup"
-import { DoctorCommand, LoginCommand, LogoutCommand, ProvidersCommand, TrustCommand, WhoamiCommand, markHeadless, refuseMissingKey, refuseUnsafeCredential } from "./rafiki/cmd"
+import { DoctorCommand, LicensesCommand, LoginCommand, LogoutCommand, ProvidersCommand, TrustCommand, WhoamiCommand, markHeadless, refuseMissingKey, refuseUnsafeCredential } from "./rafiki/cmd"
 import * as ExecTmp from "./rafiki/exec-tmp"
+import * as Autoupdate from "./rafiki/autoupdate"
+
+// An update downloaded and verified by an earlier session is put in place here,
+// before anything is parsed, and the new binary takes over with the same
+// arguments. One existsSync when nothing is staged (rafiki/autoupdate.ts).
+Autoupdate.applyStaged()
 
 // The terminal interface unpacks a native library into the temporary directory
 // and loads it from there, so a temporary directory mounted noexec stops this
@@ -106,6 +112,7 @@ const cli = yargs(args)
   .command(LogoutCommand)
   .command(WhoamiCommand)
   .command(DoctorCommand)
+  .command(LicensesCommand)
   .command(TrustCommand)
   .command(ProvidersCommand)
   .command(AgentCommand)

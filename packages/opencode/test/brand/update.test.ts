@@ -20,6 +20,9 @@ let work: string
 let archive: Uint8Array
 let goodSums: string
 let tampered = false
+// What the release page redirect names, and whether the page answers at all.
+let PAGE_VERSION = VERSION
+let pageAnswers = true
 // Paths the mock release server was asked for, to prove a refusal fetched nothing.
 const requests: string[] = []
 
@@ -50,6 +53,11 @@ beforeAll(async () => {
       }
       if (url.pathname === "/loop/releases/latest") {
         return new Response(null, { status: 302, headers: { location: "/loop/releases/latest" } })
+      }
+      // The release page: /latest redirects to the newest tag.
+      if (url.pathname === "/dl/latest") {
+        if (!pageAnswers) return new Response("rate limited", { status: 429 })
+        return new Response(null, { status: 302, headers: { location: `/dl/tag/v${PAGE_VERSION}` } })
       }
       if (url.pathname === `/dl/download/v${VERSION}/${Brand.release.checksums}`) {
         return new Response(goodSums)
@@ -146,8 +154,30 @@ describe("RafikiUpdate", () => {
     expect(sums.size).toBe(2)
   })
 
-  test("reads the latest version from the release API", async () => {
+  test("reads the latest version from the release page redirect, without the API", async () => {
+    const before = requests.length
     expect(await RafikiUpdate.latest()).toBe(VERSION)
+    expect(requests.slice(before)).toEqual(["/dl/latest"])
+  })
+
+  test("falls back to the release API when the page gives no version", async () => {
+    pageAnswers = false
+    const before = requests.length
+    try {
+      expect(await RafikiUpdate.latest()).toBe(VERSION)
+    } finally {
+      pageAnswers = true
+    }
+    expect(requests.slice(before)).toEqual(["/dl/latest", "/api/releases/latest"])
+  })
+
+  test("takes only a version from the redirect, whatever else it points at", async () => {
+    PAGE_VERSION = "../../evil"
+    try {
+      expect(await RafikiUpdate.latestFromPage()).toBeUndefined()
+    } finally {
+      PAGE_VERSION = VERSION
+    }
   })
 
   test("downloads, verifies, and replaces the binary atomically", async () => {
@@ -201,8 +231,25 @@ describe("RafikiUpdate", () => {
     ).rejects.toThrow(/Could not download SHA256SUMS/)
   })
 
-  test("automatic updates stay off by default", () => {
-    expect(Brand.config().autoupdate).toBe(false)
+  // Run from source, process.execPath is the runtime every other program on
+  // the machine uses, so an update without a named target must stop before it
+  // asks the network anything. The fetch here cannot return an archive, so this
+  // test cannot replace anything even if the refusal were removed.
+  test("without a named target, a run from source refuses before any request", async () => {
+    let calls = 0
+    const run = RafikiUpdate.apply({
+      version: VERSION,
+      fetch: (async () => {
+        calls++
+        throw new Error("no network in this test")
+      }) as unknown as typeof fetch,
+    })
+    await expect(run).rejects.toThrow(/run from source/)
+    expect(calls).toBe(0)
+  })
+
+  test("automatic updates are on by default", () => {
+    expect(Brand.config().autoupdate).toBe(true)
   })
 })
 
@@ -265,14 +312,15 @@ describe("rafikicode update, the command", () => {
     const result = await update(
       {
         [Brand.env.releaseAPI]: `http://127.0.0.1:${server.port}/to-http`,
-        [Brand.env.releaseBase]: `http://127.0.0.1:${server.port}/dl`,
+        // A release page that names no version, so the lookup goes on to the API.
+        [Brand.env.releaseBase]: `http://127.0.0.1:${server.port}/nopage`,
       },
       ["--method", "curl"],
     )
     expect(result.exitCode).not.toBe(0)
     expect(result.all).toContain("Refused the redirect")
     expect(result.all).toContain("releases are downloaded over https only")
-    expect(requests.slice(before)).toEqual(["/to-http/releases/latest"])
+    expect(requests.slice(before)).toEqual(["/nopage/latest", "/to-http/releases/latest"])
   }, 60_000)
 
   test("an http release base is refused the same way", async () => {
@@ -324,13 +372,15 @@ describe("rafikicode update, the command", () => {
 
   test("update follows redirects itself and refuses one that leaves https", async () => {
     const saved = process.env[Brand.env.releaseAPI]
+    // This is about the API route, so the release page names no version here.
+    pageAnswers = false
     try {
       process.env[Brand.env.releaseAPI] = `http://127.0.0.1:${server.port}/to-same`
       expect(await RafikiUpdate.latest()).toBe(VERSION)
       const before = requests.length
       process.env[Brand.env.releaseAPI] = `http://127.0.0.1:${server.port}/to-http`
       await expect(RafikiUpdate.latest()).rejects.toThrow(/Refused the redirect .* to http:\/\/releases\.example\.com\/api\/releases\/latest: releases are downloaded over https only/)
-      expect(requests.slice(before)).toEqual(["/to-http/releases/latest"])
+      expect(requests.slice(before)).toEqual(["/dl/latest", "/to-http/releases/latest"])
       process.env[Brand.env.releaseAPI] = `http://127.0.0.1:${server.port}/loop`
       await expect(RafikiUpdate.latest()).rejects.toThrow(`More than ${RafikiUpdate.MAX_REDIRECTS} redirects`)
       // A redirect to another https host is followed; the hop is checked before the request.
@@ -344,8 +394,9 @@ describe("rafikicode update, the command", () => {
       }) as unknown as typeof fetch
       process.env[Brand.env.releaseAPI] = "https://api.example.com"
       expect(await RafikiUpdate.latest({ fetch: fake })).toBe("1.2.3")
-      expect(hops).toEqual(["https://api.example.com/releases/latest", "https://objects.example.com/latest"])
+      expect(hops.slice(-2)).toEqual(["https://api.example.com/releases/latest", "https://objects.example.com/latest"])
     } finally {
+      pageAnswers = true
       if (saved === undefined) delete process.env[Brand.env.releaseAPI]
       else process.env[Brand.env.releaseAPI] = saved
     }

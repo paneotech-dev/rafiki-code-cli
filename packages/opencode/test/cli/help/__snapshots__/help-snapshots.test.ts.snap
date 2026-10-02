@@ -184,7 +184,8 @@ Options:
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
-  -m, --method      installation method to use  [string] [choices: "curl", "brew", "choco", "scoop"]"
+  -m, --method      installation method to use
+                [string] [choices: "curl", "npm", "pnpm", "bun", "brew", "winget", "choco", "scoop"]"
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode uninstall --help 1`] = `
@@ -320,6 +321,27 @@ fetch and checkout a GitHub PR branch, then run rafikicode
 
 Positionals:
   number  PR number to checkout                                                  [number] [required]
+
+Options:
+  -h, --help        show help                                                              [boolean]
+  -v, --version     show version number                                                    [boolean]
+      --print-logs  print logs to stderr                                                   [boolean]
+      --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
+      --pure        run without external plugins                                           [boolean]"
+`;
+
+exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode gh --help 1`] = `
+"rafikicode gh
+
+work with GitHub through your own git and gh
+
+Commands:
+  rafikicode gh status         show the git repository and GitHub CLI status
+  rafikicode gh branch <name>  create or switch to a branch
+  rafikicode gh commit         stage the work tree and commit
+  rafikicode gh push           push the current branch and set its upstream
+  rafikicode gh pr             open and comment on pull requests
+  rafikicode gh issue          read and comment on issues
 
 Options:
   -h, --help        show help                                                              [boolean]
@@ -567,27 +589,6 @@ exports[`opencode CLI help-text snapshots every documented command emits stable 
 "rafikicode db path
 
 print the database path
-
-Options:
-  -h, --help        show help                                                              [boolean]
-  -v, --version     show version number                                                    [boolean]
-      --print-logs  print logs to stderr                                                   [boolean]
-      --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
-      --pure        run without external plugins                                           [boolean]"
-`;
-
-exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode gh --help 1`] = `
-"rafikicode gh
-
-work with GitHub through your own git and gh
-
-Commands:
-  rafikicode gh status         show the git repository and GitHub CLI status
-  rafikicode gh branch <name>  create or switch to a branch
-  rafikicode gh commit         stage the work tree and commit
-  rafikicode gh push           push the current branch and set its upstream
-  rafikicode gh pr             open and comment on pull requests
-  rafikicode gh issue          read and comment on issues
 
 Options:
   -h, --help        show help                                                              [boolean]

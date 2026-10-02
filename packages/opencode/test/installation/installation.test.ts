@@ -1,7 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect } from "bun:test"
 import fs from "fs/promises"
 import { Brand } from "@opencode-ai/core/brand/brand"
-import { RafikiUpdate } from "../../src/rafiki/update"
 import { makeGlobalNode } from "@opencode-ai/core/effect/app-node"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { httpClient } from "@opencode-ai/core/effect/app-node-platform"
@@ -60,7 +59,14 @@ function jsonResponse(body: unknown) {
 // each test answers the brand's release URLs, and any other request fails the
 // test instead of reaching the network.
 const RELEASE_API = "https://api.github.com/repos/paneotech-dev/rafiki-code-cli"
-const RELEASE_DOWNLOAD = "https://github.com/paneotech-dev/rafiki-code-cli/releases/download"
+const RELEASE_PAGE = "https://github.com/paneotech-dev/rafiki-code-cli/releases"
+const RELEASE_DOWNLOAD = `${RELEASE_PAGE}/download`
+// The release page answers /latest with a redirect to the newest tag. The
+// updater reads that first and asks the rate limited API only when it gets no
+// version from it.
+function pageRedirect(version: string) {
+  return new Response(null, { status: 302, headers: { location: `${RELEASE_PAGE}/tag/v${version}` } })
+}
 const RELEASE_ENV = [Brand.env.releaseAPI, Brand.env.releaseBase, Brand.env.allowHttpLoopback]
 let release: (url: string) => Response | undefined = () => undefined
 const fetched: string[] = []
@@ -120,23 +126,26 @@ function testLayer(
 describe("installation", () => {
   describe("latest", () => {
     const githubHttp: string[] = []
-    testEffect(testLayer(noHttp(githubHttp))).effect("reads release version from GitHub releases", () =>
+    testEffect(testLayer(noHttp(githubHttp))).effect("reads the release version from the release page redirect", () =>
       Effect.gen(function* () {
-        release = (url) => (url === `${RELEASE_API}/releases/latest` ? jsonResponse({ tag_name: "v1.2.3" }) : undefined)
+        release = (url) => (url === `${RELEASE_PAGE}/latest` ? pageRedirect("1.2.3") : undefined)
         const result = yield* Installation.use.latest("unknown")
         expect(result).toBe("1.2.3")
-        expect(fetched).toEqual([`${RELEASE_API}/releases/latest`])
+        // The API is not asked at all when the page answers.
+        expect(fetched).toEqual([`${RELEASE_PAGE}/latest`])
         expect(githubHttp).toEqual([])
       }),
     )
 
-    testEffect(testLayer(noHttp(githubHttp))).effect("strips v prefix from GitHub release tag", () =>
+    testEffect(testLayer(noHttp(githubHttp))).effect("falls back to the release API when the page gives no version", () =>
       Effect.gen(function* () {
-        release = (url) =>
-          url === `${RELEASE_API}/releases/latest` ? jsonResponse({ tag_name: "v4.0.0-beta.1" }) : undefined
+        release = (url) => {
+          if (url === `${RELEASE_PAGE}/latest`) return new Response("", { status: 200 })
+          return url === `${RELEASE_API}/releases/latest` ? jsonResponse({ tag_name: "v4.0.0-beta.1" }) : undefined
+        }
         const result = yield* Installation.use.latest("curl")
         expect(result).toBe("4.0.0-beta.1")
-        expect(fetched).toEqual([`${RELEASE_API}/releases/latest`])
+        expect(fetched).toEqual([`${RELEASE_PAGE}/latest`, `${RELEASE_API}/releases/latest`])
         expect(githubHttp).toEqual([])
       }),
     )
@@ -184,15 +193,11 @@ describe("installation", () => {
     )
 
     /*
-     * brew, choco and scoop are not channels this product publishes through.
-     * These tests used to assert that `latest` read the upstream project's
-     * Homebrew formula, Chocolatey feed and Scoop manifest, which are packages
-     * for someone else's software. It now answers from this product's own
-     * release feed like any other method, and touches none of those three: no
-     * request to their feeds and no brew, choco or scoop process. The refusal
-     * belongs to upgrade(), tested below.
+     * Whatever the install method outside npm, the newest version is read from
+     * this product's own release page: no request to a Homebrew, Chocolatey or
+     * Scoop feed, and no brew, choco, scoop or winget process.
      */
-    for (const method of ["brew", "choco", "scoop"] as const) {
+    for (const method of ["brew", "winget", "choco", "scoop"] as const) {
       const http: string[] = []
       const spawned: string[] = []
       testEffect(
@@ -202,10 +207,10 @@ describe("installation", () => {
         }),
       ).effect(`reads this product's own release for ${method} and touches no package manager`, () =>
         Effect.gen(function* () {
-          release = (url) => (url === `${RELEASE_API}/releases/latest` ? jsonResponse({ tag_name: "v1.2.3" }) : undefined)
+          release = (url) => (url === `${RELEASE_PAGE}/latest` ? pageRedirect("1.2.3") : undefined)
           const result = yield* Installation.use.latest(method)
           expect(result).toBe("1.2.3")
-          expect(fetched).toEqual([`${RELEASE_API}/releases/latest`])
+          expect(fetched).toEqual([`${RELEASE_PAGE}/latest`])
           expect(http).toEqual([])
           expect(spawned).toEqual([])
         }),
@@ -215,12 +220,12 @@ describe("installation", () => {
 
   describe("upgrade", () => {
     /*
-     * The refusal. brew, choco and scoop commands would be built from the
-     * upstream project's package name, so upgrading through them would act on
-     * different software. It stops before running anything, and the message
-     * names the installer to use instead.
+     * The refusal. choco and scoop are not channels of this product, and a
+     * package of its name there belongs to the upstream project, so upgrading
+     * through them would act on different software. It stops before running
+     * anything, and the message names where the product is published.
      */
-    for (const method of ["brew", "choco", "scoop"] as const) {
+    for (const method of ["choco", "scoop"] as const) {
       const spawned: string[] = []
       testEffect(
         testLayer(
@@ -241,6 +246,51 @@ describe("installation", () => {
       )
     }
 
+    /*
+     * brew and winget are channels of this product, and each command names this
+     * product's own package: the formula of its tap by full name, and its
+     * winget identifier with --exact. A bare product name would match a
+     * package of the same name published by someone else.
+     */
+    const brewCommands: string[][] = []
+    testEffect(
+      testLayer(
+        () => jsonResponse({}),
+        (cmd, args) => {
+          brewCommands.push([cmd, ...args])
+          return ""
+        },
+      ),
+    ).effect("upgrades through brew by the full name of this product's formula", () =>
+      Effect.gen(function* () {
+        yield* Installation.use.upgrade("brew", "9.9.9")
+        const brew = brewCommands.filter((cmd) => cmd[0] === "brew")
+        expect(brew).toEqual([
+          ["brew", "tap", "paneotech-dev/tap"],
+          ["brew", "update"],
+          ["brew", "upgrade", "paneotech-dev/tap/rafikicode"],
+        ])
+      }),
+    )
+
+    const wingetCommands: string[][] = []
+    testEffect(
+      testLayer(
+        () => jsonResponse({}),
+        (cmd, args) => {
+          wingetCommands.push([cmd, ...args])
+          return ""
+        },
+      ),
+    ).effect("upgrades through winget by this product's exact identifier", () =>
+      Effect.gen(function* () {
+        yield* Installation.use.upgrade("winget", "9.9.9")
+        const winget = wingetCommands.filter((cmd) => cmd[0] === "winget")
+        expect(winget).toHaveLength(1)
+        expect(winget[0].slice(0, 7)).toEqual(["winget", "upgrade", "--id", "PaneoTech.RafikiCode", "--exact", "--version", "9.9.9"])
+      }),
+    )
+
     testEffect(
       testLayer(
         () => jsonResponse({}),
@@ -260,48 +310,33 @@ describe("installation", () => {
       }),
     )
 
-    // The curl method downloads the release archive and checks it against
-    // SHA256SUMS (src/rafiki/update.ts). Both tests fail before anything is
-    // extracted, so the running binary is never replaced.
+    // The curl method downloads the release archive, checks it against
+    // SHA256SUMS and replaces process.execPath (src/rafiki/update.ts). This
+    // test process is a run from source, where process.execPath is the runtime
+    // itself, so the upgrade must stop as a typed error before it requests or
+    // runs anything. The download and checksum rules are tested against a named
+    // target file in test/brand/update.test.ts.
     const curlHttp: string[] = []
-    testEffect(testLayer(noHttp(curlHttp))).effect("returns sanitized typed errors when the release download fails", () =>
-      Effect.gen(function* () {
-        const sums = `${RELEASE_DOWNLOAD}/v9.9.9/SHA256SUMS`
-        release = (url) => (url === sums ? new Response("not found token=secret", { status: 404 }) : undefined)
-        const error = yield* Effect.flip(Installation.use.upgrade("curl", "9.9.9"))
-        expect(error).toBeInstanceOf(Installation.UpgradeFailedError)
-        expect(error.stderr).toBe(`Upgrade failed for curl. Could not download SHA256SUMS (404) from ${sums}`)
-        expect(error.message).toBe(error.stderr)
-        expect(error.stderr).not.toContain("secret")
-        expect(fetched).toEqual([sums])
-        expect(curlHttp).toEqual([])
-      }),
-    )
-
     const spawned: string[] = []
     testEffect(
       testLayer(noHttp(curlHttp), (cmd) => {
         spawned.push(cmd)
         return { code: 1, stderr: "should not run anything during curl upgrade" }
       }),
-    ).effect("verifies the release checksum and never pipes an install script into a shell during curl upgrade", () =>
+    ).effect("a curl upgrade from a source run is refused before any request, and nothing is piped into a shell", () =>
       Effect.gen(function* () {
-        const variant = yield* Effect.promise(() => RafikiUpdate.detectVariant(process.platform, process.arch))
-        const asset = RafikiUpdate.assetName(process.platform, process.arch, variant)
-        const sums = `${RELEASE_DOWNLOAD}/v9.9.9/SHA256SUMS`
-        release = (url) => {
-          if (url === sums) return new Response(`${"0".repeat(64)}  ${asset}\n`)
-          if (url === `${RELEASE_DOWNLOAD}/v9.9.9/${asset}`) return new Response("#!/bin/sh\necho token=secret\n")
-          return undefined
-        }
+        const before = yield* Effect.promise(() => fs.stat(process.execPath))
+        release = () => new Response("should not be requested", { status: 500 })
         const error = yield* Effect.flip(Installation.use.upgrade("curl", "9.9.9"))
         expect(error).toBeInstanceOf(Installation.UpgradeFailedError)
-        expect(error.stderr).toStartWith(`Upgrade failed for curl. Checksum mismatch for ${asset}: expected ${"0".repeat(64)}`)
+        expect(error.stderr).toStartWith("Upgrade failed for curl. This is a run from source")
         expect(error.stderr).toEndWith("Nothing was installed.")
-        expect(error.stderr).not.toContain("secret")
-        expect(fetched).toEqual([sums, `${RELEASE_DOWNLOAD}/v9.9.9/${asset}`])
+        expect(error.message).toBe(error.stderr)
+        expect(fetched).toEqual([])
         expect(curlHttp).toEqual([])
         expect(spawned).toEqual([])
+        const after = yield* Effect.promise(() => fs.stat(process.execPath))
+        expect(after.size).toBe(before.size)
         expect(yield* Effect.promise(() => fs.access(`${process.execPath}.new`).then(() => true, () => false))).toBe(false)
       }),
     )

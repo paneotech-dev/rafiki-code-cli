@@ -4,12 +4,14 @@
 // the running binary. Every URL and name comes from the brand module, and every
 // external input can be overridden so tests run against a local mock server.
 import fs from "fs/promises"
+import fsSync from "fs"
 import path from "path"
 import os from "os"
 import { createHash } from "crypto"
 import { spawn } from "child_process"
 import { Brand } from "@opencode-ai/core/brand/brand"
 import * as Contract from "./contract"
+import { compiled } from "./exec-tmp"
 
 export namespace RafikiUpdate {
   export interface Options {
@@ -62,15 +64,36 @@ export namespace RafikiUpdate {
     throw new UpdateError(`More than ${MAX_REDIRECTS} redirects from ${url}. Nothing was installed.`)
   }
 
-  // Latest release tag from the releases API, without the leading v.
+  // Latest release version, without the leading v.
+  //
+  // Asked of the release page first: <base>/latest answers with a redirect to
+  // the newest published tag, is not rate limited, and never names a draft or a
+  // pre-release. The releases API is the fallback, not the first choice: it
+  // allows 60 unauthenticated requests an hour per IP address, shared by
+  // everyone behind the same address, and a daily check from every install
+  // must not depend on that allowance (the installers learned this in 0.1.9).
   export async function latest(opts: Pick<Options, "fetch"> = {}): Promise<string> {
     const f = opts.fetch ?? fetch
+    const fromPage = await latestFromPage(f).catch(() => undefined)
+    if (fromPage) return fromPage
     const url = `${Brand.release.api()}/releases/latest`
     const res = await get(f, url, { Accept: "application/vnd.github+json", "User-Agent": Brand.name })
     if (!res.ok) throw new UpdateError(`Could not read the latest release (${res.status}) from ${url}`)
     const data = (await res.json()) as { tag_name?: string }
     if (!data.tag_name) throw new UpdateError("The latest release has no tag name")
     return data.tag_name.replace(/^v/, "")
+  }
+
+  // The version in the redirect <base>/latest answers with, or undefined when
+  // it does not answer with one. The redirect is read, not followed: only its
+  // target's last path segment is used, and only when it is a version.
+  export async function latestFromPage(f: typeof fetch = fetch): Promise<string | undefined> {
+    const url = `${Brand.release.base()}/latest`
+    const res = await f(url, { headers: { "User-Agent": Brand.name }, redirect: "manual" })
+    const location = res.status >= 300 && res.status < 400 ? res.headers.get("location") : null
+    if (!location) return undefined
+    const match = /\/tag\/v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/.exec(new URL(location, url).pathname)
+    return match?.[1]
   }
 
   // Asset file name for this machine, matching what script/build.ts produces.
@@ -161,16 +184,26 @@ export namespace RafikiUpdate {
   // Put the new binary in place of the old one without a window where the
   // path is missing: write next to the target, then rename over it. Windows
   // cannot replace a running executable, so the old file is moved aside first.
-  export async function replace(source: string, target: string, platform: NodeJS.Platform) {
+  // Synchronous because the staged update is applied before anything else in
+  // the process has started (rafiki/autoupdate.ts).
+  export function replaceSync(source: string, target: string, platform: NodeJS.Platform) {
     const staged = `${target}.new`
-    await fs.copyFile(source, staged)
-    if (platform !== "win32") await fs.chmod(staged, 0o755)
+    fsSync.copyFileSync(source, staged)
+    if (platform !== "win32") fsSync.chmodSync(staged, 0o755)
     if (platform === "win32") {
       const old = `${target}.old`
-      await fs.rm(old, { force: true })
-      await fs.rename(target, old).catch(() => {})
+      fsSync.rmSync(old, { force: true })
+      try {
+        fsSync.renameSync(target, old)
+      } catch {
+        // Nothing at the target yet, which the rename below handles.
+      }
     }
-    await fs.rename(staged, target)
+    fsSync.renameSync(staged, target)
+  }
+
+  export async function replace(source: string, target: string, platform: NodeJS.Platform) {
+    replaceSync(source, target, platform)
   }
 
   // Called first by the update command, before the install method is detected
@@ -188,6 +221,15 @@ export namespace RafikiUpdate {
   export async function apply(opts: Options = {}): Promise<Result> {
     const problem = Brand.release.overrideProblem()
     if (problem) throw new UpdateError(`${problem} Nothing was installed.`)
+    // Run from source, process.execPath is the JavaScript runtime, and putting
+    // a release binary there would overwrite the runtime for everything else on
+    // the machine. Only a compiled binary may replace itself; a caller that
+    // names the file to replace has said what it means.
+    if (!opts.execPath && !compiled()) {
+      throw new UpdateError(
+        `This is a run from source, so ${process.execPath} is the runtime and not ${Brand.name}. Nothing was installed.`,
+      )
+    }
     const platform = opts.platform ?? process.platform
     const arch = opts.arch ?? process.arch
     const execPath = opts.execPath ?? process.execPath

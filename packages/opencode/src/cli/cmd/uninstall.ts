@@ -142,6 +142,8 @@ async function showRemovalSummary(targets: RemovalTargets, method: Installation.
       pnpm: `pnpm uninstall -g ${Brand.npm.meta}`,
       bun: `bun remove -g ${Brand.npm.meta}`,
       yarn: `yarn global remove ${Brand.npm.meta}`,
+      brew: `brew uninstall ${Brand.brew.formula}`,
+      winget: `winget uninstall --id ${Brand.winget.id} --exact`,
     }
     if (cmds[method]) prompts.log.info(`  ✓ Package: ${cmds[method]}`)
   }
@@ -215,16 +217,19 @@ async function executeUninstall(method: Installation.Method, targets: RemovalTar
 
   if (method !== "curl" && method !== "unknown") {
     /*
-     * Only the package managers this product is published through. Running
-     * `brew uninstall` or `choco uninstall` here would remove the upstream
-     * project's package of the same name, which is someone else's software and
-     * was never what the user installed.
+     * Only the package managers this product is published through, and only
+     * by this product's own identifiers: the formula of its tap by full name
+     * and its winget id. A bare `brew uninstall <name>` or `choco uninstall`
+     * here could remove the upstream project's package of the same name,
+     * which is someone else's software and was never what the user installed.
      */
     const cmds: Record<string, string[]> = {
       npm: ["npm", "uninstall", "-g", Brand.npm.meta],
       pnpm: ["pnpm", "uninstall", "-g", Brand.npm.meta],
       bun: ["bun", "remove", "-g", Brand.npm.meta],
       yarn: ["yarn", "global", "remove", Brand.npm.meta],
+      brew: ["brew", "uninstall", Brand.brew.formula],
+      winget: ["winget", "uninstall", "--id", Brand.winget.id, "--exact"],
     }
 
     const cmd = cmds[method]
