@@ -28,8 +28,12 @@ beforeEach(async () => {
   git("config", "commit.gpgsign", "false")
   git("commit", "--allow-empty", "-m", "root")
   model = await createScriptedModel()
-  // No cuts here: the proxy is used for its record of what was sent.
-  proxy = await createFaultProxy(model.url, { ignore: (request) => isTitleRequest(request.body) })
+  // No cuts here: the proxy is used for its record of what was sent. Only the
+  // model requests of the task are counted: `run` also reads the price list
+  // from the gateway when it starts (GET /v1/model/info, src/rafiki/cost.ts).
+  proxy = await createFaultProxy(model.url, {
+    ignore: (request) => isTitleRequest(request.body) || !request.path.startsWith("/v1/chat/completions"),
+  })
 })
 
 afterEach(async () => {
