@@ -55,7 +55,7 @@ export function cliErrorMessage(input: unknown): string | undefined {
     return [
       `Failed to load remote config${remote ? ` from ${remote}` : ""}: the server returned a login page instead of JSON.`,
       "Authentication is missing or has expired (the endpoint is likely behind an SSO or identity-aware proxy).",
-      ...(url ? [`Run \`opencode auth login ${url}\` to re-authenticate.`] : []),
+      ...(url ? [`Provide credentials for ${url}, or point \`config\` at a URL that needs none.`] : []),
     ].join("\n")
   }
 
