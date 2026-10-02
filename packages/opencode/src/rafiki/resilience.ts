@@ -41,7 +41,16 @@ export function markAnswered(value = true) {
   answered = value
 }
 
-export function observe<A, E, R>(stream: Stream.Stream<A, E, R>): Stream.Stream<A, E, R> {
+// The model stream of one task step: the request carries the step's
+// idempotency key, and the first event of the response marks the gateway as
+// having answered.
+export function request<I extends Stamped, A, E, R>(
+  llm: { stream: (input: I) => Stream.Stream<A, E, R> },
+  input: I,
+  stepID: string,
+): Stream.Stream<A, E, R> {
+  const stream = llm.stream(stamp(input, stepID))
+  if (!RafikiGateway.isRafikiProvider(input.model.providerID)) return stream
   return stream.pipe(
     Stream.tap(() =>
       Effect.sync(() => {
@@ -52,6 +61,7 @@ export function observe<A, E, R>(stream: Stream.Stream<A, E, R>): Stream.Stream<
 }
 
 type SessionError = { name?: string; data?: Record<string, unknown> }
+type Stamped = { model: { providerID: string; headers?: Record<string, string> } }
 
 // A failure that never produced an HTTP answer: refused, reset, timed out or
 // cut in the middle of the body. An answer with a status (429, 5xx) is not one.
@@ -146,10 +156,7 @@ export function wait(providerID: string, error: unknown, meta: Attempt, upstream
 // One key per task step. The step id is the id of the stored message the step
 // writes into: an identical request sent again after a failure repeats it, the
 // next step and a continuation after a cut stream get a new one.
-export function stamp<T extends { model: { providerID: string; headers?: Record<string, string> } }>(
-  input: T,
-  stepID: string,
-): T {
+export function stamp<T extends Stamped>(input: T, stepID: string): T {
   if (!RafikiGateway.isRafikiProvider(input.model.providerID)) return input
   return {
     ...input,

@@ -42,7 +42,7 @@ import { SessionProcessor } from "../../src/session/processor"
 import { SessionPrompt } from "../../src/session/prompt"
 import { SessionRevert } from "../../src/session/revert"
 import { SessionRunState } from "../../src/session/run-state"
-import type { SessionID } from "../../src/session/schema"
+import { MessageID, PartID, type SessionID } from "../../src/session/schema"
 import { SessionStatus } from "../../src/session/status"
 import { SessionSummary } from "../../src/session/summary"
 import { SystemPrompt } from "../../src/session/system"
@@ -466,7 +466,7 @@ function task(messages: Message[]) {
 
 const SIZE = events(task([])).join("").length
 
-for (const seed of [11, 23, 37, 41, 59, 73]) {
+for (const seed of [11, 23, 37, 41, 59, 97]) {
   it.instance(
     `random cuts over a whole task leave it complete with the tool run once (seed ${seed})`,
     () =>
@@ -507,3 +507,110 @@ for (const seed of [11, 23, 37, 41, 59, 73]) {
     120_000,
   )
 }
+
+// What a process killed in the middle of a tool call leaves in the store: a
+// message with no completion time, a step that started and never ended, and a
+// tool call still marked as running.
+const leaveOpenStep = (sessionID: SessionID, snapshot: string | undefined) =>
+  Effect.gen(function* () {
+    const sessions = yield* Session.Service
+    const user = yield* sessions.updateMessage({
+      id: MessageID.ascending(),
+      role: "user",
+      sessionID,
+      agent: "build",
+      model: ref,
+      time: { created: Date.now() },
+    })
+    yield* sessions.updatePart({ id: PartID.ascending(), messageID: user.id, sessionID, type: "text", text: "change the notes" })
+    const dead: SessionV1.Assistant = {
+      id: MessageID.ascending(),
+      role: "assistant",
+      parentID: user.id,
+      sessionID,
+      mode: "build",
+      agent: "build",
+      cost: 0,
+      path: { cwd: "/tmp", root: "/tmp" },
+      tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+      modelID: ref.modelID,
+      providerID: ref.providerID,
+      time: { created: Date.now() },
+    }
+    yield* sessions.updateMessage(dead)
+    yield* sessions.updatePart({ id: PartID.ascending(), messageID: dead.id, sessionID, type: "step-start", snapshot })
+    yield* sessions.updatePart({
+      id: PartID.ascending(),
+      messageID: dead.id,
+      sessionID,
+      type: "tool",
+      tool: "bash",
+      callID: "call_dead",
+      state: { status: "running", input: { command: "echo after > notes.txt; sleep 60" }, time: { start: Date.now() } },
+    })
+    return { user, dead }
+  })
+
+it.instance(
+  "undo after a crash restores the files of the step that never finished",
+  () =>
+    Effect.gen(function* () {
+      const { directory } = yield* TestInstance
+      const { chat } = yield* boot()
+      const snapshot = yield* Snapshot.Service
+      const revert = yield* SessionRevert.Service
+      const file = path.join(directory, "notes.txt")
+      yield* Effect.promise(() => fs.writeFile(file, "before\n"))
+      const hash = yield* snapshot.track()
+      expect(hash).toBeTruthy()
+      const { user, dead } = yield* leaveOpenStep(chat.id, hash)
+      yield* Effect.promise(() => fs.writeFile(file, "after\n"))
+      RafikiResume.forgetRepaired()
+
+      yield* revert.revert({ sessionID: chat.id, messageID: user.id })
+
+      expect(yield* Effect.promise(() => fs.readFile(file, "utf8"))).toBe("before\n")
+      const repaired = (yield* stored(chat.id)).find((message) => message.info.id === dead.id)!
+      expect(repaired.info.role === "assistant" && repaired.info.error?.name).toBe("MessageAbortedError")
+      expect(repaired.info.role === "assistant" && repaired.info.time.completed).toBeTruthy()
+      const call = repaired.parts.find((part): part is SessionV1.ToolPart => part.type === "tool")!
+      expect(call.state.status).toBe("error")
+      expect(call.state.status === "error" && call.state.metadata?.interrupted).toBe(true)
+      const patch = repaired.parts.find((part) => part.type === "patch")
+      expect(patch?.type === "patch" && patch.files.some((item) => item.endsWith("notes.txt"))).toBe(true)
+    }),
+  { git: true },
+  60_000,
+)
+
+it.instance(
+  "continuing after a crash tells the model the tool call was interrupted and records the step's files",
+  () =>
+    Effect.gen(function* () {
+      const { directory } = yield* TestInstance
+      const { chat, send } = yield* boot()
+      const snapshot = yield* Snapshot.Service
+      const file = path.join(directory, "notes.txt")
+      yield* Effect.promise(() => fs.writeFile(file, "before\n"))
+      const hash = yield* snapshot.track()
+      const { dead } = yield* leaveOpenStep(chat.id, hash)
+      yield* Effect.promise(() => fs.writeFile(file, "after\n"))
+      RafikiResume.forgetRepaired()
+      model.script(() => ({ text: ["Picking it up."] }))
+
+      const result = yield* send("continue")
+
+      expect(result.info.role === "assistant" && result.info.error).toBeFalsy()
+      expect(proxy.requests).toHaveLength(1)
+      const history = sent(proxy.requests[0]!)
+      expect(history.map((message) => message.role)).toEqual(["user", "assistant", "tool", "user"])
+      expect(textOf(history[2])).toMatch(/interrupted|aborted/i)
+      const repaired = (yield* stored(chat.id)).find((message) => message.info.id === dead.id)!
+      expect(repaired.parts.some((part) => part.type === "patch" && part.files.some((item) => item.endsWith("notes.txt")))).toBe(
+        true,
+      )
+      expect(repaired.parts.some((part) => part.type === "tool" && part.state.status === "running")).toBe(false)
+    }),
+  { git: true },
+  60_000,
+)

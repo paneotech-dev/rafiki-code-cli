@@ -151,7 +151,7 @@ export const RunCommand = effectCmd({
         type: "string",
       })
       .option("continue", {
-        alias: ["c"],
+        alias: ["c", "resume"],
         describe: "continue the last session",
         type: "boolean",
       })

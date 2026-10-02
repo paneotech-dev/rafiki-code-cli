@@ -5,6 +5,7 @@ import { MessageV2 } from "./message-v2"
 import { iife } from "@/util/iife"
 import { isRecord } from "@/util/record"
 import * as RafikiGateway from "@/rafiki/gateway-errors"
+import * as RafikiResilience from "@/rafiki/resilience"
 
 export type Err = ReturnType<NamedError["toObject"]>
 
@@ -192,9 +193,10 @@ export function policy(opts: {
       const error = opts.parse(meta.input)
       const retry = retryable(error, opts.provider)
       if (!retry) return Cause.done(meta.attempt)
-      if (meta.attempt > RafikiGateway.retryLimit(opts.provider, error, RETRY_MAX_RETRIES)) return Cause.done(meta.attempt)
+      if (!RafikiResilience.keepRetrying(opts.provider, error, meta, RETRY_MAX_RETRIES)) return Cause.done(meta.attempt)
       return Effect.gen(function* () {
-        const wait = delay(meta.attempt, SessionV1.APIError.isInstance(error) ? error : undefined)
+        const upstream = delay(meta.attempt, SessionV1.APIError.isInstance(error) ? error : undefined)
+        const wait = RafikiResilience.wait(opts.provider, error, meta, upstream)
         const now = yield* Clock.currentTimeMillis
         yield* opts.set({
           attempt: meta.attempt,

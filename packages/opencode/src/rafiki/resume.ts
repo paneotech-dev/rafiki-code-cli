@@ -108,14 +108,14 @@ export function withContinuations<T extends WithParts>(messages: T[]): (T | With
 // when the stored message was closed at a boundary and the loop should send
 // the next request; fails with the same failure when the request should be
 // sent again as it was (nothing usable arrived, or not a connection failure).
-export const atBoundary = Effect.fnUntraced(function* (input: {
-  cause: unknown
-  error: unknown
-  message: SessionV1.Assistant
-  text: string | undefined
-  session: Pick<Session.Interface, "messages" | "removePart">
-  status: Pick<SessionStatus.Interface, "set">
-}) {
+export const atBoundary = Effect.fnUntraced(function* (
+  cause: unknown,
+  error: unknown,
+  step: { assistantMessage: SessionV1.Assistant; currentText?: { text: string } },
+  session: Pick<Session.Interface, "messages" | "removePart">,
+  status: Pick<SessionStatus.Interface, "set">,
+) {
+  const input = { cause, error, message: step.assistantMessage, text: step.currentText?.text, session, status }
   const again = Effect.fail(input.cause)
   if (input.message.summary) return yield* again
   if (!RafikiResilience.isConnectionError(input.message.providerID, input.error)) return yield* again

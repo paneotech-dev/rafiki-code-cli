@@ -57,6 +57,7 @@ import { SessionReminders } from "./reminders"
 import { SessionTools } from "./tools"
 import { LLMEvent } from "@opencode-ai/llm"
 import * as RafikiReasoning from "@/rafiki/reasoning"
+import * as RafikiResume from "@/rafiki/resume"
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -1266,7 +1267,7 @@ const layer = Layer.effect(
               sys.environment(model),
               instruction.system().pipe(Effect.orDie),
               sys.mcp(agent, session.permission),
-              MessageV2.toModelMessagesEffect(msgs, model),
+              MessageV2.toModelMessagesEffect(RafikiResume.withContinuations(msgs), model),
             ])
             const system = [
               ...env,
