@@ -134,5 +134,120 @@ and why.
 
 ## Record
 
-The conflicts met and how each was resolved are appended here after each
-merge.
+### Merges
+
+| Order | Branch | Merge commit | Textual conflicts |
+| --- | --- | --- | --- |
+| 1 | `feature/upstream-sync-2026-10` | `f04a8870f4` | none |
+| 2 | `feature/install-channels` | `9476dba3d5` | `CHANGELOG.md` |
+| 3 | `feature/network-resilience` | `b57d65d364` | `CHANGELOG.md` |
+| 4 | `feature/cache-friendly-prefix` | `9533083153` | `CHANGELOG.md` |
+| 5 | `feature/cost-display` | `a33a4c8887` | `CHANGELOG.md`, `packages/opencode/src/index.ts`, `packages/opencode/test/brand/mock-gateway.mjs`, `packages/tui/src/app.tsx` |
+
+`bun install --ignore-scripts` reported no change to `bun.lock` after any
+merge: only the upstream sync changes it, and its lock file was taken as it
+is.
+
+### Conflicts and resolutions
+
+- `CHANGELOG.md` (merges 2 to 5, add/add): one `# Changelog` heading and
+  every branch's line, in merge order.
+- `packages/opencode/src/index.ts` (merge 5): both branches added a name to
+  the same import from `./rafiki/cmd`. The import names `LicensesCommand` and
+  `UsageCommand`; both commands are registered, `usage` after `whoami` and
+  `licenses` after `doctor`, where each branch put its own.
+- `packages/opencode/test/brand/mock-gateway.mjs` (merge 5): both branches
+  added options to the mock. All three are kept: `bodies` (cache prefix),
+  `prices` and `usage` (cost display).
+- `packages/tui/src/app.tsx` (merge 5): the upstream sync sets the exit code
+  when the interface ends with an error; the cost display appends the cost
+  line to the text printed on exit. Both are kept: the exit code block as the
+  sync has it, then the exit text followed by the cost line.
+
+### Hook sites shared without a textual conflict
+
+- `packages/opencode/src/session/prompt.ts`: the history passes through
+  `RafikiResume.withContinuations` before it becomes model messages (network
+  resilience), and the system parts are ordered by `CachePrefix.order` (cache
+  prefix). The two calls sit on adjacent statements and do not depend on each
+  other: the first shapes the conversation, the second the system text.
+- Request headers: `X-Rafiki-Tier` and `X-Rafiki-Escalation` are set on the
+  model entry (`Brand.provider.config`), and `RafikiResilience.stamp` adds
+  `Idempotency-Key` to a copy of the same header map, so a request carries
+  all of them next to `X-Rafiki-Surface`.
+- `packages/core/src/brand/brand.ts`, `packages/opencode/src/cli/cmd/run.ts`,
+  `packages/opencode/src/session/llm/request.ts`,
+  `packages/opencode/src/provider/transform.ts` and the help snapshot merged
+  without a conflict and were read after the merge.
+
+### What broke only in combination
+
+- `packages/opencode/test/rafiki/resume.test.ts` (network resilience) counted
+  every request that passed through its proxy. With the cost display merged,
+  `run` reads the price list from the gateway when it starts
+  (`GET /v1/model/info`), so the test saw three requests where it expected
+  the two model requests. It passes on its own branch and after merge 4, and
+  fails from merge 5. The test now counts only requests to
+  `/v1/chat/completions`. No behaviour was changed.
+- `docs/cost.md` (cost display) says every request carries three headers.
+  With network resilience merged, the requests of a task also carry
+  `Idempotency-Key`. One sentence pointing at
+  `docs/contracts/idempotency-key.md` was added under the table.
+
+### Test added on this branch
+
+`packages/opencode/test/rafiki/integration-set.test.ts` runs the real session
+loop against a scripted local model through the connection cutting proxy, on
+a marked tier (`rafiki-max`) and an unmarked one (`rafiki-fast`):
+
+- after a stream cut in the middle of text, the continuation request starts
+  with the same bytes as the first request up to the end of the stable system
+  message, sends the same tool definitions, keeps the date line in the second
+  system message, and carries the partial answer and the instruction to
+  continue as conversation, after both system messages;
+- on the marked tier the marker closes the stable prefix and appears nowhere
+  before its end; on the unmarked tier no request contains one;
+- every request carries `X-Rafiki-Surface`, `X-Rafiki-Tier` and
+  `X-Rafiki-Escalation`; a continuation carries a new `Idempotency-Key`, and
+  a request sent again after a refused connection is the same bytes under the
+  same key and the same headers.
+
+### Results
+
+Run on the head of this branch unless a merge is named.
+
+| Check | Result |
+| --- | --- |
+| After merge 1: `test/brand`, `test/rafiki`, `test/cli/help`, `test/installation`, `test/config` | 658 pass, 3 skip, 1 fail (the known root only failure in `test/config`) |
+| After merge 1: `packages/core/test/brand` | 10 pass |
+| After merge 2: `test/rafiki/autoupdate.test.ts`, `test/brand`, `test/installation`, `test/cli/help` | 216 pass, 0 fail |
+| After merge 2: `install/test-install.sh`, `install/test-release-gate.sh` | 54 and 16 passed, 0 failed |
+| After merge 3: the three network resilience files, `test/brand`, `test/cli/help`, `test/session` | 600 pass, 7 skip, 0 fail |
+| After merge 4: `test/rafiki`, `test/brand`, `test/session`, `test/provider` | 1670 pass, 7 skip, 0 fail |
+| After merge 5: the cost display files, `cache-prefix`, `network-resilience`, `test/brand`, `test/cli` | 621 pass, 5 skip, 0 fail |
+| After merge 5: `packages/core/test/brand`, the cost plugin test in `packages/tui` | 39 pass; 9 pass |
+| `packages/opencode` typecheck after each merge | pass |
+| `bun turbo typecheck --concurrency=3 --force` | 30 of 30 tasks |
+| Full `packages/opencode` suite, once | 4241 pass, 22 skip, 3 fail: the two known root only failures and the resume test described above, which passes after the change to it |
+| `packages/tui` suite | 203 pass, 1 skip, 0 fail |
+| `install/test-install.sh`, `test-install-shells.sh`, `test-install-url.sh`, `test-release-gate.sh` | 54, 10, 54 and 16 passed, 0 failed |
+| `node docs/check.mjs` | pass |
+| `linux-x64` binary | builds; `--version`, `--help` and the help of every subcommand without the upstream name; `doctor` with no network reports the gateway and the console as unreachable and exits 4; an unknown flag and an invalid value print their reason; `usage --help`, `licenses`; `run --help` lists `--resume` |
+
+### Left for the branches
+
+These hold on a branch by itself and were not changed here:
+
+- `feature/install-channels`: `docs/troubleshooting.md` still says that an
+  installation method `update` cannot handle is fixed by passing
+  `--method curl` for a copy run from source, while the branch makes `update`
+  install nothing from a run from source by any method. The help of
+  `licenses` has no snapshot, although the branch's plan lists one.
+- `feature/install-channels`: `upgrade --method` lists `choco` and `scoop`
+  as choices and refuses both, as it did at `v0.1.9`.
+- `feature/cost-display`: `summarize` in `packages/core/src/brand/cost.ts`
+  skips a model call with no token counts, and a call whose stream was cut
+  before the usage block arrived has none, so the estimate leaves that call
+  out. With network resilience merged, a cut is followed by a continuation
+  instead of a failure, so this can happen on a task that completes. Read in
+  the code, not measured.
