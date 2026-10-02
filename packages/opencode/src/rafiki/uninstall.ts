@@ -1,13 +1,23 @@
+// The uninstall command of this product. It replaces the upstream command in
+// src/cli/cmd/uninstall.ts, which is kept as upstream wrote it and is not
+// registered (src/index.ts registers this one). What differs: the binary is
+// removed only when it is a compiled one, the PATH lines and the links the
+// installer made are removed exactly (rafiki/shell-path.ts), and only the
+// package managers this product is published through are called, by this
+// product's own identifiers.
+import { Brand } from "@opencode-ai/core/brand/brand"
+import { RafikiUpdate } from "@/rafiki/update"
 import type { Argv } from "yargs"
-import { UI } from "../ui"
+import { UI } from "@/cli/ui"
 import * as prompts from "@clack/prompts"
-import { Installation } from "../../installation"
+import { Installation } from "@/installation"
 import { Global } from "@opencode-ai/core/global"
 import fs from "fs/promises"
 import path from "path"
 import os from "os"
-import { Filesystem } from "@/util/filesystem"
 import { Process } from "@/util/process"
+import { existsSync } from "fs"
+import * as RafikiShell from "@/rafiki/shell-path"
 
 interface UninstallArgs {
   keepConfig: boolean
@@ -18,13 +28,15 @@ interface UninstallArgs {
 
 interface RemovalTargets {
   directories: Array<{ path: string; label: string; keep: boolean }>
-  shellConfig: string | null
+  shellConfigs: string[]
+  // Symlinks on PATH that point at the binary below, and nothing else.
+  links: string[]
   binary: string | null
 }
 
 export const UninstallCommand = {
   command: "uninstall",
-  describe: "uninstall opencode and remove all related files",
+  describe: `uninstall ${Brand.name} and remove all related files`,
   builder: (yargs: Argv) =>
     yargs
       .option("keep-config", {
@@ -55,7 +67,7 @@ export const UninstallCommand = {
     UI.empty()
     UI.println(UI.logo("  "))
     UI.empty()
-    prompts.intro("Uninstall OpenCode")
+    prompts.intro(`Uninstall ${Brand.product}`)
 
     const method = await Installation.method()
     prompts.log.info(`Installation method: ${method}`)
@@ -95,10 +107,13 @@ async function collectRemovalTargets(args: UninstallArgs, method: Installation.M
     { path: Global.Path.state, label: "State", keep: false },
   ]
 
-  const shellConfig = method === "curl" ? await getShellConfigFile() : null
-  const binary = method === "curl" ? process.execPath : null
+  // Only a compiled binary is removed. Run from source, process.execPath is
+  // the runtime, which is not this product's to delete.
+  const binary = method === "curl" && RafikiUpdate.running().compiled ? process.execPath : null
+  const shellConfigs = binary ? await RafikiShell.configsWithPath(path.dirname(binary)) : []
+  const links = binary ? await RafikiShell.ownedLinks(binary) : []
 
-  return { directories, shellConfig, binary }
+  return { directories, shellConfigs, links, binary }
 }
 
 async function showRemovalSummary(targets: RemovalTargets, method: Installation.Method) {
@@ -123,21 +138,24 @@ async function showRemovalSummary(targets: RemovalTargets, method: Installation.
     prompts.log.info(`  ✓ Binary: ${shortenPath(targets.binary)}`)
   }
 
-  if (targets.shellConfig) {
-    prompts.log.info(`  ✓ Shell PATH in ${shortenPath(targets.shellConfig)}`)
+  for (const file of targets.shellConfigs) {
+    prompts.log.info(`  ✓ Shell PATH in ${shortenPath(file)}`)
+  }
+
+  for (const link of targets.links) {
+    prompts.log.info(`  ✓ Link on PATH: ${shortenPath(link)}`)
   }
 
   if (method !== "curl" && method !== "unknown") {
     const cmds: Record<string, string> = {
-      npm: "npm uninstall -g opencode-ai",
-      pnpm: "pnpm uninstall -g opencode-ai",
-      bun: "bun remove -g opencode-ai",
-      yarn: "yarn global remove opencode-ai",
-      brew: "brew uninstall opencode",
-      choco: "choco uninstall opencode",
-      scoop: "scoop uninstall opencode",
+      npm: `npm uninstall -g ${Brand.npm.meta}`,
+      pnpm: `pnpm uninstall -g ${Brand.npm.meta}`,
+      bun: `bun remove -g ${Brand.npm.meta}`,
+      yarn: `yarn global remove ${Brand.npm.meta}`,
+      brew: `brew uninstall ${Brand.brew.formula}`,
+      winget: `winget uninstall --id ${Brand.winget.id} --exact`,
     }
-    prompts.log.info(`  ✓ Package: ${cmds[method] || method}`)
+    if (cmds[method]) prompts.log.info(`  ✓ Package: ${cmds[method]}`)
   }
 }
 
@@ -167,9 +185,12 @@ async function executeUninstall(method: Installation.Method, targets: RemovalTar
     spinner.stop(`Removed ${dir.label}`)
   }
 
-  if (targets.shellConfig) {
-    spinner.start("Cleaning shell config...")
-    const err = await cleanShellConfig(targets.shellConfig).catch((e) => e)
+  for (const file of targets.binary ? targets.shellConfigs : []) {
+    spinner.start(`Removing the PATH line from ${shortenPath(file)}...`)
+    const err = await RafikiShell.cleanFile(file, path.dirname(targets.binary!)).then(
+      () => undefined,
+      (e) => e,
+    )
     if (err) {
       spinner.stop("Failed to clean shell config", 1)
       errors.push(`Shell config: ${err.message}`)
@@ -178,31 +199,58 @@ async function executeUninstall(method: Installation.Method, targets: RemovalTar
     }
   }
 
+  /*
+   * The installer's symlink from a directory on PATH. Left behind it becomes a
+   * dangling link: the bare name still resolves and the shell reports an opaque
+   * OS error instead of "command not found". Removed the same way the PATH
+   * lines are: RafikiShell.removeLink checks again, at the moment of removal,
+   * that the name is still a symlink to this binary, so a regular file or a
+   * link someone else owns is never touched.
+   */
+  for (const link of targets.binary ? targets.links : []) {
+    spinner.start(`Removing the link ${shortenPath(link)}...`)
+    const removed = await RafikiShell.removeLink(link, targets.binary!).then(
+      (done) => done,
+      (e) => e as Error,
+    )
+    if (removed instanceof Error) {
+      spinner.stop(`Failed to remove ${shortenPath(link)}`, 1)
+      errors.push(`Link ${shortenPath(link)}: ${removed.message}. Remove it with: rm "${link}"`)
+      continue
+    }
+    if (!removed) {
+      spinner.stop(`Left ${shortenPath(link)} alone: it is no longer a link to ${shortenPath(targets.binary!)}`)
+      continue
+    }
+    spinner.stop(`Removed the link ${shortenPath(link)}`)
+  }
+
   if (method !== "curl" && method !== "unknown") {
+    /*
+     * Only the package managers this product is published through, and only
+     * by this product's own identifiers: the formula of its tap by full name
+     * and its winget id. A bare `brew uninstall <name>` or `choco uninstall`
+     * here could remove the upstream project's package of the same name,
+     * which is someone else's software and was never what the user installed.
+     */
     const cmds: Record<string, string[]> = {
-      npm: ["npm", "uninstall", "-g", "opencode-ai"],
-      pnpm: ["pnpm", "uninstall", "-g", "opencode-ai"],
-      bun: ["bun", "remove", "-g", "opencode-ai"],
-      yarn: ["yarn", "global", "remove", "opencode-ai"],
-      brew: ["brew", "uninstall", "opencode"],
-      choco: ["choco", "uninstall", "opencode"],
-      scoop: ["scoop", "uninstall", "opencode"],
+      npm: ["npm", "uninstall", "-g", Brand.npm.meta],
+      pnpm: ["pnpm", "uninstall", "-g", Brand.npm.meta],
+      bun: ["bun", "remove", "-g", Brand.npm.meta],
+      yarn: ["yarn", "global", "remove", Brand.npm.meta],
+      brew: ["brew", "uninstall", Brand.brew.formula],
+      winget: ["winget", "uninstall", "--id", Brand.winget.id, "--exact"],
     }
 
     const cmd = cmds[method]
     if (cmd) {
       spinner.start(`Running ${cmd.join(" ")}...`)
-      const result = await Process.run(method === "choco" ? ["choco", "uninstall", "opencode", "-y", "-r"] : cmd, {
-        nothrow: true,
-      })
+      // No special case for choco: it is not a channel this product publishes
+      // through, so it never reaches here and its command must not be built.
+      const result = await Process.run(cmd, { nothrow: true })
       if (result.code !== 0) {
         spinner.stop(`Package manager uninstall failed: exit code ${result.code}`, 1)
-        const text = `${result.stdout.toString("utf8")}\n${result.stderr.toString("utf8")}`
-        if (method === "choco" && text.includes("not running from an elevated command shell")) {
-          prompts.log.warn(`You may need to run '${cmd.join(" ")}' from an elevated command shell`)
-        } else {
-          prompts.log.warn(`You may need to run manually: ${cmd.join(" ")}`)
-        }
+        prompts.log.warn(`You may need to run manually: ${cmd.join(" ")}`)
       } else {
         spinner.stop("Package removed")
       }
@@ -211,12 +259,15 @@ async function executeUninstall(method: Installation.Method, targets: RemovalTar
 
   if (method === "curl" && targets.binary) {
     UI.empty()
-    prompts.log.message("To finish removing the binary, run:")
-    prompts.log.info(`  rm "${targets.binary}"`)
-
-    const binDir = path.dirname(targets.binary)
-    if (binDir.includes(".opencode")) {
-      prompts.log.info(`  rmdir "${binDir}" 2>/dev/null`)
+    if (!existsSync(targets.binary)) {
+      prompts.log.message(`Removed the binary ${shortenPath(targets.binary)}.`)
+    } else {
+      prompts.log.message("To finish removing the binary, run:")
+      prompts.log.info(`  rm "${targets.binary}"`)
+      const binDir = path.dirname(targets.binary)
+      if (binDir.includes(Brand.configDirName)) {
+        prompts.log.info(`  rmdir "${binDir}" 2>/dev/null`)
+      }
     }
   }
 
@@ -229,89 +280,7 @@ async function executeUninstall(method: Installation.Method, targets: RemovalTar
   }
 
   UI.empty()
-  prompts.log.success("Thank you for using OpenCode!")
-}
-
-async function getShellConfigFile(): Promise<string | null> {
-  const shell = path.basename(process.env.SHELL || "bash")
-  const home = os.homedir()
-  const xdgConfig = process.env.XDG_CONFIG_HOME || path.join(home, ".config")
-
-  const configFiles: Record<string, string[]> = {
-    fish: [path.join(xdgConfig, "fish", "config.fish")],
-    zsh: [
-      path.join(home, ".zshrc"),
-      path.join(home, ".zshenv"),
-      path.join(xdgConfig, "zsh", ".zshrc"),
-      path.join(xdgConfig, "zsh", ".zshenv"),
-    ],
-    bash: [
-      path.join(home, ".bashrc"),
-      path.join(home, ".bash_profile"),
-      path.join(home, ".profile"),
-      path.join(xdgConfig, "bash", ".bashrc"),
-      path.join(xdgConfig, "bash", ".bash_profile"),
-    ],
-    ash: [path.join(home, ".ashrc"), path.join(home, ".profile")],
-    sh: [path.join(home, ".profile")],
-  }
-
-  const candidates = configFiles[shell] || configFiles.bash
-
-  for (const file of candidates) {
-    const exists = await fs
-      .access(file)
-      .then(() => true)
-      .catch(() => false)
-    if (!exists) continue
-
-    const content = await Filesystem.readText(file).catch(() => "")
-    if (content.includes("# opencode") || content.includes(".opencode/bin")) {
-      return file
-    }
-  }
-
-  return null
-}
-
-async function cleanShellConfig(file: string) {
-  const content = await Filesystem.readText(file)
-  const lines = content.split("\n")
-
-  const filtered: string[] = []
-  let skip = false
-
-  for (const line of lines) {
-    const trimmed = line.trim()
-
-    if (trimmed === "# opencode") {
-      skip = true
-      continue
-    }
-
-    if (skip) {
-      skip = false
-      if (trimmed.includes(".opencode/bin") || trimmed.includes("fish_add_path")) {
-        continue
-      }
-    }
-
-    if (
-      (trimmed.startsWith("export PATH=") && trimmed.includes(".opencode/bin")) ||
-      (trimmed.startsWith("fish_add_path") && trimmed.includes(".opencode"))
-    ) {
-      continue
-    }
-
-    filtered.push(line)
-  }
-
-  while (filtered.length > 0 && filtered[filtered.length - 1].trim() === "") {
-    filtered.pop()
-  }
-
-  const output = filtered.join("\n") + "\n"
-  await Filesystem.write(file, output)
+  prompts.log.success(`Thank you for using ${Brand.product}!`)
 }
 
 async function getDirectorySize(dir: string): Promise<number> {
