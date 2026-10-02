@@ -1,4 +1,4 @@
-// Tests for the local GitHub capability (src/cli/cmd/gh.shared.ts).
+// Tests for the local GitHub capability (src/rafiki/gh.shared.ts).
 //
 // Every test drives a recorded fake Exec: no `git` or `gh` process is started,
 // no repository is touched and nothing reaches github.com. `calls` is the
@@ -31,7 +31,7 @@ import {
   stageArgs,
   type Exec,
   type ExecResult,
-} from "../../src/cli/cmd/gh.shared"
+} from "../../src/rafiki/gh.shared"
 
 const ok = (stdout = "", stderr = ""): ExecResult => ({ code: 0, stdout, stderr })
 const nope = (stderr = "", code = 1): ExecResult => ({ code, stdout: "", stderr })

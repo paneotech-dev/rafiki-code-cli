@@ -9,10 +9,15 @@
 // output can still be quoted). The public docs describe the released version
 // only, in the product's own terms.
 //
+// A run without arguments also checks the record of edited upstream files
+// (script/upstream.mjs): docs/upstream.md carries a generated table of them,
+// and it must be current.
+//
 // Usage: node docs/check.mjs [files...]
 // Default: README.md and every Markdown file under docs/.
 import fs from "node:fs"
 import path from "node:path"
+import * as Upstream from "../script/upstream.mjs"
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..")
 const args = process.argv.slice(2)
@@ -92,9 +97,14 @@ for (const rel of files) {
   if (inFence) problems.push(`${rel}: unclosed fenced block`)
 }
 
+const upstreamRecord = args.length ? undefined : Upstream.check(root)
+if (upstreamRecord) problems.push(...upstreamRecord.problems)
+
 if (problems.length) {
   for (const p of problems) console.error(p)
   console.error(`${problems.length} problem(s) in ${files.length} file(s)`)
   process.exit(1)
 }
 console.log(`docs check passed: ${files.length} file(s), no problems`)
+if (upstreamRecord?.skipped) console.log(`upstream check skipped: ${upstreamRecord.skipped}`)
+else if (upstreamRecord) console.log(`upstream check passed: ${Upstream.summary(upstreamRecord.inspection)}`)

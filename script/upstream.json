@@ -1,0 +1,778 @@
+{
+  "remote": "https://github.com/anomalyco/opencode",
+  "branch": "dev",
+  "base": "a79ecfe109294909a239c98fb89f02979d5aa10b",
+  "version": "1.18.34",
+  "classes": {
+    "hook": {
+      "title": "Source: a call into this fork's modules",
+      "rule": "Take upstream's side of the conflict, then put the call back at the same point. The reason names the module called; its tests under `packages/opencode/test/rafiki` and `test/brand` fail if the call is lost."
+    },
+    "text": {
+      "title": "Source: product name, file names and wording",
+      "rule": "Take upstream's side, then replace the literal with the value from the brand module again. `test/brand/upstream-names.test.ts` fails on a string that still names the upstream product."
+    },
+    "logic": {
+      "title": "Source: behaviour changed in place",
+      "rule": "Merge by hand and read both sides. These are the files to thin next: move the behaviour behind a call, or offer the fix upstream."
+    },
+    "test": {
+      "title": "Tests of upstream, adapted",
+      "rule": "Take upstream's side, then apply the expectation of this product again. A test upstream removed is removed here too."
+    },
+    "generated": {
+      "title": "Generated files",
+      "rule": "Never merge by hand. Take either side, finish the merge, then regenerate the file with the command given in the merge procedure."
+    },
+    "identity": {
+      "title": "Package identity and packaging",
+      "rule": "Keep this fork's name, version and binary name. Take every other change upstream made to the file."
+    },
+    "docs": {
+      "title": "Documentation",
+      "rule": "Keep this fork's text. Read what upstream changed and carry over what is true here."
+    },
+    "ci": {
+      "title": "Repository tooling and workflows",
+      "rule": "Keep this fork's change. A workflow inherited from upstream must stay inert in this repository."
+    },
+    "extension": {
+      "title": "Editor extension",
+      "rule": "Keep this fork's side entirely: the extension is this product's own. Read what upstream changed for anything worth carrying over."
+    }
+  },
+  "edited": [
+    {
+      "path": ".github/ISSUE_TEMPLATE/bug-report.yml",
+      "class": "ci",
+      "why": "The version field carries this product's name; the crash screen fills it in."
+    },
+    {
+      "path": ".github/workflows/close-prs.yml",
+      "class": "ci",
+      "why": "Workflow inputs are passed through environment variables and validated instead of being interpolated into the script. Not specific to this product."
+    },
+    {
+      "path": ".github/workflows/publish-vscode.yml",
+      "class": "ci",
+      "why": "Guarded to the upstream repository so that it never runs here."
+    },
+    {
+      "path": ".gitignore",
+      "class": "ci",
+      "why": "Ignores local notes and session files that must not be committed."
+    },
+    {
+      "path": ".husky/pre-push",
+      "class": "ci",
+      "why": "The typecheck before a push runs three packages at a time, to stay within memory."
+    },
+    {
+      "path": "README.*.md",
+      "class": "docs",
+      "why": "Translated pages of upstream: the install instructions are removed so that no page tells a reader to install the upstream product (`test/brand/docs-wording.test.ts`)."
+    },
+    {
+      "path": "README.md",
+      "class": "docs",
+      "why": "This product's README, with the attribution section."
+    },
+    {
+      "path": "bun.lock",
+      "class": "generated",
+      "why": "Differs by the name of the workspace package only."
+    },
+    {
+      "path": "install",
+      "class": "identity",
+      "why": "Upstream's installer script is removed; the installers of this product are the directory `install/`."
+    },
+    {
+      "path": "package.json",
+      "class": "ci",
+      "why": "Adds the `docs:check` script."
+    },
+    {
+      "path": "packages/core/src/config.ts",
+      "class": "hook",
+      "why": "Project file and directory names come from `Brand.project`; discovery honours the switch that disables project configuration."
+    },
+    {
+      "path": "packages/core/src/config/plugin/external.ts",
+      "class": "hook",
+      "why": "Plugins named by a project pass through `BrandTrust.plugins` (workspace trust)."
+    },
+    {
+      "path": "packages/core/src/effect/layer-node.ts",
+      "class": "logic",
+      "why": "An undefined layer dependency raises an error that names the chain. Not specific to this product."
+    },
+    {
+      "path": "packages/core/src/flag/flag.ts",
+      "class": "hook",
+      "why": "Server credentials and the project switch are read through the brand module, which accepts this product's variable names and upstream's."
+    },
+    {
+      "path": "packages/core/src/global.ts",
+      "class": "text",
+      "why": "The data, cache and configuration directories are named by the brand module."
+    },
+    {
+      "path": "packages/core/src/oauth/page.ts",
+      "class": "text",
+      "why": "The sign in result page names this product and shows its name where upstream draws its wordmark."
+    },
+    {
+      "path": "packages/core/src/plugin/agent.ts",
+      "class": "text",
+      "why": "The plan agent may edit plans under each project directory name in `Brand.project.dirs`."
+    },
+    {
+      "path": "packages/core/src/plugin/command/initialize.txt",
+      "class": "text",
+      "why": "Prompt text names this product and its configuration file."
+    },
+    {
+      "path": "packages/core/src/plugin/skill.ts",
+      "class": "hook",
+      "why": "The built in configuration skill is the one from `brand/skill.ts` when the upstream skill is hidden."
+    },
+    {
+      "path": "packages/core/test/global.test.ts",
+      "class": "test",
+      "why": "The temporary directory name comes from the brand module."
+    },
+    {
+      "path": "packages/core/test/plugin/skill.test.ts",
+      "class": "test",
+      "why": "The built in configuration skill is this product's."
+    },
+    {
+      "path": "packages/core/test/preload.ts",
+      "class": "test",
+      "why": "Temporary workspaces are trusted so that upstream suites keep testing plugin loading."
+    },
+    {
+      "path": "packages/opencode/README.md",
+      "class": "docs",
+      "why": "Names the package of this product."
+    },
+    {
+      "path": "packages/opencode/bin/opencode",
+      "class": "identity",
+      "why": "The launcher is renamed to the binary name of this product and looks for its binaries."
+    },
+    {
+      "path": "packages/opencode/package.json",
+      "class": "identity",
+      "why": "Package name and `bin` entry."
+    },
+    {
+      "path": "packages/opencode/script/build.ts",
+      "class": "logic",
+      "why": "Output and user agent use the package name; every target the build host can execute is started once, each binary is hashed, and a coverage report is written (`script/platform-coverage.ts`). The order of the `abi` filter is a fix that is not specific to this product."
+    },
+    {
+      "path": "packages/opencode/script/postinstall.mjs",
+      "class": "identity",
+      "why": "Binary and package names are read from `package.json`."
+    },
+    {
+      "path": "packages/opencode/script/schema.ts",
+      "class": "hook",
+      "why": "Descriptions in the published schema are rewritten with `Brand.prompt`."
+    },
+    {
+      "path": "packages/opencode/src/acp/agent.ts",
+      "class": "hook",
+      "why": "Authentication and the key check go through `rafiki/acp.ts`."
+    },
+    {
+      "path": "packages/opencode/src/acp/error.ts",
+      "class": "logic",
+      "why": "A defect that escapes an ACP handler is written to stderr instead of being dropped. Not specific to this product."
+    },
+    {
+      "path": "packages/opencode/src/acp/service.ts",
+      "class": "logic",
+      "why": "Names and the sign in method of this product, trust warnings sent to the client, and the cancellation fix: a cancelled turn answers `cancelled`, and `usage` is omitted when there is no token accounting. The fix is not specific to this product."
+    },
+    {
+      "path": "packages/opencode/src/acp/session.ts",
+      "class": "logic",
+      "why": "The per turn cancellation flag used by the fix in `acp/service.ts`."
+    },
+    {
+      "path": "packages/opencode/src/acp/usage.ts",
+      "class": "logic",
+      "why": "Token accounting may be absent on a message; part of the fix in `acp/service.ts`."
+    },
+    {
+      "path": "packages/opencode/src/agent/agent.ts",
+      "class": "hook",
+      "why": "Headless permission defaults come from `BrandTrust.headlessPermission`; plans are allowed under each project directory name."
+    },
+    {
+      "path": "packages/opencode/src/cli/cmd/acp.ts",
+      "class": "hook",
+      "why": "The internal server gets a generated password (`rafiki/acp.ts`)."
+    },
+    {
+      "path": "packages/opencode/src/cli/cmd/agent.ts",
+      "class": "text",
+      "why": "New agents are written under this product's project directory."
+    },
+    {
+      "path": "packages/opencode/src/cli/cmd/attach.ts",
+      "class": "hook",
+      "why": "Terminal check before the interface loads (`rafiki/startup.ts`), credentials from the server file (`rafiki/server-file.ts`), and option text."
+    },
+    {
+      "path": "packages/opencode/src/cli/cmd/debug/index.ts",
+      "class": "text",
+      "why": "The version line names this product."
+    },
+    {
+      "path": "packages/opencode/src/cli/cmd/mcp.ts",
+      "class": "text",
+      "why": "Messages name this product; the configuration file candidates come from the brand module."
+    },
+    {
+      "path": "packages/opencode/src/cli/cmd/models.ts",
+      "class": "hook",
+      "why": "A sign in hint when no provider is connected, and tiers that are not listed are hidden (`Brand.provider.listed`)."
+    },
+    {
+      "path": "packages/opencode/src/cli/cmd/plug.ts",
+      "class": "text",
+      "why": "A type is widened so that the configuration base name can be this product's."
+    },
+    {
+      "path": "packages/opencode/src/cli/cmd/pr.ts",
+      "class": "text",
+      "why": "Messages and the command started name this product."
+    },
+    {
+      "path": "packages/opencode/src/cli/cmd/providers.ts",
+      "class": "text",
+      "why": "Messages name this product and its configuration file."
+    },
+    {
+      "path": "packages/opencode/src/cli/cmd/run.ts",
+      "class": "hook",
+      "why": "Exit codes and messages for gateway errors, a missing key and rejected permissions, the attach check, the cost line, the `--resume` alias and server file credentials, each a call into `src/rafiki/`."
+    },
+    {
+      "path": "packages/opencode/src/cli/cmd/run/footer.permission.tsx",
+      "class": "text",
+      "why": "Product name in the prompt."
+    },
+    {
+      "path": "packages/opencode/src/cli/cmd/run/footer.prompt.tsx",
+      "class": "text",
+      "why": "Product name in a command description."
+    },
+    {
+      "path": "packages/opencode/src/cli/cmd/run/permission.shared.ts",
+      "class": "text",
+      "why": "Product name in the permission text."
+    },
+    {
+      "path": "packages/opencode/src/cli/cmd/run/splash.ts",
+      "class": "text",
+      "why": "Product name and command in the banner."
+    },
+    {
+      "path": "packages/opencode/src/cli/cmd/serve.ts",
+      "class": "hook",
+      "why": "The server password is made and stored by `rafiki/server-file.ts`; text names this product."
+    },
+    {
+      "path": "packages/opencode/src/cli/cmd/tui.ts",
+      "class": "logic",
+      "why": "Events raised before the interface subscribes are buffered and replayed, the terminal is checked before the renderer loads, trust warnings become notices, and a refused listener stops the start. The buffering is not specific to this product."
+    },
+    {
+      "path": "packages/opencode/src/cli/cmd/upgrade.ts",
+      "class": "hook",
+      "why": "The `update` alias, the method choices this product supports, and the refusals and clean up from `rafiki/update.ts` and `rafiki/autoupdate.ts`."
+    },
+    {
+      "path": "packages/opencode/src/cli/cmd/web.ts",
+      "class": "hook",
+      "why": "The server password is made and stored by `rafiki/server-file.ts`; text names this product."
+    },
+    {
+      "path": "packages/opencode/src/cli/error.ts",
+      "class": "logic",
+      "why": "Configuration errors end with three lines that say what to do, and messages name this product's commands."
+    },
+    {
+      "path": "packages/opencode/src/cli/network.ts",
+      "class": "text",
+      "why": "The default mDNS domain uses the binary name."
+    },
+    {
+      "path": "packages/opencode/src/cli/tui/worker.ts",
+      "class": "hook",
+      "why": "The update check is `rafiki/autoupdate.ts`; trust warnings are sent as events (`rafiki/notice.ts`)."
+    },
+    {
+      "path": "packages/opencode/src/cli/ui.ts",
+      "class": "text",
+      "why": "The wordmark comes from the brand module."
+    },
+    {
+      "path": "packages/opencode/src/command/template/initialize.txt",
+      "class": "text",
+      "why": "Prompt text names this product and its configuration file."
+    },
+    {
+      "path": "packages/opencode/src/config/config.ts",
+      "class": "hook",
+      "why": "File names and the schema address come from the brand module; substitution limits, workspace trust, the provider scope and redacted secrets are calls into `brand/guard.ts`, `brand/trust.ts` and `brand/serve.ts`."
+    },
+    {
+      "path": "packages/opencode/src/config/parse.ts",
+      "class": "logic",
+      "why": "`normalizeLoaded` and `issuesOf` live beside the decoder so that `doctor` validates a file the way a session does, without loading the configuration layer."
+    },
+    {
+      "path": "packages/opencode/src/config/paths.ts",
+      "class": "text",
+      "why": "Several base names and the project directory names come from the brand module."
+    },
+    {
+      "path": "packages/opencode/src/config/tui-migrate.ts",
+      "class": "text",
+      "why": "Schema address and file names come from the brand module."
+    },
+    {
+      "path": "packages/opencode/src/config/tui.ts",
+      "class": "hook",
+      "why": "Substitution limits and plugin trust for the interface configuration (`brand/guard.ts`, `brand/trust.ts`)."
+    },
+    {
+      "path": "packages/opencode/src/config/v2-compat.ts",
+      "class": "text",
+      "why": "A message that named other products names the key to use."
+    },
+    {
+      "path": "packages/opencode/src/config/variable.ts",
+      "class": "hook",
+      "why": "The `restrict` option that `brand/guard.ts` uses to limit substitution in a project file."
+    },
+    {
+      "path": "packages/opencode/src/index.ts",
+      "class": "hook",
+      "why": "Registers this product's commands, installs the startup guard, applies a staged update, restarts from a usable temporary directory, and reports an unexpected error through `rafiki/startup.ts`."
+    },
+    {
+      "path": "packages/opencode/src/installation/index.ts",
+      "class": "logic",
+      "why": "The update source, the install method detection and the upgrade commands are this product's (`rafiki/update.ts`); upstream's installer and package addresses are removed."
+    },
+    {
+      "path": "packages/opencode/src/mcp/index.ts",
+      "class": "text",
+      "why": "A message names this product's command."
+    },
+    {
+      "path": "packages/opencode/src/mcp/oauth-provider.ts",
+      "class": "text",
+      "why": "Client name and address given to an MCP server."
+    },
+    {
+      "path": "packages/opencode/src/plugin/install.ts",
+      "class": "text",
+      "why": "The plugin entry is written to this product's configuration file, project or global."
+    },
+    {
+      "path": "packages/opencode/src/plugin/tui/runtime.ts",
+      "class": "text",
+      "why": "Themes and the interface configuration live under this product's project directory."
+    },
+    {
+      "path": "packages/opencode/src/provider/error.ts",
+      "class": "hook",
+      "why": "Gateway errors are classified by `rafiki/gateway-errors.ts`; a message names this product's sign in step."
+    },
+    {
+      "path": "packages/opencode/src/provider/provider.ts",
+      "class": "hook",
+      "why": "`BrandGuard.request` in front of every provider request keeps the key on the gateway (`test/rafiki/key-guard.test.ts`); the model priority list is extended from the brand module."
+    },
+    {
+      "path": "packages/opencode/src/provider/transform.ts",
+      "class": "hook",
+      "why": "The cache marker is set by tier (`rafiki/cache-prefix.ts`); the output limit of the gateway provider is the model's own."
+    },
+    {
+      "path": "packages/opencode/src/server/auth.ts",
+      "class": "text",
+      "why": "This product's variable names are read first and upstream's still work; the default user name is the binary name."
+    },
+    {
+      "path": "packages/opencode/src/server/routes/instance/httpapi/public.ts",
+      "class": "hook",
+      "why": "The published OpenAPI document passes through `Brand.document`."
+    },
+    {
+      "path": "packages/opencode/src/server/routes/instance/httpapi/server.ts",
+      "class": "hook",
+      "why": "`BrandServe.listenerGuard` refuses requests from other origins."
+    },
+    {
+      "path": "packages/opencode/src/session/instruction.ts",
+      "class": "hook",
+      "why": "The house style is appended to the instructions."
+    },
+    {
+      "path": "packages/opencode/src/session/llm/native-runtime.ts",
+      "class": "hook",
+      "why": "The native runtime is refused when it would send the key anywhere but the gateway (`BrandGuard.allowed`)."
+    },
+    {
+      "path": "packages/opencode/src/session/llm/request.ts",
+      "class": "hook",
+      "why": "The system text is split into a stable and a changing part (`rafiki/cache-prefix.ts`); the user agent is this product's."
+    },
+    {
+      "path": "packages/opencode/src/session/processor.ts",
+      "class": "hook",
+      "why": "Retries, error wording and resuming a cut stream go through `rafiki/resilience.ts` and `rafiki/resume.ts`."
+    },
+    {
+      "path": "packages/opencode/src/session/prompt.ts",
+      "class": "hook",
+      "why": "The order of the system text (`rafiki/cache-prefix.ts`), continuation messages (`rafiki/resume.ts`) and the error for an empty answer cut by the length limit (`rafiki/reasoning.ts`)."
+    },
+    {
+      "path": "packages/opencode/src/session/retry.ts",
+      "class": "hook",
+      "why": "Which gateway errors are never retried and how long to wait (`rafiki/gateway-errors.ts`, `rafiki/resilience.ts`)."
+    },
+    {
+      "path": "packages/opencode/src/session/revert.ts",
+      "class": "hook",
+      "why": "A cut turn is recovered before a revert (`rafiki/resume.ts`)."
+    },
+    {
+      "path": "packages/opencode/src/session/session.ts",
+      "class": "text",
+      "why": "Plans are stored under this product's project directory."
+    },
+    {
+      "path": "packages/opencode/src/session/system.ts",
+      "class": "hook",
+      "why": "System prompts pass through `Brand.prompt`; the date line leaves the environment block because `rafiki/cache-prefix.ts` places it after the stable part."
+    },
+    {
+      "path": "packages/opencode/src/skill/index.ts",
+      "class": "logic",
+      "why": "The built in configuration skill is this product's, hidden skills are removed, and skill discovery honours the switch that disables project configuration."
+    },
+    {
+      "path": "packages/opencode/src/tool/registry.ts",
+      "class": "hook",
+      "why": "Tool directories pass through `BrandTrust.codeDirs` (workspace trust)."
+    },
+    {
+      "path": "packages/opencode/test/acp/error.test.ts",
+      "class": "test",
+      "why": "Expects the defect on stderr."
+    },
+    {
+      "path": "packages/opencode/test/acp/service-session.test.ts",
+      "class": "test",
+      "why": "Adds the cases of the cancellation fix."
+    },
+    {
+      "path": "packages/opencode/test/acp/usage.test.ts",
+      "class": "test",
+      "why": "Adds the cases of a message without token accounting."
+    },
+    {
+      "path": "packages/opencode/test/cli/acp/acp-test-client.ts",
+      "class": "test",
+      "why": "Helpers for the specification tests: send without waiting, send a raw line, read stderr."
+    },
+    {
+      "path": "packages/opencode/test/cli/acp/initialize-auth.test.ts",
+      "class": "test",
+      "why": "Agent name and sign in method id of this product."
+    },
+    {
+      "path": "packages/opencode/test/cli/cmd/tui/attention.test.ts",
+      "class": "test",
+      "why": "Notification title."
+    },
+    {
+      "path": "packages/opencode/test/cli/error.test.ts",
+      "class": "test",
+      "why": "Expects the lines that say what to do, and this product's names."
+    },
+    {
+      "path": "packages/opencode/test/cli/help/__snapshots__/help-snapshots.test.ts.snap",
+      "class": "generated",
+      "why": "The help text of this product's command list."
+    },
+    {
+      "path": "packages/opencode/test/cli/help/help-snapshots.test.ts",
+      "class": "test",
+      "why": "The command list of this product."
+    },
+    {
+      "path": "packages/opencode/test/cli/mcp-add.test.ts",
+      "class": "test",
+      "why": "Path of the global configuration file."
+    },
+    {
+      "path": "packages/opencode/test/cli/run/permission.shared.test.ts",
+      "class": "test",
+      "why": "Product name in the permission text."
+    },
+    {
+      "path": "packages/opencode/test/cli/run/run-process.test.ts",
+      "class": "test",
+      "why": "A run whose every tool call was rejected exits 1 here."
+    },
+    {
+      "path": "packages/opencode/test/cli/serve/serve-process.test.ts",
+      "class": "test",
+      "why": "The server makes a password; the test reads it from the server file."
+    },
+    {
+      "path": "packages/opencode/test/cli/tui/plugin-loader.test.ts",
+      "class": "test",
+      "why": "Project directory name."
+    },
+    {
+      "path": "packages/opencode/test/config/config.test.ts",
+      "class": "test",
+      "why": "Global file name, schema address and a message."
+    },
+    {
+      "path": "packages/opencode/test/installation/installation.test.ts",
+      "class": "test",
+      "why": "The update source and the upgrade methods are this product's."
+    },
+    {
+      "path": "packages/opencode/test/lib/cli-process.ts",
+      "class": "test",
+      "why": "CI variables are neutralised for subprocesses; helpers for the ACP specification tests."
+    },
+    {
+      "path": "packages/opencode/test/plugin/install-concurrency.test.ts",
+      "class": "test",
+      "why": "Project directory and file names."
+    },
+    {
+      "path": "packages/opencode/test/plugin/install.test.ts",
+      "class": "test",
+      "why": "Project directory and file names."
+    },
+    {
+      "path": "packages/opencode/test/preload.ts",
+      "class": "test",
+      "why": "Temporary workspaces are trusted and the provider scope is opened so that upstream suites keep testing upstream behaviour; this product's server variables are cleared."
+    },
+    {
+      "path": "packages/opencode/test/provider/provider.test.ts",
+      "class": "test",
+      "why": "An upstream provider that is disabled by default here is enabled for the test."
+    },
+    {
+      "path": "packages/opencode/test/server/auth.test.ts",
+      "class": "test",
+      "why": "Default user name."
+    },
+    {
+      "path": "packages/opencode/test/server/httpapi-cors.test.ts",
+      "class": "test",
+      "why": "A foreign origin is refused with 403."
+    },
+    {
+      "path": "packages/opencode/test/server/httpapi-instance-route-auth.test.ts",
+      "class": "test",
+      "why": "Default user name."
+    },
+    {
+      "path": "packages/opencode/test/session/instruction.test.ts",
+      "class": "test",
+      "why": "The house style entry."
+    },
+    {
+      "path": "packages/opencode/test/session/llm-native-recorded.test.ts",
+      "class": "test",
+      "why": "Providers that are disabled by default here are enabled for the test."
+    },
+    {
+      "path": "packages/opencode/test/session/prompt.test.ts",
+      "class": "test",
+      "why": "The test instance is given its configuration explicitly."
+    },
+    {
+      "path": "packages/opencode/test/skill/skill.test.ts",
+      "class": "test",
+      "why": "The built in configuration skill is this product's."
+    },
+    {
+      "path": "packages/script/src/index.ts",
+      "class": "identity",
+      "why": "The version lookup asks for this product's package."
+    },
+    {
+      "path": "packages/sdk/js/src/error-interceptor.ts",
+      "class": "text",
+      "why": "An error message no longer names the upstream product."
+    },
+    {
+      "path": "packages/sdk/js/src/v2/client.ts",
+      "class": "text",
+      "why": "An error message no longer names the upstream product."
+    },
+    {
+      "path": "packages/sdk/openapi.json",
+      "class": "generated",
+      "why": "Descriptions name this product (`Brand.document`)."
+    },
+    {
+      "path": "packages/tui/src/app.tsx",
+      "class": "text",
+      "why": "Terminal title, documentation address and update message name this product; the exit text ends with the cost line (`brand/cost.ts`)."
+    },
+    {
+      "path": "packages/tui/src/attention.ts",
+      "class": "text",
+      "why": "Notification title and sound pack name."
+    },
+    {
+      "path": "packages/tui/src/component/dialog-model.tsx",
+      "class": "hook",
+      "why": "Tiers that are not listed are hidden (`Brand.provider.listed`)."
+    },
+    {
+      "path": "packages/tui/src/component/dialog-provider.tsx",
+      "class": "text",
+      "why": "Messages name this product's configuration file."
+    },
+    {
+      "path": "packages/tui/src/component/dialog-status.tsx",
+      "class": "text",
+      "why": "A message names this product's command."
+    },
+    {
+      "path": "packages/tui/src/component/error-component.tsx",
+      "class": "text",
+      "why": "The crash screen names this product and links to its issue tracker."
+    },
+    {
+      "path": "packages/tui/src/component/prompt/index.tsx",
+      "class": "text",
+      "why": "The message shown without a provider names the sign in command."
+    },
+    {
+      "path": "packages/tui/src/context/local.tsx",
+      "class": "text",
+      "why": "The labels shown without a provider name the sign in command."
+    },
+    {
+      "path": "packages/tui/src/context/theme.tsx",
+      "class": "text",
+      "why": "The default theme name and the project directory names come from the brand module."
+    },
+    {
+      "path": "packages/tui/src/feature-plugins/builtins.ts",
+      "class": "hook",
+      "why": "Registers the cost plugin (`feature-plugins/rafiki-cost.tsx`)."
+    },
+    {
+      "path": "packages/tui/src/feature-plugins/home/tips-view.tsx",
+      "class": "text",
+      "why": "Tips name this product's commands and paths; tips about upstream services are removed."
+    },
+    {
+      "path": "packages/tui/src/feature-plugins/sidebar/context.tsx",
+      "class": "logic",
+      "why": "The amount spent is hidden when it is zero, because the cost plugin shows the estimate."
+    },
+    {
+      "path": "packages/tui/src/feature-plugins/sidebar/footer.tsx",
+      "class": "text",
+      "why": "The footer names this product and its sign in command."
+    },
+    {
+      "path": "packages/tui/src/logo.ts",
+      "class": "text",
+      "why": "The logo is exported from `brand/wordmark.ts`."
+    },
+    {
+      "path": "packages/tui/src/routes/session/permission.tsx",
+      "class": "text",
+      "why": "Product name in the permission text."
+    },
+    {
+      "path": "packages/tui/src/theme/index.ts",
+      "class": "text",
+      "why": "The default theme is registered under the name from the brand module."
+    },
+    {
+      "path": "packages/tui/src/util/error.ts",
+      "class": "text",
+      "why": "Messages name this product's commands and configuration file."
+    },
+    {
+      "path": "packages/tui/src/util/presentation.ts",
+      "class": "text",
+      "why": "The exit text uses the brand logo and command name."
+    },
+    {
+      "path": "packages/tui/test/app-lifecycle.test.tsx",
+      "class": "test",
+      "why": "Command name and the credentials message."
+    },
+    {
+      "path": "packages/tui/test/theme.test.ts",
+      "class": "test",
+      "why": "Default theme name."
+    },
+    {
+      "path": "packages/tui/test/util/presentation.test.ts",
+      "class": "test",
+      "why": "Command name."
+    },
+    {
+      "path": "packages/web/package.json",
+      "class": "identity",
+      "why": "Depends on the workspace package under its name here."
+    },
+    {
+      "path": "packages/web/src/components/Share.tsx",
+      "class": "identity",
+      "why": "Type imports follow the workspace package name."
+    },
+    {
+      "path": "packages/web/src/components/share/part.tsx",
+      "class": "identity",
+      "why": "Type import follows the workspace package name."
+    },
+    {
+      "path": "packages/web/src/pages/s/[id].astro",
+      "class": "identity",
+      "why": "Type import follows the workspace package name."
+    },
+    {
+      "path": "sdks/vscode/",
+      "class": "extension",
+      "why": "The editor extension of this product: name, publisher, commands, icons and code."
+    }
+  ],
+  "replaced": [
+    {
+      "path": "packages/opencode/src/cli/cmd/uninstall.ts",
+      "by": "packages/opencode/src/rafiki/uninstall.ts",
+      "why": "The uninstall command removes only a compiled binary, removes the PATH lines and links the installer made exactly, and calls only the package managers this product is published through."
+    }
+  ]
+}

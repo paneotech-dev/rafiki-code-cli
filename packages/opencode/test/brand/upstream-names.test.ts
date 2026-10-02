@@ -87,6 +87,12 @@ const allowed: Entry[] = [
     why: "the upstream GitHub agent with its workflow file, action, app and API; its command is not registered in this build (src/index.ts registers gh only)",
   },
   {
+    path: "packages/opencode/src/cli/cmd/uninstall.ts",
+    product: 2,
+    command: 1,
+    why: "the upstream uninstall command, kept as upstream wrote it; nothing in this build registers or imports it (src/index.ts registers src/rafiki/uninstall.ts, and upstream-files.test.ts proves the rest)",
+  },
+  {
     path: "packages/opencode/src/cli/cmd/providers.ts",
     site: 2,
     why: "prompts of the upstream provider login, a command this build replaces with a notice while the provider scope is closed (provider-scope.test.ts)",
