@@ -1,4 +1,5 @@
 import { Brand } from "@opencode-ai/core/brand/brand"
+import { RafikiUpdate } from "@/rafiki/update"
 import type { Argv } from "yargs"
 import { UI } from "../ui"
 import * as prompts from "@clack/prompts"
@@ -99,7 +100,9 @@ async function collectRemovalTargets(args: UninstallArgs, method: Installation.M
     { path: Global.Path.state, label: "State", keep: false },
   ]
 
-  const binary = method === "curl" ? process.execPath : null
+  // Only a compiled binary is removed. Run from source, process.execPath is
+  // the runtime, which is not this product's to delete.
+  const binary = method === "curl" && RafikiUpdate.running().compiled ? process.execPath : null
   const shellConfigs = binary ? await RafikiShell.configsWithPath(path.dirname(binary)) : []
   const links = binary ? await RafikiShell.ownedLinks(binary) : []
 
@@ -142,6 +145,8 @@ async function showRemovalSummary(targets: RemovalTargets, method: Installation.
       pnpm: `pnpm uninstall -g ${Brand.npm.meta}`,
       bun: `bun remove -g ${Brand.npm.meta}`,
       yarn: `yarn global remove ${Brand.npm.meta}`,
+      brew: `brew uninstall ${Brand.brew.formula}`,
+      winget: `winget uninstall --id ${Brand.winget.id} --exact`,
     }
     if (cmds[method]) prompts.log.info(`  ✓ Package: ${cmds[method]}`)
   }
@@ -215,16 +220,19 @@ async function executeUninstall(method: Installation.Method, targets: RemovalTar
 
   if (method !== "curl" && method !== "unknown") {
     /*
-     * Only the package managers this product is published through. Running
-     * `brew uninstall` or `choco uninstall` here would remove the upstream
-     * project's package of the same name, which is someone else's software and
-     * was never what the user installed.
+     * Only the package managers this product is published through, and only
+     * by this product's own identifiers: the formula of its tap by full name
+     * and its winget id. A bare `brew uninstall <name>` or `choco uninstall`
+     * here could remove the upstream project's package of the same name,
+     * which is someone else's software and was never what the user installed.
      */
     const cmds: Record<string, string[]> = {
       npm: ["npm", "uninstall", "-g", Brand.npm.meta],
       pnpm: ["pnpm", "uninstall", "-g", Brand.npm.meta],
       bun: ["bun", "remove", "-g", Brand.npm.meta],
       yarn: ["yarn", "global", "remove", Brand.npm.meta],
+      brew: ["brew", "uninstall", Brand.brew.formula],
+      winget: ["winget", "uninstall", "--id", Brand.winget.id, "--exact"],
     }
 
     const cmd = cmds[method]

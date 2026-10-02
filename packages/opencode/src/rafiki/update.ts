@@ -4,12 +4,14 @@
 // the running binary. Every URL and name comes from the brand module, and every
 // external input can be overridden so tests run against a local mock server.
 import fs from "fs/promises"
+import fsSync from "fs"
 import path from "path"
 import os from "os"
 import { createHash } from "crypto"
 import { spawn } from "child_process"
 import { Brand } from "@opencode-ai/core/brand/brand"
 import * as Contract from "./contract"
+import { compiled } from "./exec-tmp"
 
 export namespace RafikiUpdate {
   export interface Options {
@@ -24,6 +26,9 @@ export namespace RafikiUpdate {
     variant?: string
     // Fetch implementation, injectable for tests.
     fetch?: typeof fetch
+    // The executable this process is, injectable for tests so that none of
+    // them has to reason about the real one.
+    running?: Running
     // Progress callback with a short human readable line.
     onProgress?: (line: string) => void
   }
@@ -44,6 +49,41 @@ export namespace RafikiUpdate {
 
   export const MAX_REDIRECTS = 10
 
+  // The program this process is running as. compiled is true for a built
+  // rafikicode binary and false for a run from source, where execPath is the
+  // JavaScript runtime that every other program on the machine uses.
+  export interface Running {
+    execPath: string
+    compiled: boolean
+  }
+
+  export function running(): Running {
+    return { execPath: process.execPath, compiled: compiled() }
+  }
+
+  function real(file: string) {
+    try {
+      return fsSync.realpathSync(file)
+    } catch {
+      return path.resolve(file)
+    }
+  }
+
+  // Why target must not be written, or undefined when it may be.
+  //
+  // The only file an update is ever meant to replace is the compiled binary
+  // that is running. In a run from source the running executable is the
+  // runtime, so a replace aimed at it, directly or through a link, is refused
+  // here, at the last step before the write, whoever asked for it. A test once
+  // reached that write through the update command and replaced the machine's
+  // runtime with its own stand-in binary; this is the check that makes that
+  // impossible rather than unlikely.
+  export function refusal(target: string, run: Running = running()): string | undefined {
+    if (run.compiled) return undefined
+    if (real(target) !== real(run.execPath)) return undefined
+    return `This is a run from source, so ${run.execPath} is the runtime and not ${Brand.name}. Nothing was installed.`
+  }
+
   // GET that follows redirects itself, so that every hop is checked with the
   // release URL rule (https, or loopback http with the test switch) before
   // anything is requested from it. A plain fetch would follow https to http.
@@ -62,15 +102,36 @@ export namespace RafikiUpdate {
     throw new UpdateError(`More than ${MAX_REDIRECTS} redirects from ${url}. Nothing was installed.`)
   }
 
-  // Latest release tag from the releases API, without the leading v.
+  // Latest release version, without the leading v.
+  //
+  // Asked of the release page first: <base>/latest answers with a redirect to
+  // the newest published tag, is not rate limited, and never names a draft or a
+  // pre-release. The releases API is the fallback, not the first choice: it
+  // allows 60 unauthenticated requests an hour per IP address, shared by
+  // everyone behind the same address, and a daily check from every install
+  // must not depend on that allowance (the installers learned this in 0.1.9).
   export async function latest(opts: Pick<Options, "fetch"> = {}): Promise<string> {
     const f = opts.fetch ?? fetch
+    const fromPage = await latestFromPage(f).catch(() => undefined)
+    if (fromPage) return fromPage
     const url = `${Brand.release.api()}/releases/latest`
     const res = await get(f, url, { Accept: "application/vnd.github+json", "User-Agent": Brand.name })
     if (!res.ok) throw new UpdateError(`Could not read the latest release (${res.status}) from ${url}`)
     const data = (await res.json()) as { tag_name?: string }
     if (!data.tag_name) throw new UpdateError("The latest release has no tag name")
     return data.tag_name.replace(/^v/, "")
+  }
+
+  // The version in the redirect <base>/latest answers with, or undefined when
+  // it does not answer with one. The redirect is read, not followed: only its
+  // target's last path segment is used, and only when it is a version.
+  export async function latestFromPage(f: typeof fetch = fetch): Promise<string | undefined> {
+    const url = `${Brand.release.base()}/latest`
+    const res = await f(url, { headers: { "User-Agent": Brand.name }, redirect: "manual" })
+    const location = res.status >= 300 && res.status < 400 ? res.headers.get("location") : null
+    if (!location) return undefined
+    const match = /\/tag\/v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/.exec(new URL(location, url).pathname)
+    return match?.[1]
   }
 
   // Asset file name for this machine, matching what script/build.ts produces.
@@ -161,16 +222,28 @@ export namespace RafikiUpdate {
   // Put the new binary in place of the old one without a window where the
   // path is missing: write next to the target, then rename over it. Windows
   // cannot replace a running executable, so the old file is moved aside first.
-  export async function replace(source: string, target: string, platform: NodeJS.Platform) {
+  // Synchronous because the staged update is applied before anything else in
+  // the process has started (rafiki/autoupdate.ts).
+  export function replaceSync(source: string, target: string, platform: NodeJS.Platform, run: Running = running()) {
+    const problem = refusal(target, run)
+    if (problem) throw new UpdateError(problem)
     const staged = `${target}.new`
-    await fs.copyFile(source, staged)
-    if (platform !== "win32") await fs.chmod(staged, 0o755)
+    fsSync.copyFileSync(source, staged)
+    if (platform !== "win32") fsSync.chmodSync(staged, 0o755)
     if (platform === "win32") {
       const old = `${target}.old`
-      await fs.rm(old, { force: true })
-      await fs.rename(target, old).catch(() => {})
+      fsSync.rmSync(old, { force: true })
+      try {
+        fsSync.renameSync(target, old)
+      } catch {
+        // Nothing at the target yet, which the rename below handles.
+      }
     }
-    await fs.rename(staged, target)
+    fsSync.renameSync(staged, target)
+  }
+
+  export async function replace(source: string, target: string, platform: NodeJS.Platform, run: Running = running()) {
+    replaceSync(source, target, platform, run)
   }
 
   // Called first by the update command, before the install method is detected
@@ -184,13 +257,36 @@ export namespace RafikiUpdate {
     return true
   }
 
+  // Called by the update command just before it would install anything, by any
+  // method. A run from source has no installation of its own to upgrade: the
+  // installer method would aim at the runtime, and a package manager method
+  // would install a global package on the developer's machine as a side effect
+  // of running a command from a checkout (a test did exactly that with
+  // `upgrade --method npm`). True when it refused.
+  export function refusedSourceRun(
+    log: (line: string) => void = (line) => process.stderr.write(line + "\n"),
+    run: Running = running(),
+  ) {
+    const problem = refusal(run.execPath, run)
+    if (!problem) return false
+    log(problem)
+    process.exitCode = Contract.EXIT.usage
+    return true
+  }
+
   // Full update: resolve the version, download, verify, extract, replace.
   export async function apply(opts: Options = {}): Promise<Result> {
-    const problem = Brand.release.overrideProblem()
-    if (problem) throw new UpdateError(`${problem} Nothing was installed.`)
+    const override = Brand.release.overrideProblem()
+    if (override) throw new UpdateError(`${override} Nothing was installed.`)
+    // The target is the running executable unless a caller names another file.
+    // refusal() is asked here as well as in replaceSync, so that a run from
+    // source stops before it looks anything up or downloads anything.
+    const run = opts.running ?? running()
+    const execPath = opts.execPath ?? run.execPath
+    const refused = refusal(execPath, run)
+    if (refused) throw new UpdateError(refused)
     const platform = opts.platform ?? process.platform
     const arch = opts.arch ?? process.arch
-    const execPath = opts.execPath ?? process.execPath
     const version = opts.version?.replace(/^v/, "") || (await latest(opts))
     const variant = opts.variant ?? (await detectVariant(platform, arch))
     const asset = assetName(platform, arch, variant)
@@ -198,7 +294,7 @@ export namespace RafikiUpdate {
     const { dir, binary } = await extract(asset, bytes, platform)
     try {
       opts.onProgress?.(`Installing ${Brand.name} ${version} to ${execPath}`)
-      await replace(binary, execPath, platform)
+      await replace(binary, execPath, platform, run)
     } finally {
       await fs.rm(dir, { recursive: true, force: true })
     }

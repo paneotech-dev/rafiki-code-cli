@@ -1,7 +1,7 @@
 import { Server } from "@/server/server"
 import { InstanceRuntime } from "@/project/instance-runtime"
 import { Rpc } from "@/util/rpc"
-import { upgrade } from "@/cli/upgrade"
+import { upgrade } from "@/rafiki/autoupdate"
 import { Config } from "@/config/config"
 import { GlobalBus } from "@/bus/global"
 import { ServerAuth } from "@/server/auth"

@@ -3,7 +3,9 @@
 // The `.fail` handler in src/index.ts printed help and exited 1 without ever
 // writing yargs' message, so every one of these cases gave the user a wall of
 // options and no stated reason. `upgrade --method npm` is the one that made it
-// visible: npm is not an upgrade method, but nothing on screen said so.
+// visible, at a time when npm was not an upgrade method and nothing on screen
+// said so. npm is a method now, so these cases use a value that never will be
+// one: a test must not hand the command a method it would then carry out.
 //
 // These assert the reason reaches stderr, that help is still printed with it,
 // and that the exit code is unchanged.
@@ -16,17 +18,16 @@ describe("invalid arguments explain themselves", () => {
     "a rejected --method names the argument, the value and the allowed values",
     ({ opencode }) =>
       Effect.gen(function* () {
-        const result = yield* opencode.spawn(["upgrade", "--method", "npm"], { env: { COLUMNS: "120" } })
+        const result = yield* opencode.spawn(["upgrade", "--method", "apt"], { env: { COLUMNS: "120" } })
 
         expect(result.exitCode).toBe(1)
         // The reason.
         expect(result.stderr).toContain("Invalid values:")
         expect(result.stderr).toContain("method")
-        expect(result.stderr).toContain('"npm"')
-        // What it should have been. npm, pnpm and bun are deliberately absent
-        // from the choices list because the package 404s; the point of this
-        // assertion is that their absence is now stated rather than implied.
+        expect(result.stderr).toContain('"apt"')
+        // What it should have been: the choices are stated, not implied.
         expect(result.stderr).toContain('"curl"')
+        expect(result.stderr).toContain('"npm"')
         // Help still comes with it.
         expect(result.stderr).toContain("--method")
       }),
@@ -55,7 +56,7 @@ describe("invalid arguments explain themselves", () => {
     "the reason is the last thing printed, not scrolled away by the help",
     ({ opencode }) =>
       Effect.gen(function* () {
-        const result = yield* opencode.spawn(["upgrade", "--method", "npm"], { env: { COLUMNS: "120" } })
+        const result = yield* opencode.spawn(["upgrade", "--method", "apt"], { env: { COLUMNS: "120" } })
 
         const reason = result.stderr.indexOf("Invalid values:")
         const help = result.stderr.indexOf("installation method to use")

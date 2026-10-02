@@ -29,18 +29,10 @@ name: install matrix
 #
 # When it runs, and why not on every push:
 #
-#   * On the release tag, from release.yml, between publishing the archives and
-#     publishing the npm packages. That is the moment it matters, and it is also
-#     the earliest moment the real bytes exist at the URL the installer uses, so
-#     the run tests the upload as well as the build. npm waits on the result.
-#     This is a gate on what goes out next, not on what has already gone out:
-#     the archives on the release page cannot be unpublished by a later job.
-#     A true pre-publish gate is possible and was not built here, because it
-#     means splitting release.yml's one build-and-publish job into build, then
-#     matrix, then publish. The harness already has the hooks for it -- point
-#     --assets at the downloaded rafikicode-release artifact and pass
-#     --no-download, and it serves those bytes instead of fetching them -- so
-#     the work is in the release pipeline, not in the matrix.
+#   * On the release tag, from release.yml, between building the archives and
+#     publishing anything. The archives come from the build job's artifact
+#     (the assets-artifact input), so a red matrix stops the release page, npm,
+#     Homebrew and winget alike: release.yml's publish job needs this one.
 #   * On a pull request and on a push to dev that touches install/**, because the
 #     installer is the other half of what each cell measures.
 #   * Weekly, because nothing in this repository changes when debian:12-slim,
@@ -65,13 +57,13 @@ on:
         description: "Published version whose assets to install, without the leading v"
         required: true
         type: string
-      publish-to-release:
-        description: "Upload INSTALL-MATRIX.md to the release for this version"
-        required: false
-        type: boolean
-        default: false
       only:
         description: "Run only the cells whose id contains this"
+        required: false
+        type: string
+        default: ""
+      assets-artifact:
+        description: "Workflow artifact holding the archives and SHA256SUMS to install, instead of the published release"
         required: false
         type: string
         default: ""
@@ -101,7 +93,14 @@ on:
     - cron: "41 5 * * 1"
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  # The prefix is not decoration. When release.yml calls this workflow,
+  # github.workflow here is the caller's name, so without the prefix the group
+  # was release-<ref>: the caller's own group. GitHub then stops the run with
+  # "deadlock was detected for concurrency group ... between a top level
+  # workflow and 'install matrix'", which is what happened to the release runs
+  # of v0.1.8 and v0.1.9: the matrix never started and the run ended failed
+  # after the archives were already public.
+  group: install-matrix-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   # A release run is never thrown away for a later one; a pull request run is.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
@@ -112,6 +111,30 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  scripts:
+    name: installer and gate script suites
+    # The scripts under install/ tested against fake releases on loopback: the
+    # installer's own logic, the shells it has to parse under, and the release
+    # gate's judgement. Seconds, no Docker, no published release needed; not run
+    # when release.yml calls this workflow for the matrix alone.
+    if: inputs.assets-artifact == ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: install/test-install.sh
+        shell: bash
+        run: install/test-install.sh
+      - name: install/test-install-shells.sh
+        shell: bash
+        run: install/test-install-shells.sh
+      - name: install/test-install-url.sh
+        shell: bash
+        run: install/test-install-url.sh
+      - name: install/test-release-gate.sh
+        shell: bash
+        run: install/test-release-gate.sh
+
   matrix:
     name: install matrix
     # The same image release.yml builds on, and a hosted runner with Docker
@@ -182,6 +205,18 @@ jobs:
         with:
           platforms: arm64
 
+      # The release workflow calls this before the release exists, so that a
+      # red matrix stops the publish. The archives then come from the build
+      # job's artifact, laid out the way the harness caches a download, and the
+      # harness is told not to fetch anything: it still verifies every archive
+      # against the SHA256SUMS beside it.
+      - name: Fetch the archives under test from this run
+        if: inputs.assets-artifact != ''
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ${{ inputs.assets-artifact }}
+          path: ${{ runner.temp }}/matrix-assets
+
       - name: Run the matrix
         id: run
         shell: bash
@@ -189,6 +224,7 @@ jobs:
           RAFIKICODE_MATRIX_ASSETS: ${{ runner.temp }}/matrix-assets
           MATRIX_VERSION: ${{ steps.meta.outputs.version }}
           MATRIX_ONLY: ${{ inputs.only }}
+          MATRIX_ARTIFACT: ${{ inputs.assets-artifact }}
         run: |
           # GitHub runs a bash step with -e, which would kill this step on the
           # harness's own exit status before it could be recorded. The gate is
@@ -197,6 +233,7 @@ jobs:
           set -uo pipefail
           args=(--release-version "$MATRIX_VERSION" --results "$RUNNER_TEMP/matrix-results.tsv")
           [ -n "${MATRIX_ONLY:-}" ] && args+=(--only "$MATRIX_ONLY")
+          [ -n "${MATRIX_ARTIFACT:-}" ] && args+=(--no-download)
           # The exit status is deliberately not the gate. Several cells are built
           # to fail -- a machine with no bash cannot run a bash installer -- so a
           # correct run is routinely non-zero. The next step judges the verdicts
@@ -295,36 +332,8 @@ jobs:
           docker system prune -f >/dev/null 2>&1 || true
           df -h /
 
-  publish:
-    name: publish the record beside PLATFORM-COVERAGE.md
-    # Only the release call asks for this. PLATFORM-COVERAGE.md already says
-    # which binaries were ever started; this says what happened when they were
-    # installed, and the two answer the same question from the two ends, so they
-    # belong on the same release page rather than in a log that expires.
-    #
-    # Published whether the run was green or red. A release page that quietly
-    # lacks the record is the v0.1.7 situation again: absence of evidence read
-    # as evidence of absence.
-    if: ${{ always() && inputs.publish-to-release && needs.matrix.outputs.version != '' }}
-    needs: matrix
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: install-matrix-${{ needs.matrix.outputs.version }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: record
-
-      - name: Upload INSTALL-MATRIX.md to the release
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: v${{ needs.matrix.outputs.version }}
-        run: |
-          set -euo pipefail
-          if [ ! -s record/INSTALL-MATRIX.md ]; then
-            echo "::error title=install matrix::The matrix produced no record to publish, so the release page says nothing about how it installs. Look at the matrix job."
-            exit 1
-          fi
-          gh release upload "$TAG" record/INSTALL-MATRIX.md --clobber --repo "$GITHUB_REPOSITORY"
+  # INSTALL-MATRIX.md is in the artifact above. When release.yml calls this
+  # workflow, its publish job attaches that file to the release beside
+  # PLATFORM-COVERAGE.md and RELEASE-GATE.md, once every gate has passed. This
+  # workflow used to upload it itself, to a release that already existed; it
+  # now runs before there is one, and needs no write permission at all.

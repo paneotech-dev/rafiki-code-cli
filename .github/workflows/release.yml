@@ -1,11 +1,37 @@
 name: release
 
-# Builds every rafikicode binary from one Linux runner (bun cross compiles),
-# publishes the archives and SHA256SUMS on the GitHub release for the tag, and
-# publishes the npm packages when an NPM_TOKEN secret exists.
+# Builds every rafikicode binary, proves each one before anything is public,
+# then publishes: the GitHub release first, and from it npm, Homebrew and winget.
 #
-# Trigger: push a tag v<version>, for example v0.1.0.
-# Secrets: NPM_TOKEN (optional, npm publish is skipped without it).
+#   preflight       the tag is a version, and every secret the run needs exists
+#   build           all twelve builds, packed with LICENSE and NOTICE, SHA256SUMS
+#   gate            one job per published build: a clean container or runner for
+#                   that platform, the documented install, --version, the licence
+#                   files, a sign-in with the staging test account and one hello
+#                   world task against staging (install/release-gate.sh)
+#   install-matrix  the twenty container cells of install/test-matrix.sh, run
+#                   against the same archives
+#   publish         only when every gate job and the matrix passed: the release
+#                   is created as a draft, every asset is uploaded and checked,
+#                   and only then is it published
+#   npm, homebrew, winget   each installs the archives of the published release
+#
+# A failed build blocks the whole release: publish needs every gate job, the
+# gate matrix does not fail fast so the summary names every build that failed,
+# and nothing is uploaded anywhere before publish.
+#
+# Trigger: push a tag v<version>, for example v0.2.0.
+#
+# Secrets, all required. preflight stops the run, naming each one that is
+# absent, before anything is built:
+#   RAFIKICODE_STAGING_API_KEY  API key of the staging test account (gate)
+#   NPM_TOKEN                   npm automation token for the package rafikicode
+#   HOMEBREW_TAP_TOKEN          token that can push to paneotech-dev/homebrew-tap
+#   WINGET_TOKEN                token wingetcreate uses to open the pull request
+#                               on microsoft/winget-pkgs
+# Variables, optional: RAFIKICODE_STAGING_GATEWAY_URL and
+# RAFIKICODE_STAGING_CONSOLE_URL, when staging is not the product default.
+#
 # Signing: release archives are not code signed; SHA256SUMS is the integrity check.
 #
 # Untrusted values (the tag name and the dispatch input) reach scripts only
@@ -32,15 +58,13 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  build:
-    name: build all platforms
+  preflight:
+    name: preflight
     runs-on: ubuntu-24.04
-    permissions:
-      # Creates the GitHub release and uploads its assets.
-      contents: write
     outputs:
       version: ${{ steps.meta.outputs.version }}
       tag: ${{ steps.meta.outputs.tag }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
     steps:
       - id: meta
         shell: bash
@@ -57,10 +81,60 @@ jobs:
           fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          # A version with a pre-release part is published as a pre-release on
+          # GitHub, never becomes "latest", and goes to no package manager.
+          case "${TAG#v}" in
+            *-*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
+          esac
 
+      # Every channel a released binary tells its user about has to be
+      # publishable by this run: `rafikicode upgrade` offers npm, Homebrew and
+      # winget, and the install page documents them. So the run stops here,
+      # before a build minute is spent, when it could not publish one of them
+      # or could not gate the builds. Secrets are compared with the empty
+      # string only; none is printed.
+      - name: Require every secret the release needs
+        shell: bash
+        env:
+          RAFIKICODE_STAGING_API_KEY: ${{ secrets.RAFIKICODE_STAGING_API_KEY }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+          PRERELEASE: ${{ steps.meta.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          required=(RAFIKICODE_STAGING_API_KEY)
+          # A pre-release is gated like any release and published to GitHub only.
+          if [ "$PRERELEASE" != "true" ]; then
+            required+=(NPM_TOKEN HOMEBREW_TAP_TOKEN WINGET_TOKEN)
+          fi
+          missing=()
+          for name in "${required[@]}"; do
+            [ -n "${!name:-}" ] || missing+=("$name")
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            for name in "${missing[@]}"; do
+              echo "::error title=release::The repository secret ${name} is not set. The release needs it and does not run without it."
+            done
+            {
+              echo "## Release not started"
+              echo
+              echo "Missing repository secrets: ${missing[*]}."
+              echo "Nothing was built and nothing was published. See docs/install.md, section For maintainers."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "All required secrets are present."
+
+  build:
+    name: build all platforms
+    needs: preflight
+    runs-on: ubuntu-24.04
+    steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
-          ref: refs/tags/${{ steps.meta.outputs.tag }}
+          ref: refs/tags/${{ needs.preflight.outputs.tag }}
           fetch-tags: true
 
       - uses: ./.github/actions/setup-bun
@@ -69,26 +143,30 @@ jobs:
         shell: bash
         run: ./packages/opencode/script/build.ts
         env:
-          OPENCODE_VERSION: ${{ steps.meta.outputs.version }}
+          OPENCODE_VERSION: ${{ needs.preflight.outputs.version }}
           OPENCODE_CHANNEL: latest
 
-      - name: Package archives and checksums
+      - name: Package archives, licence files and checksums
         shell: bash
-        working-directory: packages/opencode/dist
         run: |
           set -euo pipefail
-          for dir in rafikicode-*/; do
-            name="${dir%/}"
-            case "$name" in
-              *linux*) tar -czf "${name}.tar.gz" -C "${name}/bin" . ;;
-              *) (cd "${name}/bin" && zip -qr "../../${name}.zip" .) ;;
-            esac
-          done
-          sha256sum rafikicode-*.tar.gz rafikicode-*.zip > SHA256SUMS
-          cat SHA256SUMS
+          install/package-release.sh packages/opencode/dist
           # Written by the build script: which targets the runner could execute
-          # and which were published without being started once.
-          cat PLATFORM-COVERAGE.md
+          # and which were built without being started once. The gate below is
+          # what starts the rest.
+          cat packages/opencode/dist/PLATFORM-COVERAGE.md
+
+      # The npm package holds no binary, only the checksums of the archives
+      # above, so it can be packed now and installed by the gate before
+      # anything is published.
+      - name: Pack the npm package
+        shell: bash
+        working-directory: packages/opencode
+        env:
+          OPENCODE_VERSION: ${{ needs.preflight.outputs.version }}
+          OPENCODE_CHANNEL: latest
+          PACK: "1"
+        run: bun run script/publish-npm.ts
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -98,72 +176,280 @@ jobs:
             packages/opencode/dist/rafikicode-*.zip
             packages/opencode/dist/SHA256SUMS
             packages/opencode/dist/PLATFORM-COVERAGE.md
-            packages/opencode/dist/rafikicode-*/package.json
-            packages/opencode/dist/rafikicode-*/bin/*
+            packages/opencode/dist/npm/rafikicode-*.tgz
           if-no-files-found: error
 
-      - name: Publish GitHub release
-        shell: bash
-        working-directory: packages/opencode/dist
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.meta.outputs.tag }}
-        run: |
-          set -euo pipefail
-          # install.sh ships as a release asset so that
-          # releases/latest/download/install.sh always serves the installer of the
-          # newest release. get.rafikiai.io can then point at that one URL forever
-          # instead of a tag that has to be repointed by hand at every release --
-          # which it was, and the redirect spent two weeks serving an installer with
-          # a known bug because nobody remembered to move it.
-          # install.ps1 ships the same way: install.sh is a POSIX shell script and
-          # runs on Windows only under WSL, Git Bash or Cygwin, so a plain Windows
-          # user needs the PowerShell one at
-          # releases/latest/download/install.ps1.
-          cp "$GITHUB_WORKSPACE/install/install.sh" install.sh
-          cp "$GITHUB_WORKSPACE/install/install.ps1" install.ps1
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" rafikicode-*.tar.gz rafikicode-*.zip SHA256SUMS PLATFORM-COVERAGE.md install.sh install.ps1 --clobber
-          else
-            gh release create "$TAG" rafikicode-*.tar.gz rafikicode-*.zip SHA256SUMS PLATFORM-COVERAGE.md install.sh install.ps1 \
-              --title "$TAG" --generate-notes --verify-tag
-          fi
-
-  install-matrix:
-    name: install matrix
-    needs: build
-    # Runs install/test-matrix.sh against the archives the job above just
-    # published: the installer's real download, checksum and unpack path, in
-    # twenty containers shaped like the machines users have, and the program
-    # started in each one. The assets exist at their public URL by this point,
-    # so the run tests the upload as well as the build -- and this is the first
-    # moment in a release when it can. See .github/workflows/install-matrix.yml.
-    permissions:
-      # The called workflow publishes INSTALL-MATRIX.md beside
-      # PLATFORM-COVERAGE.md on the release, so the record of how this version
-      # installs outlives the workflow log.
-      contents: write
-    uses: ./.github/workflows/install-matrix.yml
-    with:
-      release-version: ${{ needs.build.outputs.version }}
-      publish-to-release: true
-
-  npm:
-    name: publish npm packages
-    # The npm packages carry the same binaries to the other install channel, so
-    # they wait for the matrix. v0.1.7 went out everywhere at once on the
-    # strength of one --version run on the build host; the archives on the
-    # release page cannot be unpublished, but these can still be held back.
-    needs: [build, install-matrix]
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-    # The secret is only readable inside a step, so the job checks for it there
-    # and skips publishing with a message when it is absent.
+  gate:
+    name: gate ${{ matrix.target }} (${{ matrix.channel }})
+    needs: [preflight, build]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      # Every build is judged, so one red run names every build that failed.
+      fail-fast: false
+      matrix:
+        include:
+          # Linux: a clean container on a runner of the build's own
+          # architecture. Debian for the glibc builds, Alpine for musl.
+          - { target: linux-x64, channel: installer, runner: ubuntu-24.04, mode: container }
+          - { target: linux-x64-baseline, channel: installer, runner: ubuntu-24.04, mode: container }
+          - { target: linux-x64-musl, channel: installer, runner: ubuntu-24.04, mode: container }
+          - { target: linux-x64-baseline-musl, channel: installer, runner: ubuntu-24.04, mode: container }
+          - { target: linux-arm64, channel: installer, runner: ubuntu-24.04-arm, mode: container }
+          - { target: linux-arm64-musl, channel: installer, runner: ubuntu-24.04-arm, mode: container }
+          # macOS: no container exists for it, so the hosted runner, which is a
+          # new virtual machine for every job, is the clean image.
+          - { target: darwin-arm64, channel: installer, runner: macos-15, mode: host }
+          - { target: darwin-x64, channel: installer, runner: macos-15-intel, mode: host }
+          - { target: darwin-x64-baseline, channel: installer, runner: macos-15-intel, mode: host }
+          # Windows: the hosted runner again, with install.ps1.
+          - { target: windows-x64, channel: installer, runner: windows-2025, mode: windows }
+          - { target: windows-x64-baseline, channel: installer, runner: windows-2025, mode: windows }
+          - { target: windows-arm64, channel: installer, runner: windows-11-arm, mode: windows }
+          # The npm package, installed from its packed tarball in a container
+          # that has Node and nothing else of ours.
+          - { target: linux-x64, channel: npm, runner: ubuntu-24.04, mode: container }
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
-          ref: refs/tags/${{ needs.build.outputs.tag }}
+          ref: refs/tags/${{ needs.preflight.outputs.tag }}
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: rafikicode-release
+          path: release-assets
+
+      - name: Gate the build (Linux container or macOS runner)
+        if: matrix.mode != 'windows'
+        shell: bash
+        env:
+          RAFIKICODE_STAGING_API_KEY: ${{ secrets.RAFIKICODE_STAGING_API_KEY }}
+          RAFIKICODE_STAGING_GATEWAY_URL: ${{ vars.RAFIKICODE_STAGING_GATEWAY_URL }}
+          RAFIKICODE_STAGING_CONSOLE_URL: ${{ vars.RAFIKICODE_STAGING_CONSOLE_URL }}
+          GATE_TARGET: ${{ matrix.target }}
+          GATE_CHANNEL: ${{ matrix.channel }}
+          GATE_MODE: ${{ matrix.mode }}
+          GATE_VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          set -euo pipefail
+          args=(--target "$GATE_TARGET" --version "$GATE_VERSION" --assets release-assets
+                --channel "$GATE_CHANNEL" --results "$RUNNER_TEMP/gate-results.tsv")
+          [ "$GATE_MODE" = "host" ] && args+=(--host)
+          [ "$GATE_CHANNEL" = "npm" ] && args+=(--npm-tarball "release-assets/npm/rafikicode-${GATE_VERSION}.tgz")
+          install/release-gate.sh "${args[@]}"
+
+      - name: Gate the build (Windows runner)
+        if: matrix.mode == 'windows'
+        shell: pwsh
+        env:
+          RAFIKICODE_STAGING_API_KEY: ${{ secrets.RAFIKICODE_STAGING_API_KEY }}
+          RAFIKICODE_STAGING_GATEWAY_URL: ${{ vars.RAFIKICODE_STAGING_GATEWAY_URL }}
+          RAFIKICODE_STAGING_CONSOLE_URL: ${{ vars.RAFIKICODE_STAGING_CONSOLE_URL }}
+          GATE_TARGET: ${{ matrix.target }}
+          GATE_VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          ./install/release-gate.ps1 -Target $env:GATE_TARGET -Version $env:GATE_VERSION `
+            -Assets release-assets -Results (Join-Path $env:RUNNER_TEMP 'gate-results.tsv')
+          exit $LASTEXITCODE
+
+      - name: Keep the verdicts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-gate-${{ matrix.target }}-${{ matrix.channel }}
+          path: ${{ runner.temp }}/gate-results.tsv
+          if-no-files-found: warn
+
+  install-matrix:
+    name: install matrix
+    needs: [preflight, build]
+    # The twenty cells of install/test-matrix.sh: the machines users actually
+    # have (a noexec /tmp, no bash, a read-only home), run against the archives
+    # built above and before any of them is public. The gate above covers every
+    # build once; this covers three builds in every environment.
+    uses: ./.github/workflows/install-matrix.yml
+    with:
+      release-version: ${{ needs.preflight.outputs.version }}
+      assets-artifact: rafikicode-release
+
+  publish:
+    name: publish GitHub release
+    # Every gate job and the matrix. A failed or cancelled job among them
+    # leaves this one skipped, and nothing has been published by then.
+    needs: [preflight, build, gate, install-matrix]
+    runs-on: ubuntu-24.04
+    permissions:
+      # Creates the GitHub release and uploads its assets.
+      contents: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: refs/tags/${{ needs.preflight.outputs.tag }}
+          fetch-tags: true
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: rafikicode-release
+          path: dist
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: release-gate-*
+          path: gate
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: install-matrix-*
+          path: matrix
+          merge-multiple: true
+
+      - name: Write the gate record
+        shell: bash
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          set -euo pipefail
+          # One row per build, channel and facet, as each gate job reported it.
+          cat gate/*/gate-results.tsv > gate-results.tsv
+          {
+            echo "# Release gate for v${VERSION}"
+            echo
+            echo "Each build was installed in a clean container or on a fresh hosted runner for its"
+            echo "platform, with the documented install command, and then asked for its version, its"
+            echo "licence files, a sign-in with the staging test account and one hello world task"
+            echo "against staging. The release is published only when every row is a pass."
+            echo
+            echo "| build | channel | install | version | licence | signin | task |"
+            echo "| --- | --- | --- | --- | --- | --- | --- |"
+            awk -F'\t' '
+              { key = $1 "\t" $2; if (!(key in seen)) { seen[key] = 1; order[++n] = key } v[key, $3] = $4 }
+              END { for (i = 1; i <= n; i++) { k = order[i]; split(k, p, "\t");
+                printf "| %s | %s | %s | %s | %s | %s | %s |\n", p[1], p[2], v[k, "install"], v[k, "version"], v[k, "licence"], v[k, "signin"], v[k, "task"] } }
+            ' gate-results.tsv
+          } > dist/RELEASE-GATE.md
+          cat dist/RELEASE-GATE.md >> "$GITHUB_STEP_SUMMARY"
+          # The jobs already failed the run if a facet failed. This is the same
+          # rule applied to the record itself: thirteen rows of five passes, or
+          # the release does not go out.
+          rows=$(awk -F'\t' '{print $1 "\t" $2}' gate-results.tsv | sort -u | wc -l | tr -d ' ')
+          bad=$(awk -F'\t' '$4 != "pass"' gate-results.tsv | wc -l | tr -d ' ')
+          total=$(wc -l < gate-results.tsv | tr -d ' ')
+          if [ "$rows" != "13" ] || [ "$total" != "65" ] || [ "$bad" != "0" ]; then
+            echo "::error title=release gate::Expected 13 gated builds with 5 passing facets each; found ${rows} builds, ${total} verdicts, ${bad} not passing."
+            exit 1
+          fi
+
+      - name: Create the release as a draft, upload everything, then publish
+        shell: bash
+        working-directory: dist
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.preflight.outputs.tag }}
+          PRERELEASE: ${{ needs.preflight.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          # install.sh and install.ps1 ship as release assets so that
+          # releases/latest/download/install.sh always serves the installer of
+          # the newest release; get.rafikiai.io points at that one URL.
+          cp "$GITHUB_WORKSPACE/install/install.sh" install.sh
+          cp "$GITHUB_WORKSPACE/install/install.ps1" install.ps1
+          cp "$GITHUB_WORKSPACE/LICENSE" LICENSE
+          cp "$GITHUB_WORKSPACE/NOTICE" NOTICE
+          if [ -s "$GITHUB_WORKSPACE/matrix/INSTALL-MATRIX.md" ]; then
+            cp "$GITHUB_WORKSPACE/matrix/INSTALL-MATRIX.md" INSTALL-MATRIX.md
+          else
+            echo "::error title=release::The install matrix left no INSTALL-MATRIX.md, so the release page would say nothing about how it installs."
+            exit 1
+          fi
+          shopt -s nullglob
+          assets=(rafikicode-*.tar.gz rafikicode-*.zip SHA256SUMS PLATFORM-COVERAGE.md INSTALL-MATRIX.md RELEASE-GATE.md install.sh install.ps1 LICENSE NOTICE)
+
+          # Order matters. releases/latest, and with it get.rafikiai.io and the
+          # daily update check, follow the newest published release. A release
+          # that is published before its installer and SHA256SUMS are uploaded
+          # answers 404 for both until they arrive. So the release is a draft,
+          # which "latest" never points at, until every asset is on it.
+          state=$(gh release view "$TAG" --json isDraft --jq '.isDraft' 2>/dev/null || echo "absent")
+          flags=()
+          [ "$PRERELEASE" = "true" ] && flags+=(--prerelease)
+          case "$state" in
+            absent)
+              gh release create "$TAG" --draft --title "$TAG" --generate-notes --verify-tag "${flags[@]}"
+              gh release upload "$TAG" "${assets[@]}" --clobber
+              ;;
+            true)
+              # A draft left by an earlier attempt of this run.
+              gh release upload "$TAG" "${assets[@]}" --clobber
+              ;;
+            *)
+              # Already public, from an earlier run for this tag. Replacing an
+              # asset removes it and uploads it again, which opens the very
+              # window this job exists to close, so it is refused.
+              echo "::error title=release::A published release for ${TAG} already exists. This workflow does not replace the assets of a public release. Delete the release (not the tag) and run again, or cut a new version."
+              exit 1
+              ;;
+          esac
+
+          # Publish only what is complete: every asset named above is on the draft.
+          uploaded=$(gh release view "$TAG" --json assets --jq '.assets[].name' | sort)
+          missing=0
+          for asset in "${assets[@]}"; do
+            if ! printf '%s\n' "$uploaded" | grep -qxF "$asset"; then
+              echo "::error title=release::${asset} is not on the draft release."
+              missing=1
+            fi
+          done
+          [ "$(printf '%s\n' "${assets[@]}" | grep -c '^rafikicode-.*\.\(tar\.gz\|zip\)$')" = "12" ] || { echo "::error title=release::Expected 12 archives."; missing=1; }
+          [ "$missing" = "0" ] || exit 1
+
+          if [ "$PRERELEASE" = "true" ]; then
+            gh release edit "$TAG" --draft=false --prerelease
+          else
+            gh release edit "$TAG" --draft=false --latest
+          fi
+
+      - name: Check that the latest release serves its installer and checksums
+        if: needs.preflight.outputs.prerelease != 'true'
+        shell: bash
+        env:
+          TAG: ${{ needs.preflight.outputs.tag }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # What a user's `curl -fsSL https://get.rafikiai.io | bash` and the
+          # daily update check ask for, straight after the publish.
+          base="https://github.com/${REPO}/releases"
+          ok=false
+          for attempt in $(seq 1 12); do
+            latest=$(curl -sS -o /dev/null -w '%{redirect_url}' "${base}/latest" || true)
+            if [ "${latest##*/}" = "$TAG" ] \
+               && curl -fsSL -o /dev/null "${base}/latest/download/install.sh" \
+               && curl -fsSL -o /dev/null "${base}/latest/download/install.ps1" \
+               && curl -fsSL -o /dev/null "${base}/latest/download/SHA256SUMS"; then
+              ok=true
+              echo "attempt ${attempt}: latest is ${TAG} and serves install.sh, install.ps1 and SHA256SUMS"
+              break
+            fi
+            echo "attempt ${attempt}: latest is '${latest##*/}', or an asset is not served yet"
+            sleep 10
+          done
+          if [ "$ok" != "true" ]; then
+            echo "::error title=release::Two minutes after publishing, releases/latest does not serve the installer and SHA256SUMS of ${TAG}."
+            exit 1
+          fi
+
+  npm:
+    name: publish npm package
+    needs: [preflight, publish]
+    if: needs.preflight.outputs.prerelease != 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: refs/tags/${{ needs.preflight.outputs.tag }}
 
       - uses: ./.github/actions/setup-bun
 
@@ -172,23 +458,168 @@ jobs:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
 
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: rafikicode-release
-          path: packages/opencode/dist
+      # The checksums packed into the package are the ones the release
+      # published, fetched from the release itself.
+      - name: Fetch the published SHA256SUMS
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.preflight.outputs.tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p packages/opencode/dist
+          gh release download "$TAG" --pattern SHA256SUMS --dir packages/opencode/dist --repo "$GITHUB_REPOSITORY"
 
       - name: Publish to npm
         shell: bash
         working-directory: packages/opencode
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          OPENCODE_VERSION: ${{ needs.build.outputs.version }}
+          OPENCODE_VERSION: ${{ needs.preflight.outputs.version }}
           OPENCODE_CHANNEL: latest
         run: |
           set -euo pipefail
-          if [ -z "${NODE_AUTH_TOKEN}" ]; then
-            echo "NPM_TOKEN is not set, running the publish script in dry run mode."
-            DRY_RUN=1 bun run script/publish-npm.ts
+          # The script stops with a message naming NPM_TOKEN when it is absent.
+          bun run script/publish-npm.ts
+
+      - name: Install the published package and start it
+        shell: bash
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          set -euo pipefail
+          # The registry can take a moment to serve a version it just accepted.
+          for attempt in $(seq 1 12); do
+            if npm install -g "rafikicode@${VERSION}"; then break; fi
+            [ "$attempt" = "12" ] && { echo "::error title=npm::rafikicode@${VERSION} could not be installed from the registry."; exit 1; }
+            sleep 10
+          done
+          got=$(rafikicode --version)
+          [ "$got" = "$VERSION" ] || { echo "::error title=npm::The npm install printed version '${got}', expected ${VERSION}."; exit 1; }
+
+  homebrew:
+    name: update the Homebrew tap
+    needs: [preflight, publish]
+    if: needs.preflight.outputs.prerelease != 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: refs/tags/${{ needs.preflight.outputs.tag }}
+
+      - name: Render the formula from the published SHA256SUMS
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.preflight.outputs.tag }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          set -euo pipefail
+          gh release download "$TAG" --pattern SHA256SUMS --dir published --repo "$GITHUB_REPOSITORY"
+          node install/channels/render.mjs --version "$VERSION" --sums published/SHA256SUMS --out rendered
+
+      - name: Push the formula to paneotech-dev/homebrew-tap
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::error title=homebrew::The repository secret HOMEBREW_TAP_TOKEN is not set, so the tap cannot be updated. Homebrew users stay on the previous version until it is."
+            exit 1
+          fi
+          gh auth setup-git
+          git clone --depth 1 https://github.com/paneotech-dev/homebrew-tap.git tap
+          mkdir -p tap/Formula
+          cp rendered/homebrew/rafikicode.rb tap/Formula/rafikicode.rb
+          cd tap
+          git config user.name "rafikicode release"
+          git config user.email "release@rafikiai.io"
+          git add Formula/rafikicode.rb
+          if git diff --cached --quiet; then
+            echo "The tap already carries the formula for ${VERSION}."
             exit 0
           fi
-          bun run script/publish-npm.ts
+          git commit -m "rafikicode ${VERSION}"
+          git push origin HEAD
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: homebrew-formula
+          path: rendered/homebrew/rafikicode.rb
+          if-no-files-found: warn
+
+  homebrew-verify:
+    name: install from the tap on macOS
+    needs: [preflight, homebrew]
+    runs-on: macos-15
+    permissions:
+      contents: read
+    steps:
+      - name: brew install and start it
+        shell: bash
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+        run: |
+          set -euo pipefail
+          brew tap paneotech-dev/tap
+          brew install paneotech-dev/tap/rafikicode
+          got=$(rafikicode --version)
+          [ "$got" = "$VERSION" ] || { echo "::error title=homebrew::brew installed version '${got}', expected ${VERSION}."; exit 1; }
+          rafikicode licenses | grep -q "Permission is hereby granted"
+          brew test paneotech-dev/tap/rafikicode
+
+  winget:
+    name: submit the winget manifest
+    needs: [preflight, publish]
+    if: needs.preflight.outputs.prerelease != 'true'
+    runs-on: windows-2025
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: refs/tags/${{ needs.preflight.outputs.tag }}
+
+      - name: Render the manifests from the published SHA256SUMS
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.preflight.outputs.tag }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          set -euo pipefail
+          gh release download "$TAG" --pattern SHA256SUMS --dir published --repo "$GITHUB_REPOSITORY"
+          node install/channels/render.mjs --version "$VERSION" --sums published/SHA256SUMS --out rendered
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: winget-manifests
+          path: rendered/winget
+          if-no-files-found: error
+
+      # The community repository reviews every submission, so this opens a pull
+      # request and the package is installable once that is merged, not when
+      # this job ends.
+      - name: Validate and submit to microsoft/winget-pkgs
+        shell: pwsh
+        env:
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ([string]::IsNullOrWhiteSpace($env:WINGET_TOKEN)) {
+            Write-Host "::error title=winget::The repository secret WINGET_TOKEN is not set, so the manifest cannot be submitted. The rendered manifests are in the winget-manifests artifact of this run."
+            exit 1
+          }
+          winget validate --manifest rendered\winget
+          if ($LASTEXITCODE -ne 0) { Write-Host "::error title=winget::winget validate refused the manifests."; exit 1 }
+          Invoke-WebRequest -UseBasicParsing -Uri https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
+          .\wingetcreate.exe submit --prtitle "New version: PaneoTech.RafikiCode version $env:VERSION" --token $env:WINGET_TOKEN rendered\winget
+          if ($LASTEXITCODE -ne 0) { Write-Host "::error title=winget::wingetcreate could not open the pull request."; exit 1 }

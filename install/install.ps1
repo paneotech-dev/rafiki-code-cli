@@ -315,6 +315,23 @@ try {
     if (Test-Path -LiteralPath $leftover) {
         Remove-Item -LiteralPath $leftover -Force -ErrorAction SilentlyContinue
     }
+
+    # The licence and the notice travel with the binary. The archive carries
+    # both beside it; they are kept in the product's own directory. An archive
+    # from before they were packed has neither, and that is not an error: the
+    # binary prints the same text with `rafikicode licenses`.
+    if (-not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
+        $licenceDir = Join-Path (Join-Path $env:USERPROFILE ".$App") 'licenses'
+        foreach ($name in @('LICENSE', 'NOTICE')) {
+            $licenceFile = Join-Path $extract $name
+            if (Test-Path -LiteralPath $licenceFile) {
+                try {
+                    New-Item -ItemType Directory -Path $licenceDir -Force | Out-Null
+                    Copy-Item -LiteralPath $licenceFile -Destination (Join-Path $licenceDir $name) -Force
+                } catch { }
+            }
+        }
+    }
 } finally {
     if (Test-Path -LiteralPath $work) {
         Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue

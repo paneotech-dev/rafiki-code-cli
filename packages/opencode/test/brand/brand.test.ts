@@ -156,7 +156,7 @@ describe("brand constants", () => {
     expect(provider.options.baseURL).toBe(Brand.gatewayURL())
     expect(Object.keys(provider.models)).toEqual(["rafiki-fast", "rafiki-pro", "rafiki-max"])
     for (const model of Object.values(provider.models)) expect(model.tool_call).toBe(true)
-    expect(config.autoupdate).toBe(false)
+    expect(config.autoupdate).toBe(true)
     expect(config.disabled_providers).toEqual(["opencode", "opencode-go"])
     expect(JSON.stringify(config).replaceAll('"opencode","opencode-go"', "")).not.toMatch(upstreamWord)
   })

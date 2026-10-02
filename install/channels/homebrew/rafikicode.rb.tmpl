@@ -1,0 +1,53 @@
+# Homebrew formula for Rafiki Code. Rendered for each release by
+# install/channels/render.mjs in the rafiki-code-cli repository and committed to
+# the tap by its release workflow: edit the template there, not this file.
+#
+# It installs the same archives the release page publishes, checked against the
+# SHA-256 recorded here, which is taken from the SHA256SUMS of that release.
+class Rafikicode < Formula
+  desc "Rafiki Code terminal coding agent"
+  homepage "https://code.rafikiai.io"
+  version "{{VERSION}}"
+  license "MIT"
+
+  on_macos do
+    on_arm do
+      url "{{BASE}}/download/v{{VERSION}}/rafikicode-darwin-arm64.zip"
+      sha256 "{{SHA256:rafikicode-darwin-arm64.zip}}"
+    end
+    on_intel do
+      url "{{BASE}}/download/v{{VERSION}}/rafikicode-darwin-x64.zip"
+      sha256 "{{SHA256:rafikicode-darwin-x64.zip}}"
+    end
+  end
+
+  on_linux do
+    on_arm do
+      url "{{BASE}}/download/v{{VERSION}}/rafikicode-linux-arm64.tar.gz"
+      sha256 "{{SHA256:rafikicode-linux-arm64.tar.gz}}"
+    end
+    on_intel do
+      url "{{BASE}}/download/v{{VERSION}}/rafikicode-linux-x64.tar.gz"
+      sha256 "{{SHA256:rafikicode-linux-x64.tar.gz}}"
+    end
+  end
+
+  def install
+    bin.install "rafikicode"
+    prefix.install "LICENSE", "NOTICE"
+  end
+
+  def caveats
+    <<~EOS
+      rafikicode installed by Homebrew is updated by Homebrew:
+        brew upgrade paneotech-dev/tap/rafikicode
+      The daily update check tells you when a release is out and does not
+      replace this copy itself.
+    EOS
+  end
+
+  test do
+    assert_equal version.to_s, shell_output("#{bin}/rafikicode --version").strip
+    assert_match "MIT License", shell_output("#{bin}/rafikicode licenses")
+  end
+end

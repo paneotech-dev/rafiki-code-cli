@@ -27,7 +27,7 @@ The environment variable `OPENCODE_CONFIG_DIR` adds another configuration direct
 
 Two defaults are seeded by the product and can be overridden in the global file:
 
-- `autoupdate` is `false`. The CLI never replaces itself unless you run `rafikicode update`. Set it to `true` or `"notify"` to change that.
+- `autoupdate` is `true`. Once a day at most, the interactive interface looks for a new release, downloads it in the background, verifies it against the published `SHA256SUMS`, and the next start uses it. `"notify"` checks and asks before doing anything; `false` turns the check off, and then the CLI replaces itself only when you run `rafikicode update`. The environment variable `RAFIKICODE_DISABLE_AUTOUPDATE=1` turns it off for one process. See [Install and update](./install.md#updates).
 - The `rafiki` provider is registered automatically once a credential exists (a stored sign in or `RAFIKICODE_API_KEY`), pointing at the Rafiki AI gateway with the Rafiki tiers (`rafiki-fast`, `rafiki-pro`). Without a credential no provider is registered and the CLI tells you to sign in.
 - `rafikicode` offers the Rafiki tiers only. Keys for other providers in the environment are not used. `enabled_providers`, and a `model`, `small_model`, `agent.<name>.model` or `mode.<name>.model` naming another provider, are ignored with one warning line each; `provider` entries for other providers are loaded but never offered. `--model` naming another provider stops `run` and the terminal interface with exit code 2.
 

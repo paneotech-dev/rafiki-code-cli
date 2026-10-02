@@ -17,7 +17,7 @@ import { InstallationEvent } from "@opencode-ai/schema/installation-event"
 import { Brand } from "@opencode-ai/core/brand/brand"
 import { RafikiUpdate } from "@/rafiki/update"
 
-export type Method = "curl" | "npm" | "yarn" | "pnpm" | "bun" | "brew" | "scoop" | "choco" | "unknown"
+export type Method = "curl" | "npm" | "yarn" | "pnpm" | "bun" | "brew" | "winget" | "scoop" | "choco" | "unknown"
 
 export type ReleaseType = "patch" | "minor" | "major"
 
@@ -150,13 +150,17 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
         if (process.execPath.includes(path.join(Brand.configDirName, "bin"))) return "curl" as Method
         if (process.execPath.includes(path.join(".local", "bin"))) return "curl" as Method
         const exec = process.execPath.toLowerCase()
+        // winget unpacks a portable package under ...\Microsoft\WinGet\Packages
+        // and links the command from ...\Microsoft\WinGet\Links. There is no
+        // quick command to ask, so the path is the evidence.
+        if (process.platform === "win32" && /[\\/]microsoft[\\/]winget[\\/]/.test(exec)) return "winget" as Method
 
         const checks: Array<{ name: Method; command: () => Effect.Effect<string> }> = [
           { name: "npm", command: () => text(["npm", "list", "-g", "--depth=0"]) },
           { name: "yarn", command: () => text(["yarn", "global", "list"]) },
           { name: "pnpm", command: () => text(["pnpm", "list", "-g", "--depth=0"]) },
           { name: "bun", command: () => text(["bun", "pm", "ls", "-g"]) },
-          { name: "brew", command: () => text(["brew", "list", "--formula", Brand.name]) },
+          { name: "brew", command: () => text(["brew", "list", "--formula", Brand.brew.formula]) },
           { name: "scoop", command: () => text(["scoop", "list", Brand.name]) },
           { name: "choco", command: () => text(["choco", "list", "--limit-output", Brand.name]) },
         ]
@@ -224,10 +228,30 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
             upgradeResult = yield* run(["bun", "install", "-g", `${Brand.npm.meta}@${target}`])
             break
           case "brew":
+            // The formula of this product's own tap, by its full name, so that a
+            // formula of the same short name in another tap is never touched.
+            yield* run(["brew", "tap", Brand.brew.tap])
+            yield* run(["brew", "update"])
+            upgradeResult = yield* run(["brew", "upgrade", Brand.brew.formula])
+            break
+          case "winget":
+            upgradeResult = yield* run([
+              "winget",
+              "upgrade",
+              "--id",
+              Brand.winget.id,
+              "--exact",
+              "--version",
+              target,
+              "--accept-source-agreements",
+              "--accept-package-agreements",
+              "--disable-interactivity",
+            ])
+            break
           case "choco":
           case "scoop":
-            // Publishing through these would mean tapping or installing the
-            // upstream project's package. Refuse rather than touch it.
+            // Not channels of this product. A package of that name there is the
+            // upstream project's; refuse rather than touch it.
             return yield* new UpgradeFailedError({ stderr: Brand.unpublishedHint(m) })
           default:
             return yield* new UpgradeFailedError({ stderr: `Unknown installation method: ${m}` })

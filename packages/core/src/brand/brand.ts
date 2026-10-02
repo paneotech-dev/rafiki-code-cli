@@ -316,6 +316,13 @@ export const Brand = {
     // unpacks and loads a library there (rafiki/exec-tmp.ts). Its only job is
     // to stop that happening twice.
     tmpdirChecked: "RAFIKICODE_TMPDIR_CHECKED",
+    // 1 or true turns the daily update check and the staged update off for
+    // this process. The upstream name OPENCODE_DISABLE_AUTOUPDATE is honoured
+    // too (rafiki/autoupdate.ts).
+    disableAutoupdate: "RAFIKICODE_DISABLE_AUTOUPDATE",
+    // Internal: set on the process started in place of this one after a staged
+    // update was applied, so that it does not look for another (rafiki/autoupdate.ts).
+    updateApplied: "RAFIKICODE_UPDATE_APPLIED",
   },
   // Where builds are published. The installer script and the self updater read
   // these; the release workflow tags v<version> and uploads the archives plus
@@ -365,29 +372,50 @@ export const Brand = {
     registry: "https://registry.npmjs.org",
   },
   /*
-   * Package managers this product is actually published through: none of them.
+   * Package managers this product is published through, besides the installer
+   * script: the npm package named in Brand.npm (installed with npm, pnpm or
+   * bun), the Homebrew tap in Brand.brew and the winget package in
+   * Brand.winget. Each of them installs the archives of this repository's
+   * GitHub release (install/npm, install/channels), and the release workflow
+   * refuses to start unless it can publish to all three.
    *
-   * There is no Homebrew tap, Chocolatey package or Scoop bucket, and there is
-   * no npm package either: the registry answers 404 for the name in Brand.npm
-   * above. So `upgrade` and `uninstall` must refuse brew, choco and scoop
-   * rather than run them: the upstream project publishes packages under its own
-   * name through all three, and a command built from that name would upgrade or
-   * remove someone else's software. Refusing is the safe answer, and naming a
-   * package we do not publish would only fail further along with a worse
-   * message.
-   *
-   * The npm client side stays wired up (Installation.Method and the npm branch
-   * of Installation.upgrade) because publishing is intended: script/publish-npm.ts
-   * exists and the release workflow dry runs it when NPM_TOKEN is absent. Add
-   * the names here when a publish actually lands. Until then nothing shown to a
-   * user may offer them as a way to install or upgrade.
+   * Chocolatey and Scoop are not on the list, so `upgrade` and `uninstall`
+   * refuse them rather than run them: the upstream project publishes packages
+   * under its own name through both, and a command built from that name would
+   * upgrade or remove someone else's software.
    */
-  packageManagers: [] as readonly string[],
+  packageManagers: ["npm", "pnpm", "bun", "brew", "winget"] as readonly string[],
   published(method: string) {
     return Brand.packageManagers.includes(method)
   },
   unpublishedHint(method: string) {
-    return `${Brand.product} is not published through ${method}. Reinstall with the installer at ${Brand.release.installer}, which is the only way it is published.`
+    return `${Brand.product} is not published through ${method}. It is published through the installer at ${Brand.release.installer}, npm, Homebrew and winget: see ${Brand.docs}/blob/main/docs/install.md.`
+  },
+  // Homebrew: the tap repository is <owner>/homebrew-tap, so the formula is
+  // installed as <owner>/tap/<name>.
+  brew: {
+    tap: "paneotech-dev/tap",
+    formula: "paneotech-dev/tap/rafikicode",
+  },
+  // winget package identifier in the community repository.
+  winget: { id: "PaneoTech.RafikiCode" },
+  // The command that updates a copy installed through a package manager, shown
+  // when the daily check finds a release and must not replace the binary itself.
+  upgradeCommand(method: string): string | undefined {
+    switch (method) {
+      case "npm":
+        return `npm install -g ${Brand.npm.meta}@latest`
+      case "pnpm":
+        return `pnpm install -g ${Brand.npm.meta}@latest`
+      case "bun":
+        return `bun install -g ${Brand.npm.meta}@latest`
+      case "brew":
+        return `brew upgrade ${Brand.brew.formula}`
+      case "winget":
+        return `winget upgrade --id ${Brand.winget.id} --exact`
+      default:
+        return undefined
+    }
   },
   gateway: { url: gatewayDefault },
   console: { url: consoleDefault },
@@ -511,6 +539,10 @@ export const Brand = {
   },
   // Built in defaults seeded under the user's global config. Anything the user
   // writes to ~/.rafikicode/config.json or a project config overrides these.
+  // autoupdate is on: once a day the terminal interface looks for a release,
+  // downloads it in the background and uses it from the next start
+  // (rafiki/autoupdate.ts). It stays off in a CI run that refused a browser
+  // sign-in, which has no business replacing its own binary.
   // The gateway provider is registered once a credential exists; upstream
   // hosted providers are disabled either way, and the provider scope
   // (providers above, applied to the merged config) enables only rafiki, so
@@ -521,10 +553,10 @@ export const Brand = {
       warnOnce(
         `${Brand.product}: CI is set, so the stored browser sign-in is not used. Create an API key at ${Brand.consoleURL()}/keys with the Rafiki Code option ticked, and set ${Brand.env.apiKey}.`,
       )
-      return { autoupdate: false as const, disabled_providers: [...Brand.disabledProviders] }
+      return { autoupdate: false as boolean, disabled_providers: [...Brand.disabledProviders] }
     }
     return {
-      autoupdate: false as const,
+      autoupdate: true as boolean,
       disabled_providers: [...Brand.disabledProviders],
       ...(Brand.hasKey() ? { provider: Brand.provider.config() } : {}),
     }

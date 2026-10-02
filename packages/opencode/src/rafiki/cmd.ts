@@ -419,3 +419,13 @@ export const DoctorCommand = effectCmd({
     return yield* fail(`${noun} attention, see the lines marked FAIL.`, report.exitCode)
   }),
 })
+
+// Prints the notice and the licence compiled into this binary (rafiki/licence.ts).
+export const LicensesCommand = {
+  command: "licenses",
+  describe: `show the licence and notices ${Brand.product} is distributed under`,
+  handler: async () => {
+    const { Licence } = await import("./licence")
+    process.stdout.write(Licence.text())
+  },
+}

@@ -193,7 +193,18 @@ fi
 # enough to stop the interface starting, and then every cell would pass this
 # facet for the wrong reason. stderr goes to a file instead: that is where the
 # render library failure is reported, and capturing it costs nothing.
-echo "=== tui: ${TUI_WAIT}s with a terminal and a credential ==="
+# A terminal has a size, and the one `docker run -t` makes does not when
+# nothing on the client side is a terminal, which is how a CI job and any
+# background run start this: it reports 0 columns by 0 rows. Since 0.1.8 the
+# binary refuses to draw in a terminal that reports no usable size and says so
+# ("cannot start its full screen interface in a terminal this size"), which is
+# the right answer to that terminal and says nothing about the machine the
+# cell stands for. So the cell gets the size of an ordinary window before the
+# interface is started. The first matrix run made without a terminal failed
+# this facet in every cell that reached it, the three noexec cells included,
+# for this reason alone.
+stty rows 40 cols 120 0<&1 2>/dev/null || true
+echo "=== tui: ${TUI_WAIT}s with a terminal ($(stty size 0<&1 2>/dev/null || echo "size unknown")) and a credential ==="
 tui_started=$(date +%s)
 # --foreground matters more than it looks. Without it GNU timeout runs the
 # command in a new process group, which is then not the terminal's foreground

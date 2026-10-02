@@ -1,102 +1,66 @@
 #!/usr/bin/env bun
-// Publishes the rafikicode npm packages from a finished build in ./dist:
-// one platform package per binary (rafikicode-<os>-<arch>[-variant]) and the
-// meta package "rafikicode" whose postinstall copies the right binary into
-// place. Fork only; the upstream publish script also handles registries,
-// AUR, Homebrew and desktop builds that this fork does not ship.
+// Publishes the rafikicode npm package for one release. Fork only.
 //
-// DRY_RUN=1 packs every package with `npm pack --dry-run` instead of publishing.
+// The package is the wrapper in install/npm: it holds no binary, and downloads
+// the archive for the machine from the GitHub release of the same version,
+// checked against the SHA-256 values packed into it here from that release's
+// SHA256SUMS. So it must be published after the release it points at, and from
+// the SHA256SUMS that release published, which is what ./dist holds in the
+// release workflow.
+//
+//   OPENCODE_VERSION  the release version, required
+//   DRY_RUN=1         pack with `npm pack --dry-run` instead of publishing
+//   PACK=1            write the tarball into ./dist/npm and publish nothing
+//                     (the release gate installs that tarball)
+//   RAFIKICODE_SHA256SUMS, RAFIKICODE_NPM_OUT
+//                     the checksum file to read and the directory to assemble
+//                     in, when they are not ./dist/SHA256SUMS and ./dist/npm
+//
+// Publishing needs NODE_AUTH_TOKEN. Without it this stops with a message
+// naming the secret: a release that says it is on npm and is not is worse than
+// a failed job.
 import { $ } from "bun"
-import pkg from "../package.json"
-import { Script } from "@opencode-ai/script"
+import path from "path"
 import { fileURLToPath } from "url"
+import { Script } from "@opencode-ai/script"
 
 const dir = fileURLToPath(new URL("..", import.meta.url))
 process.chdir(dir)
 
-const dryRun = process.env["DRY_RUN"] === "1"
-
-async function published(name: string, version: string) {
-  return (await $`npm view ${name}@${version} version`.quiet().nothrow()).exitCode === 0
-}
-
-async function publish(path: string, name: string, version: string) {
-  if (process.platform !== "win32") await $`chmod -R 755 .`.cwd(path)
-  if (dryRun) {
-    console.log(`dry run: ${name}@${version}`)
-    await $`npm pack --dry-run`.cwd(path)
-    return
-  }
-  if (await published(name, version)) {
-    console.log(`already published ${name}@${version}`)
-    return
-  }
-  await $`npm publish --access public --tag ${Script.channel}`.cwd(path)
-}
-
-const binaries: Record<string, string> = {}
-for (const filepath of new Bun.Glob(`${pkg.name}-*/package.json`).scanSync({ cwd: "./dist" })) {
-  const meta = await Bun.file(`./dist/${filepath}`).json()
-  binaries[meta.name] = meta.version
-}
-if (Object.keys(binaries).length === 0) {
-  console.error("no platform packages found in ./dist, run script/build.ts first")
+const version = process.env["OPENCODE_VERSION"]
+if (!version) {
+  console.error("OPENCODE_VERSION is not set: the npm package must carry the version of the release it downloads")
   process.exit(1)
 }
-console.log("platform packages", binaries)
-const version = Object.values(binaries)[0]
-
-const meta = `./dist/${pkg.name}`
-await $`rm -rf ${meta}`
-await $`mkdir -p ${meta}/bin`
-await $`cp ./script/postinstall.mjs ${meta}/postinstall.mjs`
-await Bun.file(`${meta}/LICENSE`).write(await Bun.file("../../LICENSE").text())
-await Bun.file(`${meta}/NOTICE`).write(await Bun.file("../../NOTICE").text())
-await Bun.file(`${meta}/README.md`).write(
-  [
-    `# ${pkg.name}`,
-    "",
-    "The Rafiki Code terminal coding agent. Installing this package downloads the",
-    "binary for your platform through an optional dependency and links it as",
-    `\`${pkg.name}\`.`,
-    "",
-    "Other install channels and the documentation: https://code.rafikiai.io",
-    "",
-  ].join("\n"),
-)
-// Placeholder replaced by postinstall.mjs with the real binary. It only runs
-// when a package manager skipped install scripts.
-await Bun.file(`${meta}/bin/${pkg.name}.exe`).write(
-  [
-    `echo "Error: the ${pkg.name} postinstall script was not run." >&2`,
-    'echo "" >&2',
-    'echo "This happens with --ignore-scripts, or with package managers that skip" >&2',
-    'echo "postinstall scripts by default. Run it manually:" >&2',
-    `echo "  cd node_modules/${pkg.name} && node postinstall.mjs" >&2`,
-    "exit 1",
-    "",
-  ].join("\n"),
-)
-await Bun.file(`${meta}/package.json`).write(
-  JSON.stringify(
-    {
-      name: pkg.name,
-      version,
-      description: "Rafiki Code terminal coding agent",
-      homepage: "https://code.rafikiai.io",
-      license: pkg.license,
-      bin: { [pkg.name]: `./bin/${pkg.name}.exe` },
-      scripts: { postinstall: "node ./postinstall.mjs" },
-      os: ["darwin", "linux", "win32"],
-      cpu: ["arm64", "x64"],
-      optionalDependencies: binaries,
-    },
-    null,
-    2,
-  ),
-)
-
-for (const [name, ver] of Object.entries(binaries)) {
-  await publish(`./dist/${name}`, name, ver)
+const sums = process.env["RAFIKICODE_SHA256SUMS"] ?? "./dist/SHA256SUMS"
+if (!(await Bun.file(sums).exists())) {
+  console.error(`no ${sums}: package the release archives first, the npm package is built from their checksums`)
+  process.exit(1)
 }
-await publish(meta, pkg.name, version)
+
+// Where the package is assembled. The default is beside the build output.
+const out = path.resolve(process.env["RAFIKICODE_NPM_OUT"] ?? "./dist/npm")
+await $`node ../../install/npm/build.mjs --version ${version} --sums ${sums} --out ${out}`
+const pkg = path.join(out, "rafikicode")
+const name = (await Bun.file(path.join(pkg, "package.json")).json()).name as string
+
+if (process.env["PACK"] === "1") {
+  await $`npm pack --pack-destination ${out}`.cwd(pkg)
+  process.exit(0)
+}
+if (process.env["DRY_RUN"] === "1") {
+  console.log(`dry run: ${name}@${version}`)
+  await $`npm pack --dry-run`.cwd(pkg)
+  process.exit(0)
+}
+if (!process.env["NODE_AUTH_TOKEN"]) {
+  console.error(
+    `NPM_TOKEN is not set, so ${name}@${version} cannot be published. Add the repository secret NPM_TOKEN (an npm automation token with publish rights on ${name}) and run the release workflow again for this tag.`,
+  )
+  process.exit(1)
+}
+if ((await $`npm view ${name}@${version} version`.quiet().nothrow()).exitCode === 0) {
+  console.log(`already published ${name}@${version}`)
+  process.exit(0)
+}
+await $`npm publish --access public --tag ${Script.channel}`.cwd(pkg)
