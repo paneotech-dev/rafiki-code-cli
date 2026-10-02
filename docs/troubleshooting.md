@@ -221,7 +221,9 @@ rafikicode run --resume "continue"
 
 **`update` fails with a checksum error.** The downloaded binary did not match `SHA256SUMS`; the installed binary was left untouched. Retry, or install the release with the installer script.
 
-**`update` reports an installation method it cannot handle.** The CLI was installed from source or by hand. Reinstall with the installer script, or pass `--method curl`.
+**`update` says `This is a run from source` and installs nothing.** You started `rafikicode` from a checkout of the repository (`bun run src/index.ts`), where the program being run is the JavaScript runtime and not a `rafikicode` binary. `update` refuses every method there, `--method curl` included, and exits with code 2: there is no installed copy to replace, and it will not install a global package as a side effect of a command run from a checkout. Update the checkout with `git pull` instead. To get a released binary on this machine as well, use one of the channels in [Install and update](./install.md).
+
+**`update` says the binary `may be managed by a package manager` and asks `Install anyways?`.** The binary was put in place by hand, for example copied out of a release archive into a directory of your own, so `update` cannot tell which channel owns it. Answer yes, or pass `--method curl`, to have it download the release, verify it against `SHA256SUMS` and replace that binary where it is. Reinstalling with the installer script moves it to `~/.rafikicode/bin`, which `update` recognises from then on.
 
 ## Still stuck
 

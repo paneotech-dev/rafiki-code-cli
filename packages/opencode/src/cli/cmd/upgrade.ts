@@ -22,10 +22,13 @@ export const UpgradeCommand = {
         describe: "installation method to use",
         type: "string",
         // The installer script (curl) and the package managers in
-        // Brand.packageManagers. choco and scoop are listed because
-        // Installation.method() can detect them; naming one gets
-        // Brand.unpublishedHint's refusal, which says what to use instead.
-        choices: ["curl", "npm", "pnpm", "bun", "brew", "winget", "choco", "scoop"],
+        // Brand.packageManagers, and nothing else. choco and scoop are not
+        // offered, for the reason npm, pnpm and bun were not while nothing was
+        // published there: a choice on this list is a promise that the method
+        // works. Naming one is rejected here with the list of what does. A copy
+        // that Installation.method() detects as installed by either still gets
+        // Brand.unpublishedHint's refusal from Installation.upgrade.
+        choices: ["curl", "npm", "pnpm", "bun", "brew", "winget"],
       })
   },
   handler: async (args: { target?: string; method?: string }) => {
