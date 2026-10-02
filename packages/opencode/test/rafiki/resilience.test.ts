@@ -1,6 +1,7 @@
 // The retry window, the wording and the idempotency key (rafiki/resilience.ts),
 // and what counts as a boundary in a cut stream (rafiki/resume.ts).
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import { Effect, Exit } from "effect"
 import type { SessionV1 } from "@opencode-ai/core/v1/session"
 import * as Resilience from "../../src/rafiki/resilience"
 import * as Resume from "../../src/rafiki/resume"
@@ -225,5 +226,50 @@ describe("boundary of a cut stream", () => {
     expect(Resume.streak([user, cut, cutTools, cut])).toBe(3)
     expect(Resume.streak([user, cut, whole, cut])).toBe(1)
     expect(Resume.streak([user, cut, whole])).toBe(0)
+  })
+})
+
+describe("the stream boundary hook", () => {
+  const current = { ...assistant([start, text("")], { id: "msg_now", time: { created: 9 } }) }
+  const cut = (id: string) => assistant([start, text("partial")], { id })
+  const run = (history: SessionV1.WithParts[], cause: unknown, error: unknown, arriving?: string) => {
+    const removed: string[] = []
+    const statuses: unknown[] = []
+    const effect = Resume.atBoundary(
+      cause,
+      error,
+      { assistantMessage: current.info as SessionV1.Assistant, currentText: arriving ? { text: arriving } : undefined },
+      {
+        messages: () => Effect.succeed([...history, current]),
+        removePart: (input) => Effect.sync(() => (removed.push(input.partID), input.partID)),
+      },
+      { set: (_id, status) => Effect.sync(() => void statuses.push(status)) },
+    )
+    return Effect.runPromiseExit(effect).then((exit) => ({ exit, removed, statuses }))
+  }
+
+  test("leaves a failure that is not a connection error, or that left nothing, to the retry policy", async () => {
+    const cause = new Error("cut")
+    const nothing = await run([user], cause, reset)
+    expect(Exit.isFailure(nothing.exit)).toBe(true)
+    const status = await run([user], cause, unavailable, "partial")
+    expect(Exit.isFailure(status.exit)).toBe(true)
+    expect(Resilience.isExhausted(cause)).toBe(false)
+  })
+
+  test("closes the step at the text that had arrived, without waiting the first time", async () => {
+    const result = await run([user], new Error("cut"), reset, "partial")
+    expect(Exit.isSuccess(result.exit)).toBe(true)
+    expect(result.statuses).toEqual([])
+  })
+
+  test("gives up at the fifth cut in a row and says so", async () => {
+    const cause = new Error("cut")
+    const history = [user, cut("msg_1"), cut("msg_2"), cut("msg_3"), cut("msg_4")]
+    const result = await run(history, cause, reset, "partial")
+    expect(Exit.isFailure(result.exit)).toBe(true)
+    expect(Resilience.isExhausted(cause)).toBe(true)
+    expect(Resilience.describe(reset, cause).data.message).toContain("dropped 5 times in a row")
+    expect(Resilience.keepRetrying("rafiki", reset, { attempt: 1, elapsed: 0, input: cause }, 5)).toBe(false)
   })
 })
