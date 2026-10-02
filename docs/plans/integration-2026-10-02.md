@@ -236,18 +236,50 @@ Run on the head of this branch unless a merge is named.
 
 ### Left for the branches
 
-These hold on a branch by itself and were not changed here:
+Found on the first pass, on a branch by itself, and not changed here. Each
+was then fixed on its branch and came in with the follow-up merges below.
 
-- `feature/install-channels`: `docs/troubleshooting.md` still says that an
-  installation method `update` cannot handle is fixed by passing
+- `feature/install-channels`: `docs/troubleshooting.md` advised
   `--method curl` for a copy run from source, while the branch makes `update`
   install nothing from a run from source by any method. The help of
-  `licenses` has no snapshot, although the branch's plan lists one.
-- `feature/install-channels`: `upgrade --method` lists `choco` and `scoop`
-  as choices and refuses both, as it did at `v0.1.9`.
+  `licenses` had no snapshot. `upgrade --method` listed `choco` and `scoop`
+  as choices and refused both.
 - `feature/cost-display`: `summarize` in `packages/core/src/brand/cost.ts`
-  skips a model call with no token counts, and a call whose stream was cut
-  before the usage block arrived has none, so the estimate leaves that call
-  out. With network resilience merged, a cut is followed by a continuation
-  instead of a failure, so this can happen on a task that completes. Read in
-  the code, not measured.
+  skipped a model call with no token counts, so a call whose stream was cut
+  before its usage block was left out of the estimate without a word. With
+  network resilience merged, a cut is followed by a continuation, so this
+  could happen on a task that completes.
+
+## Follow-up merges
+
+Both branches gained fix commits for the items above and were merged again,
+each with a real merge commit.
+
+| Order | Branch | Head | Merge commit | Textual conflicts |
+| --- | --- | --- | --- | --- |
+| 6 | `feature/install-channels` | `da5eb17053` | `990312a08a` | none |
+| 7 | `feature/cost-display` | `2a6625604c` | `8d47959d4b` | none |
+
+- The help snapshot merged without a conflict and was not regenerated: the
+  help test passes against it as merged. It holds the entries of every
+  branch: `licenses`, `usage`, `--resume` on `run`, and `upgrade --method`
+  with the choices `curl`, `npm`, `pnpm`, `bun`, `brew`, `winget`.
+- `docs/troubleshooting.md` and `docs/cost.md` merged without a conflict; the
+  sentence about `Idempotency-Key` added on this branch is kept.
+- `packages/opencode/test/rafiki/integration-set.test.ts` gained one test of
+  the interaction the cost fix was made for: `rafikicode run` through the
+  connection cutting proxy, the first model request cut after two words. The
+  task completes with a continuation, and the closing line reads
+  `Task cost: tier fast · about 0.0086 USD (estimate) · 1 call reported no usage and is not included · caching saved about 0.0054 USD · at most about 12.39 USD of credits left`.
+
+### Results after the follow-up merges
+
+| Check | Result |
+| --- | --- |
+| `bun turbo typecheck --concurrency=3 --force` | 30 of 30 tasks |
+| Full `packages/opencode` suite, once | 4245 pass, 22 skip, 2 fail: the two known root only failures and nothing else |
+| `packages/tui` suite | 204 pass, 1 skip, 0 fail |
+| `packages/core/test/brand` | 46 pass |
+| `node docs/check.mjs` | pass |
+| `install/test-install.sh`, `test-install-shells.sh`, `test-install-url.sh`, `test-release-gate.sh` | 54, 10, 54 and 16 passed, 0 failed |
+| `linux-x64` binary, rebuilt | `upgrade --help` lists the six methods above; `licenses --help` prints its help; the earlier checks hold |
