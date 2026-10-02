@@ -19,9 +19,17 @@ const id = "internal:rafiki-cost"
 
 // Subagents of subagents are followed this deep when a session is opened.
 const DEPTH = 3
-// Below this terminal width the prompt row has no room for the line; the
-// sidebar block still shows the figures.
-const MIN_WIDTH = 100
+// Room for the line on the prompt row: the terminal's width less the sidebar
+// (shown from this width up, unless the person hid it), the frame of the
+// prompt, and the agent and model labels on the left of the row. A line that
+// does not fit is shortened (Cost.statusLine); the sidebar block has it all.
+const SIDEBAR_FROM = 121
+const SIDEBAR_WIDTH = 42
+const FRAME = 8
+const LABELS = 40
+export function room(width: number) {
+  return width - (width >= SIDEBAR_FROM ? SIDEBAR_WIDTH : 0) - FRAME - LABELS
+}
 
 type Start = { balance?: number; prices?: Cost.Prices; spent: number }
 
@@ -63,6 +71,12 @@ export function createCostTracker(api: TuiPluginApi, options: { snapshot?: () =>
   api.event?.on("session.created", (event) => link(event.properties.info))
   api.event?.on("session.updated", (event) => link(event.properties.info))
   api.event?.on("message.updated", (event) => record(event.properties.sessionID, event.properties.info))
+  // When a turn of a task on screen ends, list its subagent sessions once
+  // more: a call the event stream did not carry is still counted.
+  api.event?.on("session.status", (event) => {
+    if (event.properties.status.type !== "idle" || !opened.has(event.properties.sessionID)) return
+    void adopt(event.properties.sessionID, 1).catch(() => undefined)
+  })
 
   function calls(sessionID: string): Cost.Call[] {
     tick()
@@ -136,10 +150,11 @@ function StatusLine(props: { api: TuiPluginApi; tracker: CostTracker; session_id
   const view = useDisplay(props)
   // The end of task line, printed with the exit lines of the interface (app.tsx).
   createEffect(() => Cost.remember(Cost.taskLine(view())))
+  const line = createMemo(() => (relevant(view()) ? Cost.statusLine(view(), room(dimensions().width)) : ""))
   return (
-    <Show when={relevant(view()) && dimensions().width >= MIN_WIDTH}>
+    <Show when={line()}>
       <text fg={view().next ? theme().warning : theme().textMuted} wrapMode="none">
-        {Cost.statusLine(view())}
+        {line()}
       </text>
     </Show>
   )

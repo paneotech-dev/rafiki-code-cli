@@ -6,7 +6,7 @@ import { describe, expect, test } from "bun:test"
 import * as Cost from "@opencode-ai/core/brand/cost"
 import type { TuiPluginApi } from "@opencode-ai/plugin/tui"
 import { createBuiltinPlugins } from "../../src/feature-plugins/builtins"
-import { createCostTracker } from "../../src/feature-plugins/rafiki-cost"
+import { createCostTracker, room } from "../../src/feature-plugins/rafiki-cost"
 import { createTuiPluginApi } from "../fixture/tui-plugin"
 
 const prices: Cost.Prices = { fast: { input: 1, output: 2, cacheRead: 0.1 }, pro: { input: 4, output: 8, cacheRead: 1 } }
@@ -50,6 +50,13 @@ function harness(options: { children?: Record<string, { id: string }[]>; childMe
 describe("the cost plugin", () => {
   test("is one of the built in plugins", () => {
     expect(createBuiltinPlugins({ experimentalEventSystem: false }).map((plugin) => plugin.id)).toContain("internal:rafiki-cost")
+  })
+
+  test("the line gets the room the prompt row has left of the sidebar and the labels", () => {
+    expect(room(170)).toBe(80)
+    expect(room(121)).toBe(31)
+    expect(room(120)).toBe(72)
+    expect(room(80)).toBe(32)
   })
 
   test("before the readings arrive it shows the tier and tokens, no amount", () => {
@@ -116,6 +123,21 @@ describe("the cost plugin", () => {
     expect(view.summary.spent).toBeCloseTo(6.2, 10)
     // All of it was spent before the balance was read.
     expect(view.left).toBeCloseTo(12.4, 10)
+  })
+
+  test("when a turn ends the subagent sessions are listed again, so a call the stream missed is counted", async () => {
+    const children: Record<string, { id: string }[]> = {}
+    const childMessages: Record<string, unknown[]> = {}
+    const { tracker, messages, emit } = harness({ children, childMessages })
+    messages.push(assistant("a1", "u1", "rafiki-fast"))
+    await tracker.open("ses_root")
+    children.ses_root = [{ id: "ses_child" }]
+    childMessages.ses_child = [assistant("c1", "cu1", "rafiki-fast", tokens(1_000_000, 0))]
+    emit("session.status", { sessionID: "ses_root", status: { type: "busy" } })
+    expect(tracker.display("ses_root").summary.spent).toBeCloseTo(1.2, 10)
+    emit("session.status", { sessionID: "ses_root", status: { type: "idle" } })
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(tracker.display("ses_root").summary.spent).toBeCloseTo(2.2, 10)
   })
 
   test("a failed reading leaves the line without amounts instead of failing", async () => {

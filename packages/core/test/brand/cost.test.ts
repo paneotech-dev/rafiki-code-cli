@@ -193,6 +193,37 @@ describe("display", () => {
   })
 })
 
+describe("the status line in a narrow terminal", () => {
+  const calls = [call("rafiki-fast", "u1", t(1_000_000, 100_000))]
+  const view = Cost.display({ calls, prices, start: { balance: 12.4, spent: 0 }, selected: "rafiki-fast" })
+  const changing = Cost.display({ calls, prices, start: { balance: 12.4, spent: 0 }, selected: "rafiki-pro" })
+
+  test("drops words first, then the credits, then everything but the tier", () => {
+    expect(Cost.statusLine(view, 80)).toBe("fast · about 1.20 USD spent (estimate) · about 11.20 USD of credits left")
+    expect(Cost.statusLine(view, 60)).toBe("fast · about 1.20 USD (estimate) · about 11.20 USD left")
+    expect(Cost.statusLine(view, 40)).toBe("fast · about 1.20 USD (estimate)")
+    expect(Cost.statusLine(view, 10)).toBe("fast")
+    expect(Cost.statusLine(view, 3)).toBe("")
+  })
+
+  test("every form that shows an amount still calls it an estimate", () => {
+    for (const room of [200, 120, 100, 80, 60, 50, 40]) {
+      for (const text of [Cost.statusLine(view, room), Cost.statusLine(changing, room)]) {
+        if (text.includes("USD")) expect(text).toContain("(estimate)")
+      }
+    }
+  })
+
+  test("before a tier change the new tier and its estimate are the last thing to go", () => {
+    expect(Cost.statusLine(changing, 110)).toBe(
+      "next turn on pro: about 4.80 USD (estimate) · fast · about 1.20 USD (estimate) · about 11.20 USD left",
+    )
+    expect(Cost.statusLine(changing, 80)).toBe("next turn on pro: about 4.80 USD (estimate) · fast · about 1.20 USD (estimate)")
+    expect(Cost.statusLine(changing, 60)).toBe("next turn on pro: about 4.80 USD (estimate)")
+    expect(Cost.statusLine(changing, 20)).toBe("")
+  })
+})
+
 describe("the end of task line", () => {
   test("tier path, estimated spend, cache saving, credits left", () => {
     const calls = [

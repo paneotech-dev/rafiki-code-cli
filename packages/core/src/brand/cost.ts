@@ -283,11 +283,24 @@ export function nextText(next: Display["next"]): string | undefined {
   return `next turn on ${next.tier}: ${about(next.estimate)} (estimate)`
 }
 
-// The status line while a task runs: tier, spent so far, credits left.
-export function statusLine(input: Display): string {
-  return [nextText(input.next), input.summary.tier, spentText(input.summary), leftText(input.left, input.summary)]
-    .filter(Boolean)
-    .join(" · ")
+// The status line while a task runs: tier, spent so far, credits left, led by
+// the next turn's tier and estimate before a tier change. `room` is how many
+// columns the line may take: the longest form that fits is used, shorter
+// forms drop words first, then the credits, then everything but the tier
+// change. Empty when nothing fits.
+export function statusLine(input: Display, room = Number.POSITIVE_INFINITY): string {
+  const { summary } = input
+  const next = nextText(input.next)
+  const priced = summary.priced > 0
+  const spentShort = priced ? `${about(summary.spent)} (estimate)` : summary.unpriced > 0 ? "cost unknown" : "nothing spent yet"
+  const leftShort = input.left === undefined ? undefined : priced ? `${about(input.left)} left` : `${usd(input.left)} of credits`
+  const forms = [
+    [next, summary.tier, spentText(summary), leftText(input.left, summary)],
+    [next, summary.tier, spentShort, leftShort],
+    [next, summary.tier, spentShort],
+    next ? [next] : [summary.tier],
+  ].map((parts) => parts.filter(Boolean).join(" · "))
+  return forms.find((text) => text.length <= room) ?? ""
 }
 
 // The one line after a task: tier path, spent, cache saving.
