@@ -78,7 +78,7 @@ export function streak(messages: readonly WithParts[]) {
 // The stored history with one instruction to continue after every cut text
 // step. The instruction is not stored: it is added each time the history is
 // turned into a request, in the same place, so later requests keep the same
-// prefix and never show two assistant messages in a row.
+// prefix and never show two messages from the model in a row.
 export function withContinuations<T extends WithParts>(messages: T[]): (T | WithParts)[] {
   if (!messages.some(isCutText)) return messages
   const out: (T | WithParts)[] = []
