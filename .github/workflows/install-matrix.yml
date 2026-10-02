@@ -57,11 +57,6 @@ on:
         description: "Published version whose assets to install, without the leading v"
         required: true
         type: string
-      publish-to-release:
-        description: "Upload INSTALL-MATRIX.md to the release for this version"
-        required: false
-        type: boolean
-        default: false
       only:
         description: "Run only the cells whose id contains this"
         required: false
@@ -98,7 +93,14 @@ on:
     - cron: "41 5 * * 1"
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  # The prefix is not decoration. When release.yml calls this workflow,
+  # github.workflow here is the caller's name, so without the prefix the group
+  # was release-<ref>: the caller's own group. GitHub then stops the run with
+  # "deadlock was detected for concurrency group ... between a top level
+  # workflow and 'install matrix'", which is what happened to the release runs
+  # of v0.1.8 and v0.1.9: the matrix never started and the run ended failed
+  # after the archives were already public.
+  group: install-matrix-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   # A release run is never thrown away for a later one; a pull request run is.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
@@ -330,36 +332,8 @@ jobs:
           docker system prune -f >/dev/null 2>&1 || true
           df -h /
 
-  publish:
-    name: publish the record beside PLATFORM-COVERAGE.md
-    # Only the release call asks for this. PLATFORM-COVERAGE.md already says
-    # which binaries were ever started; this says what happened when they were
-    # installed, and the two answer the same question from the two ends, so they
-    # belong on the same release page rather than in a log that expires.
-    #
-    # Published whether the run was green or red. A release page that quietly
-    # lacks the record is the v0.1.7 situation again: absence of evidence read
-    # as evidence of absence.
-    if: ${{ always() && inputs.publish-to-release && needs.matrix.outputs.version != '' }}
-    needs: matrix
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: install-matrix-${{ needs.matrix.outputs.version }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: record
-
-      - name: Upload INSTALL-MATRIX.md to the release
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: v${{ needs.matrix.outputs.version }}
-        run: |
-          set -euo pipefail
-          if [ ! -s record/INSTALL-MATRIX.md ]; then
-            echo "::error title=install matrix::The matrix produced no record to publish, so the release page says nothing about how it installs. Look at the matrix job."
-            exit 1
-          fi
-          gh release upload "$TAG" record/INSTALL-MATRIX.md --clobber --repo "$GITHUB_REPOSITORY"
+  # INSTALL-MATRIX.md is in the artifact above. When release.yml calls this
+  # workflow, its publish job attaches that file to the release beside
+  # PLATFORM-COVERAGE.md and RELEASE-GATE.md, once every gate has passed. This
+  # workflow used to upload it itself, to a release that already existed; it
+  # now runs before there is one, and needs no write permission at all.
