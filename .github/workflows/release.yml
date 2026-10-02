@@ -439,6 +439,29 @@ jobs:
             exit 1
           fi
 
+          # The address itself. It is a redirect kept outside this repository,
+          # so the requests above do not cover it. The checkout is the tag, so
+          # install/install.sh is the file that was uploaded.
+          want=$(sha256sum "$GITHUB_WORKSPACE/install/install.sh" | cut -d' ' -f1)
+          body="${RUNNER_TEMP:-/tmp}/get-rafikiai-io.body"
+          ok=false
+          for attempt in $(seq 1 12); do
+            rm -f "$body"
+            code=$(curl -sSL --max-time 30 -o "$body" -w '%{http_code}' https://get.rafikiai.io || true)
+            got=$(sha256sum "$body" 2>/dev/null | cut -d' ' -f1 || true)
+            if [ "$code" = "200" ] && [ "$got" = "$want" ]; then
+              ok=true
+              echo "attempt ${attempt}: get.rafikiai.io serves the install.sh of ${TAG}, sha256 ${want}"
+              break
+            fi
+            echo "attempt ${attempt}: get.rafikiai.io answered ${code} with sha256 '${got}', expected ${want}"
+            sleep 10
+          done
+          if [ "$ok" != "true" ]; then
+            echo "::error title=release::Two minutes after publishing, https://get.rafikiai.io does not serve the install.sh of ${TAG}."
+            exit 1
+          fi
+
   npm:
     name: publish npm package
     needs: [preflight, publish]
