@@ -110,3 +110,26 @@ Upstream files touched: the `README.*.md` files, listed in the commit.
    only as root.
 5. A linux-x64 build, started in a container with `-t` and no terminal on the
    client side.
+
+## Results
+
+Run at `be7894f454` on 2 October 2026.
+
+- Typecheck with `--concurrency=3 --force`: 30 of 30 tasks, none cached.
+- `node docs/check.mjs`: passed, 27 files.
+- Full `packages/opencode` suite: 4256 pass, 22 skip, 2 fail across 305 files.
+  The two failures are the known ones that occur only as root: "continues
+  loading tui config when legacy source cannot be stripped" and "tool.write,
+  throws error when OS denies write access".
+- `test/rafiki` in an earlier partial run under load had one failure in the
+  cut connection test from the base line; it passed three times when rerun
+  alone and passed in the full run above.
+- Installer suites: `test-install.sh` 54, `test-install-shells.sh` 10,
+  `test-install-url.sh` 54, `test-release-gate.sh` 16, all passed.
+  `test-matrix.sh` was not run as a whole; two of its cells were run by hand
+  against a linux-x64 build and all six facets passed on a 0 by 0 terminal.
+- `bun lint`: one error, in `packages/session-ui`, a file this branch does not
+  touch.
+
+Not done here: the existing upstream names recorded in the brand test's known
+list, and the rest of the translated README files.
