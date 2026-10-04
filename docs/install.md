@@ -4,7 +4,7 @@
 
 | Channel | Command | Platforms |
 | --- | --- | --- |
-| Installer script | `curl -fsSL https://get.rafikiai.io \| bash` | Linux x64 and arm64 (glibc and musl), macOS Apple Silicon and Intel, Windows inside WSL |
+| Installer script | `curl -fsSL https://get.rafikiai.io \| bash` | Linux x64 and arm64 (glibc and musl), macOS 13 or newer on Apple Silicon and Intel, Windows inside WSL or Git Bash |
 | Installer script, Windows | `irm https://github.com/paneotech-dev/rafiki-code-cli/releases/latest/download/install.ps1 \| iex` | Windows x64 and arm64 |
 | npm | `npm install -g rafikicode` | every platform above that has Node.js 18 or later |
 | Homebrew | `brew install paneotech-dev/tap/rafikicode` | macOS Apple Silicon and Intel, Linux x64 and arm64 (glibc) |
@@ -33,7 +33,11 @@ Windows, in PowerShell:
 irm https://github.com/paneotech-dev/rafiki-code-cli/releases/latest/download/install.ps1 | iex
 ```
 
-The script detects the platform, downloads the archive, verifies it against `SHA256SUMS`, installs the binary into `~/.rafikicode/bin` (`%USERPROFILE%\.rafikicode\bin` on Windows) and puts that directory on your PATH. It needs `curl` and `tar` on Linux, and `curl` and `unzip` on macOS.
+`install.ps1` is fetched from the GitHub release address above. `https://get.rafikiai.io` serves only `install.sh`, whatever the path: `irm https://get.rafikiai.io/install.ps1 | iex` gives PowerShell the shell script, which it cannot parse.
+
+The script detects the platform, downloads the archive, verifies it against `SHA256SUMS`, installs the binary into `~/.rafikicode/bin` (`%USERPROFILE%\.rafikicode\bin` on Windows) and puts that directory on your PATH. It needs `curl` and `tar` on Linux, and `curl` and `unzip` on macOS and in Git Bash on Windows. On Alpine and other musl systems the binary also needs the C++ runtime: `apk add libstdc++ libgcc` (the installer prints this line when the installed binary cannot start without it).
+
+The macOS builds need macOS 13 (Ventura) or newer, on Apple Silicon and on Intel. A Mac on macOS 12 or older cannot run them.
 
 Options of `install.sh`, passed after `bash -s --`:
 
@@ -126,7 +130,7 @@ Rafiki Code is distributed under the MIT licence. Every channel delivers the lic
 
 ## Integrity
 
-Release archives are verified by SHA-256 on every channel. The macOS builds carry an ad-hoc signature and are not notarised with an Apple Developer ID; the Windows builds are not Authenticode signed, so SmartScreen warns the first time one runs. See [Troubleshooting](./troubleshooting.md).
+Release archives are verified by SHA-256 on every channel. The macOS builds carry an ad-hoc signature, made once each binary is final and checked page by page before the release is published, and are not notarised with an Apple Developer ID; the Windows builds are not Authenticode signed, so SmartScreen warns the first time one runs. See [Troubleshooting](./troubleshooting.md).
 
 ## What each channel was tested on
 
@@ -137,7 +141,7 @@ What was run while these channels were written, and what was not:
 | Piece | Run | Not run |
 | --- | --- | --- |
 | `install.sh` | its test suites; the release gate in a Debian container with a real build; the twenty cell install matrix (Debian, Ubuntu, Alpine, arm64 under emulation) against the published 0.1.9 archives | on macOS, including the `--target` option |
-| `install.ps1` | nothing new; under PowerShell on Linux in dry run mode only, for 0.1.9 | on Windows, ever; the licence file copy added here |
+| `install.ps1` | under PowerShell 7 on Linux: dry runs, a full install against a local mirror and of the 0.1.9 archive, its exit code 1 when the installed program does not run, its message when `USERPROFILE` is not set | on Windows, ever; the licence file copy |
 | npm package | its tests against a mock release, and an install of the packed package in a Node container with a real build | a publish to the registry; Windows; macOS |
 | Homebrew formula | rendering, checked by tests | `brew install` and `brew test`: Homebrew has not read this formula |
 | winget manifests | rendering, checked by tests | `winget validate`, a submission, an install: winget has not read these manifests |

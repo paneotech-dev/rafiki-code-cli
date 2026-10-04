@@ -44,11 +44,27 @@ xattr -d com.apple.quarantine ~/.rafikicode/bin/rafikicode
 
 Or right click the file in the Finder and choose Open once. `xattr -p com.apple.quarantine <file>` says whether a file carries it; "No such xattr" means it does not.
 
+**macOS: the binary will not start on an older Mac.** The macOS builds need macOS 13 (Ventura) or newer, on Apple Silicon and on Intel. On macOS 12 or older they cannot run; there is no build for those versions. `sw_vers -productVersion` prints the version of your Mac.
+
+**macOS: `Killed: 9` as soon as `rafikicode` starts.** macOS stopped a binary whose code signature does not match its contents. Check it with `codesign --verify --strict --verbose=2 ~/.rafikicode/bin/rafikicode`. Reinstall with the installer, and if the check still fails, please report it with that output.
+
 **macOS: the installer says `No shell startup file found`.** Only releases before 0.1.8 did this. A fresh macOS account runs zsh and has no `~/.zshrc`, and `/usr/local/bin` there belongs to root, so the installer could neither write a startup file nor make the link, and `rafikicode` was not found in any new terminal. The installer now creates `~/.zshrc` with the PATH line. On an older install, create it yourself:
 
 ```bash
 echo 'export PATH=$HOME/.rafikicode/bin:$PATH' >> ~/.zshrc
 ```
+
+**The installer says `unzip` is missing.** The macOS builds and the Windows builds installed from Git Bash are `.zip` archives, so the shell installer needs `unzip` there; Linux uses `tar`. Install `unzip` with your package manager. In Git Bash, `command -v unzip` says whether it is there; when it is not, use `install.ps1` in PowerShell instead, which needs no extra tool.
+
+**Alpine: the installed binary does not start and the installer prints `apk add libstdc++ libgcc`.** The musl build needs the C++ runtime, which a minimal Alpine system does not have. Run `apk add libstdc++ libgcc`, then the installer again.
+
+**PowerShell: `irm https://get.rafikiai.io/install.ps1 | iex` fails with `Use '{ instead of { in variable names`.** `https://get.rafikiai.io` serves only the shell installer, whatever the path, so PowerShell was given `install.sh`. Fetch `install.ps1` from the release:
+
+```powershell
+irm https://github.com/paneotech-dev/rafiki-code-cli/releases/latest/download/install.ps1 | iex
+```
+
+**PowerShell: `install.ps1` says `USERPROFILE is not set`.** Windows always sets it, so the script is running somewhere else, such as PowerShell on macOS or Linux. Use `curl -fsSL https://get.rafikiai.io | bash` there, or name the directory with `-Prefix` or `RAFIKICODE_INSTALL_DIR`.
 
 **Windows: `install.sh` does nothing, or the shell cannot run it.** `install/install.sh` is a POSIX shell script. On Windows it runs only inside WSL, Git Bash or Cygwin. In PowerShell use the PowerShell installer instead:
 
@@ -60,7 +76,7 @@ irm https://github.com/paneotech-dev/rafiki-code-cli/releases/latest/download/in
 
 **Windows: the interactive interface draws garbage, or boxes and colours are wrong.** The old console window (`conhost.exe`, what you get from `cmd.exe` started from the Run box) cannot draw the full screen interface. Use Windows Terminal, which is the default on Windows 11 and installable from the Microsoft Store on Windows 10. `rafikicode run "your task"` prints plain lines and works in either.
 
-**Windows: the installed program does not start, or exits immediately with no message.** This is not an old processor, and the baseline build will not fix it. The published builds need no recent instruction set: the ordinary binary has been run on an emulated 2008 processor with neither AVX nor AVX2. The four archives labelled `baseline` are byte identical to the siblings they exist to replace, so `-Baseline` fetches the same bytes and changes nothing. Please report it, with the processor named:
+**Windows: the installed program does not start, or exits immediately with no message.** `install.ps1` checks this itself: it runs `rafikicode --version` after installing and exits with code 1 and the message `was installed but did not run` when that fails. This is not an old processor, and the baseline build will not fix it. The published builds need no recent instruction set: the ordinary binary has been run on an emulated 2008 processor with neither AVX nor AVX2. The four archives labelled `baseline` are byte identical to the siblings they exist to replace, so `-Baseline` fetches the same bytes and changes nothing. Please report it, with the processor named:
 
 ```powershell
 & "$env:USERPROFILE\.rafikicode\bin\rafikicode.exe" --version

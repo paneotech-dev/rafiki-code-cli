@@ -18,6 +18,11 @@ On Windows, in PowerShell:
 irm https://github.com/paneotech-dev/rafiki-code-cli/releases/latest/download/install.ps1 | iex
 ```
 
+Fetch `install.ps1` from that GitHub release address. `https://get.rafikiai.io`
+serves only `install.sh`, whatever the path, so
+`irm https://get.rafikiai.io/install.ps1 | iex` hands PowerShell the shell script
+and fails.
+
 `install.sh` is a POSIX shell script, so on Windows it runs only inside WSL, Git
 Bash or Cygwin; `install.ps1` is the native route and needs no extra runtime. It
 takes the same decisions: it picks the build for the machine's architecture,
@@ -38,13 +43,15 @@ The installer script is one of four channels. `npm install -g rafikicode`, `brew
 
 | Platform | What to run | Notes |
 | --- | --- | --- |
-| Linux x64, arm64 (glibc or musl) | `curl -fsSL https://get.rafikiai.io \| bash` | needs `curl` and `tar` |
-| macOS, Apple Silicon and Intel | `curl -fsSL https://get.rafikiai.io \| bash` | needs `curl` and `unzip`, both present by default; see the macOS note below |
-| Windows x64, arm64 | `irm .../install.ps1 \| iex` | PowerShell 5.1 or later; the full screen interface needs Windows Terminal |
+| Linux x64, arm64 (glibc or musl) | `curl -fsSL https://get.rafikiai.io \| bash` | needs `curl` and `tar`; on Alpine also `apk add libstdc++ libgcc` |
+| macOS 13 (Ventura) or newer, Apple Silicon and Intel | `curl -fsSL https://get.rafikiai.io \| bash` | needs `curl` and `unzip`, both present by default; see the macOS note below |
+| Windows x64, arm64 | `irm https://github.com/paneotech-dev/rafiki-code-cli/releases/latest/download/install.ps1 \| iex` | PowerShell 5.1 or later; the full screen interface needs Windows Terminal |
 | Windows, inside WSL | `curl -fsSL https://get.rafikiai.io \| bash` | installs the Linux build |
+| Windows x64, in Git Bash | `curl -fsSL https://get.rafikiai.io \| bash` | installs the Windows build; needs `curl` and `unzip` |
 
-**macOS.** The binaries are ad-hoc signed but not notarised with an Apple
-Developer ID. The installer downloads with `curl`, which does not set the
+**macOS.** The builds need macOS 13 (Ventura) or newer; a Mac on macOS 12 or
+older cannot run them. The binaries are ad-hoc signed but not notarised with an
+Apple Developer ID. The installer downloads with `curl`, which does not set the
 quarantine attribute, so the installed binary runs. If you instead take the
 `.zip` from the release page in a browser, macOS quarantines it and Gatekeeper
 refuses to run it; clear it with
@@ -171,7 +178,7 @@ node docs/check.mjs                   # documentation links, fences, wording
 
 ### Releases
 
-Pushing a tag `v<version>` runs `.github/workflows/release.yml`: every platform binary is built on one Linux runner, archived as `rafikicode-<os>-<arch>.tar.gz` (Linux) or `.zip` (macOS, Windows), listed in `SHA256SUMS`, and attached to the GitHub release.
+Pushing a tag `v<version>` runs `.github/workflows/release.yml`: every platform binary is built on one Linux runner (the macOS builds signed ad hoc there and their signatures checked page by page), archived as `rafikicode-<os>-<arch>.tar.gz` (Linux) or `.zip` (macOS, Windows), listed in `SHA256SUMS`, and attached to the GitHub release.
 
 Local test servers for offline checks, both in `packages/opencode/test/brand/`: `mock-gateway.mjs` (an OpenAI compatible endpoint) and `mock-console.mjs` (the sign in flow):
 
