@@ -54,20 +54,23 @@ The output a request asks for stays the request default of each tier (64,000
 fast, 32,000 pro and max, `RAFIKICODE_MAX_OUTPUT_TOKENS` to change it); the
 upstream maximum is recorded next to it and caps the override.
 
-Compaction: until now a session was compacted when it neared the 128,000
-token window. Moving the window to 1M would let a session grow to about
-1M tokens before it is compacted, which multiplies the cost of every turn of
-a long session. That is a spending decision for the owner, not a display fix,
-so the point where a session is compacted stays near where it was: each tier
-gets an input budget of 128,000 tokens (`limit.input`, which only the
-compaction check reads), and the percentage is shown against the real
-window.
+Compaction: until now a session was compacted once its tokens reached the
+128,000 token window less the output a request may ask for (64,000 on fast,
+96,000 on pro and max). Moving the window to 1M would let a session grow to
+about 1M tokens before it is compacted, which multiplies the cost of every
+later turn of a long session. That is a spending decision for the owner, not a
+display fix, so the point stays exactly where it was: each tier gets an input
+limit (`limit.input`, which only the compaction check reads) equal to the old
+point plus the reserve that check keeps, and the percentage is shown against
+the real window. An output override that used to push the point lower (to no
+room at all at 128,000) now stops at 64,000.
 
 ## Changes
 
 1. `packages/core/src/brand/brand.ts`: a table of the three tiers with window,
    upstream maximum output and the compaction budget, with the sources and
-   the date. `limit.context` is the real window. The model label shown next
+   the date. `limit.context` is the real window, `limit.input` keeps the
+   compaction point. The model label shown next
    to the provider name drops the provider name when the model name already
    starts with it (`Brand.provider.label`). The vendor name `PANEOTECH`.
 2. Identity: `Brand.prompt` makes the upstream opening line say Rafiki Code,
@@ -103,8 +106,10 @@ window.
 - `packages/opencode/test/rafiki/served.test.ts`: the served tier decision
   (same tier, another tier, a model name that is not a tier, another
   provider, the header winning over the body).
-- `packages/opencode/test/brand/display-limits.test.ts`: the per tier limits
-  and the identity text in the system prompt.
+- `packages/opencode/test/brand/display-limits.test.ts`: the windows, and the
+  compaction point checked with the compaction check itself, before and after.
+- `packages/core/test/brand/context.test.ts` also pins the limits, the output
+  cap, the model label and the identity text.
 - `packages/opencode/test/rafiki/display-run.test.ts`: `rafikicode run`
   against a stand-in gateway, once on fast and once with a fallback to pro:
   the printed headers and cost line, the tokens recorded on the message and

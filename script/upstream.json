@@ -260,7 +260,7 @@
     {
       "path": "packages/opencode/src/cli/cmd/run.ts",
       "class": "hook",
-      "why": "Exit codes and messages for gateway errors, a missing key and rejected permissions, the attach check, the cost line, the `--resume` alias and server file credentials, each a call into `src/rafiki/`."
+      "why": "Exit codes and messages for gateway errors, a missing key and rejected permissions, the attach check, the cost line, the `--resume` alias and server file credentials, each a call into `src/rafiki/`; an answer on another tier is announced through `rafiki/served.ts`."
     },
     {
       "path": "packages/opencode/src/cli/cmd/run/footer.permission.tsx",
@@ -281,6 +281,11 @@
       "path": "packages/opencode/src/cli/cmd/run/splash.ts",
       "class": "text",
       "why": "Product name and command in the banner."
+    },
+    {
+      "path": "packages/opencode/src/cli/cmd/run/variant.shared.ts",
+      "class": "hook",
+      "why": "The provider name is not repeated after a model name that starts with it (`Brand.provider.label`)."
     },
     {
       "path": "packages/opencode/src/cli/cmd/serve.ts",
@@ -428,6 +433,11 @@
       "why": "The house style is appended to the instructions."
     },
     {
+      "path": "packages/opencode/src/session/llm/ai-sdk.ts",
+      "class": "hook",
+      "why": "The tier named by the gateway's answer and the cache writes in its raw usage block are read through `rafiki/served.ts`."
+    },
+    {
       "path": "packages/opencode/src/session/llm/native-runtime.ts",
       "class": "hook",
       "why": "The native runtime is refused when it would send the key anywhere but the gateway (`BrandGuard.allowed`)."
@@ -440,7 +450,7 @@
     {
       "path": "packages/opencode/src/session/processor.ts",
       "class": "hook",
-      "why": "Retries, error wording and resuming a cut stream go through `rafiki/resilience.ts` and `rafiki/resume.ts`."
+      "why": "Retries, error wording and resuming a cut stream go through `rafiki/resilience.ts` and `rafiki/resume.ts`; the tier that answered is recorded on the message through `rafiki/served.ts`."
     },
     {
       "path": "packages/opencode/src/session/prompt.ts",
@@ -465,7 +475,7 @@
     {
       "path": "packages/opencode/src/session/system.ts",
       "class": "hook",
-      "why": "System prompts pass through `Brand.prompt`; the date line leaves the environment block because `rafiki/cache-prefix.ts` places it after the stable part."
+      "why": "System prompts pass through `Brand.prompt`; the date line leaves the environment block because `rafiki/cache-prefix.ts` places it after the stable part; the gateway provider's prompt starts with `Brand.identity`."
     },
     {
       "path": "packages/opencode/src/skill/index.ts",
@@ -670,12 +680,12 @@
     {
       "path": "packages/tui/src/component/prompt/index.tsx",
       "class": "text",
-      "why": "The message shown without a provider names the sign in command."
+      "why": "The message shown without a provider names the sign in command; the context figure comes from `core/brand/context.ts`, and an empty provider label (`Brand.provider.label`) is not drawn."
     },
     {
       "path": "packages/tui/src/context/local.tsx",
       "class": "text",
-      "why": "The labels shown without a provider name the sign in command."
+      "why": "The labels shown without a provider name the sign in command; the provider name is not repeated after a model name that starts with it (`Brand.provider.label`)."
     },
     {
       "path": "packages/tui/src/context/theme.tsx",
@@ -695,7 +705,7 @@
     {
       "path": "packages/tui/src/feature-plugins/sidebar/context.tsx",
       "class": "logic",
-      "why": "The amount spent is hidden when it is zero, because the cost plugin shows the estimate."
+      "why": "The amount spent is hidden when it is zero, because the cost plugin shows the estimate; the context figure comes from `core/brand/context.ts`, which shows the cached part and the window."
     },
     {
       "path": "packages/tui/src/feature-plugins/sidebar/footer.tsx",
@@ -708,9 +718,19 @@
       "why": "The logo is exported from `brand/wordmark.ts`."
     },
     {
+      "path": "packages/tui/src/routes/session/index.tsx",
+      "class": "logic",
+      "why": "The message footer names the tier asked for when the gateway answered on another one."
+    },
+    {
       "path": "packages/tui/src/routes/session/permission.tsx",
       "class": "text",
       "why": "Product name in the permission text."
+    },
+    {
+      "path": "packages/tui/src/routes/session/subagent-footer.tsx",
+      "class": "hook",
+      "why": "The context figure comes from `core/brand/context.ts`."
     },
     {
       "path": "packages/tui/src/theme/index.ts",
