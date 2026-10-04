@@ -60,7 +60,7 @@ describe("the tiers' limits", () => {
     const saved = process.env[Brand.env.apiKey]
     process.env[Brand.env.apiKey] = "sk-test"
     try {
-      return Brand.provider.config()[Brand.provider.id].models
+      return Brand.provider.config().rafiki.models
     } finally {
       if (saved === undefined) delete process.env[Brand.env.apiKey]
       else process.env[Brand.env.apiKey] = saved

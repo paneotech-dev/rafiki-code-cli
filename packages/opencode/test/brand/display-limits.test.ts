@@ -22,7 +22,7 @@ const cfg = {} as ConfigV1.Info
 
 function registered(id: (typeof Brand.models)[number]) {
   process.env[Brand.env.apiKey] = "sk-test-not-a-real-key"
-  const entry = Brand.provider.config()[Brand.provider.id].models[id]
+  const entry = Brand.provider.config().rafiki.models[id]
   return { providerID: Brand.provider.id, id, limit: entry.limit } as unknown as Provider.Model
 }
 
