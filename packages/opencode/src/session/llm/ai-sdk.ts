@@ -3,6 +3,7 @@ import { Effect, Schema } from "effect"
 import { type streamText } from "ai"
 import { errorMessage } from "@/util/error"
 import { ProviderError } from "@/provider/error"
+import * as RafikiServed from "@/rafiki/served"
 
 type Result = Awaited<ReturnType<typeof streamText>>
 type AISDKEvent = Result["fullStream"] extends AsyncIterable<infer T> ? T : never
@@ -52,6 +53,7 @@ function usage(value: unknown) {
     cachedInputTokens?: number
     inputTokenDetails?: { cacheReadTokens?: number; cacheWriteTokens?: number }
     outputTokenDetails?: { reasoningTokens?: number }
+    raw?: unknown
   }
   const entries = Object.entries({
     inputTokens: item.inputTokens,
@@ -59,7 +61,7 @@ function usage(value: unknown) {
     totalTokens: item.totalTokens,
     reasoningTokens: item.outputTokenDetails?.reasoningTokens ?? item.reasoningTokens,
     cacheReadInputTokens: item.inputTokenDetails?.cacheReadTokens ?? item.cachedInputTokens,
-    cacheWriteInputTokens: item.inputTokenDetails?.cacheWriteTokens,
+    cacheWriteInputTokens: item.inputTokenDetails?.cacheWriteTokens ?? RafikiServed.cacheWrite(item.raw),
   }).filter((entry) => entry[1] !== undefined)
   return entries.length === 0 ? undefined : Object.fromEntries(entries)
 }
@@ -89,7 +91,8 @@ export function toLLMEvents(
       if (event.rawFinishReason === "network_error")
         return Effect.fail(new ProviderError.ResponseStreamError("Provider finish_reason: network_error"))
       return Effect.sync(() => {
-        const original = providerMetadata(event.providerMetadata)
+        const served = RafikiServed.metadata(event.response)
+        const original = served ? { ...providerMetadata(event.providerMetadata), ...served } : providerMetadata(event.providerMetadata)
         const metadata =
           state.copilotTotalNanoAiu === undefined
             ? original
