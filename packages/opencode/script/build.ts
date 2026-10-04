@@ -23,6 +23,7 @@ import {
   type BuiltBinary,
   type HostSpec,
 } from "./platform-coverage.ts"
+import { signMacOSBinary } from "./macos-signature.ts"
 
 const singleFlag = process.argv.includes("--single")
 const baselineFlag = process.argv.includes("--baseline")
@@ -260,10 +261,14 @@ for (const item of targets) {
     },
   })
 
-  // Embedding the bundle invalidates the linker's ad-hoc signature, and macOS 27+
-  // SIGKILLs binaries with invalid pages. Re-sign ad-hoc; release CI re-signs with Developer ID.
-  if (item.os === "darwin" && process.platform === "darwin") {
-    await $`codesign --force --sign - dist/${name}/bin/${pkg.name}`
+  // Embedding the bundle invalidates the linker's ad-hoc signature, and macOS
+  // kills binaries with invalid pages. Re-sign ad hoc now that the file is final
+  // (codesign on a Mac, rcodesign elsewhere) and check every page hash.
+  if (item.os === "darwin") {
+    await signMacOSBinary(`dist/${name}/bin/${pkg.name}`, {
+      identifier: pkg.name,
+      required: process.env["RAFIKICODE_REQUIRE_MACOS_SIGNATURE"] === "1",
+    })
   }
 
   // Smoke test every target this host can execute, musl and baseline included.

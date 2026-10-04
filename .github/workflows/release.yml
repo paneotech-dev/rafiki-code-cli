@@ -32,7 +32,10 @@ name: release
 # Variables, optional: RAFIKICODE_STAGING_GATEWAY_URL and
 # RAFIKICODE_STAGING_CONSOLE_URL, when staging is not the product default.
 #
-# Signing: release archives are not code signed; SHA256SUMS is the integrity check.
+# Signing: the macOS builds are signed ad hoc (no Developer ID, not notarised)
+# with rcodesign in the build job, once each binary is final, and every page
+# hash is checked there; the macOS gate jobs check them again with Apple's
+# codesign. Nothing else is code signed; SHA256SUMS is the integrity check.
 #
 # Untrusted values (the tag name and the dispatch input) reach scripts only
 # through env variables, always quoted, and the tag is refused unless it is v
@@ -139,12 +142,35 @@ jobs:
 
       - uses: ./.github/actions/setup-bun
 
+      # The macOS builds are cross compiled here, and the compiler leaves a
+      # signature that does not match the file (0.1.9: a wrong last page hash on
+      # arm64, the Bun runtime's own Developer ID signature on x64). build.ts
+      # signs each one ad hoc with rcodesign once it is final, and stops when
+      # rcodesign is missing or the result does not check out.
+      - name: Install rcodesign, which signs the macOS builds
+        shell: bash
+        env:
+          RCODESIGN_VERSION: "0.29.0"
+          RCODESIGN_SHA256: dbe85cedd8ee4217b64e9a0e4c2aef92ab8bcaaa41f20bde99781ff02e600002
+        run: |
+          set -euo pipefail
+          name="apple-codesign-${RCODESIGN_VERSION}-x86_64-unknown-linux-musl"
+          dir="$RUNNER_TEMP/rcodesign"
+          mkdir -p "$dir"
+          curl -fsSL --retry 3 -o "$dir/$name.tar.gz" \
+            "https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F${RCODESIGN_VERSION}/${name}.tar.gz"
+          echo "${RCODESIGN_SHA256}  $dir/$name.tar.gz" | sha256sum -c -
+          tar -xzf "$dir/$name.tar.gz" -C "$dir" --strip-components=1 "$name/rcodesign"
+          "$dir/rcodesign" --version
+          echo "$dir" >> "$GITHUB_PATH"
+
       - name: Build binaries
         shell: bash
         run: ./packages/opencode/script/build.ts
         env:
           OPENCODE_VERSION: ${{ needs.preflight.outputs.version }}
           OPENCODE_CHANNEL: latest
+          RAFIKICODE_REQUIRE_MACOS_SIGNATURE: "1"
 
       - name: Package archives, licence files and checksums
         shell: bash
@@ -155,6 +181,22 @@ jobs:
           # and which were built without being started once. The gate below is
           # what starts the rest.
           cat packages/opencode/dist/PLATFORM-COVERAGE.md
+
+      # The binaries exactly as shipped, taken back out of their archives: an
+      # ad hoc signature that covers the whole file, with every page hash and
+      # every special slot right. rcodesign verify is not used for this: 0.29.0
+      # rejects its own ad hoc signatures. The macOS gate jobs below run Apple's
+      # codesign on the same files.
+      - name: Check the signatures of the macOS builds
+        shell: bash
+        run: |
+          set -euo pipefail
+          check="$RUNNER_TEMP/macos-signatures"
+          for target in darwin-arm64 darwin-x64 darwin-x64-baseline; do
+            mkdir -p "$check/$target"
+            unzip -oq "packages/opencode/dist/rafikicode-${target}.zip" rafikicode -d "$check/$target"
+          done
+          bun packages/opencode/script/macos-signature.ts "$check"/*/rafikicode
 
       # The npm package holds no binary, only the checksums of the archives
       # above, so it can be packed now and installed by the gate before
@@ -218,6 +260,21 @@ jobs:
         with:
           name: rafikicode-release
           path: release-assets
+
+      # Apple's own check of the signature, before the binary is started. A
+      # failure fails this job, and publish needs every gate job.
+      - name: Check the code signature with codesign (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          GATE_TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/signature"
+          mkdir -p "$dir"
+          unzip -oq "release-assets/rafikicode-${GATE_TARGET}.zip" rafikicode -d "$dir"
+          codesign --verify --strict --verbose=2 "$dir/rafikicode"
+          codesign --display --verbose=2 "$dir/rafikicode"
 
       - name: Gate the build (Linux container or macOS runner)
         if: matrix.mode != 'windows'
