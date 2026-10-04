@@ -63,8 +63,12 @@ Also found in the same tests:
    A failure fails the job, and `publish` needs every gate job.
 5. `install.sh`: the comment says what is now true.
 6. `install.ps1`: exits 1 with a message when the installed program does not
-   run; checks `USERPROFILE` (and `LOCALAPPDATA` if used) up front and says the
-   installer is for Windows when it is missing.
+   run; checks `USERPROFILE` up front, when no `-Prefix` or
+   `RAFIKICODE_INSTALL_DIR` names the directory, and says the installer is for
+   Windows when it is missing. Found while testing this: the check piped the
+   program's output into `Select-Object -First 1`, which stops reading early and
+   leaves `LASTEXITCODE` at 0, so a program that printed a line and then failed
+   passed it. The output is now collected whole before the exit code is read.
 7. Windows metadata: Bun documents `compile.windows.title`, `publisher`,
    `version`, `description` and `copyright`, and also documents that they
    "cannot be used when cross-compiling because they depend on Windows APIs".
@@ -94,3 +98,43 @@ part of the file, a Developer ID signature) and accepts a correct one.
   carries them over from the signature it replaces. That is how the Bun runtime
   itself is signed, now ad hoc instead of Developer ID; only a Mac shows it runs.
 - `install.ps1` on real Windows.
+
+## Results
+
+Run on 4 October 2026, with a private copy of the runtime first on `PATH`.
+
+Signatures of the published 0.1.9 builds, before and after `signMacOSBinary`
+(`rcodesign` 0.29.0, in a throwaway container), checked by
+`macos-signature.ts`:
+
+```text
+before
+darwin-arm64: code directory: 1 of 35082 page hashes do not match (pages 35081)
+darwin-x64: the signature carries a certificate signature: it is not ad hoc
+darwin-x64: code directory: flags 0x10000 do not include ad hoc
+darwin-x64: code directory: names a team (7FRXF46ZSN): it is not ad hoc
+darwin-x64: code directory: covers 68617792 bytes, but the signature starts at 149751360
+darwin-x64: code directory: 55 of 16753 page hashes do not match (pages 0, 16699, 16700, ..., 16750, 16751, 16752)
+after
+darwin-arm64: valid ad hoc signature, identifier rafikicode, flags 0x2, all 35082 page hashes match, covers 143694512 of 144822960 bytes
+darwin-x64: valid ad hoc signature, identifier rafikicode, flags 0x10002, all 36561 page hashes match, covers 149751360 of 150927936 bytes
+```
+
+darwin-x64-baseline is the same bytes as darwin-x64 before and after. An
+independent page hash script written for the platform tests agrees: 0
+mismatched pages on all three. The workflow step that checks the archives
+passes on archives of the re-signed binaries and fails (exit 1) when the 0.1.9
+arm64 archive is put back. The workflow step that installs `rcodesign` was run
+as written: checksum OK, `apple-codesign 0.29.0`.
+
+`install.ps1` under PowerShell 7 for Linux, against a local mirror: without
+`USERPROFILE` it prints the new message and exits 1 (before: the binding
+error); a working build exits 0; a build that prints a line and exits 3 now
+exits 1 (before: "Verified" and exit 0); the real 0.1.9 windows-x64 archive,
+which cannot run on Linux, exits 1.
+
+Tests: installer suites 54, 10, 54 and 16 passed, none failed; `test/brand`,
+`test/installation`, `macos-signature` and `platform-coverage` 222 passed;
+`bun turbo typecheck --concurrency=3` 30 of 30; full `packages/opencode` suite
+4,284 pass, 22 skip, 1 todo, 2 fail of 4,309 in 307 files, the two failures
+being the known ones that occur only as root. `node docs/check.mjs` passed.
