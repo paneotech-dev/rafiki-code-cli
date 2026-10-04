@@ -12,7 +12,10 @@
 #   task     one hello world task ran against staging and answered
 #
 # Every facet is reported, and a facet that could not be reached is a fail, not
-# a skip: this is what decides whether a build is published.
+# a skip: this is what decides whether a build is published. The one exception
+# is GATE_LIVE=0, which release-gate.sh sets only when it was given --no-live
+# for a pre-release without the staging key: signin and task are then reported
+# as skipped, and the gate accepts that verdict for those two facets only.
 #
 # Plain POSIX sh: it has to run under Alpine's ash before bash exists there.
 #
@@ -27,6 +30,7 @@
 #                   they are not the product defaults
 #   GATE_PROMPT, GATE_EXPECT  the task and the text its answer must contain
 #   GATE_TASK_TIMEOUT  seconds the task may take (default 180)
+#   GATE_LIVE       0 to skip the two facets that call staging (signin, task)
 
 TARGET=${GATE_TARGET:?GATE_TARGET is required}
 VERSION=${GATE_VERSION:?GATE_VERSION is required}
@@ -35,6 +39,7 @@ CHANNEL=${GATE_CHANNEL:-installer}
 PROMPT=${GATE_PROMPT:-Reply with exactly these two words and nothing else: hello world}
 EXPECT=${GATE_EXPECT:-hello world}
 TASK_TIMEOUT=${GATE_TASK_TIMEOUT:-180}
+LIVE=${GATE_LIVE:-1}
 
 ESC=$(printf '\033')
 decolour() { sed -e "s/${ESC}\\[[0-9;?]*[a-zA-Z]//g" | tr -d '\r'; }
@@ -151,6 +156,11 @@ if [ -z "$problem" ]; then say licence pass "printed by the binary, and LICENSE 
 
 # --------------------------------------------------------------------- signin --
 
+if [ "$LIVE" = "0" ]; then
+    say signin skipped "no staging key, pre-release: whoami against staging was not run"
+    say task skipped "no staging key, pre-release: no task was sent to staging"
+    exit 0
+fi
 if [ -z "$KEY" ]; then
     say signin fail "no staging test credential: the secret RAFIKICODE_STAGING_API_KEY is not set"
     say task fail "no staging test credential: the secret RAFIKICODE_STAGING_API_KEY is not set"

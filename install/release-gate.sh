@@ -28,6 +28,8 @@
 #   --image IMAGE     container image, when the default for the target is wrong
 #   --channel NAME    installer (default) or npm
 #   --results FILE    also write target, channel, facet, verdict, detail as TSV
+#   --no-live         a pre-release without the staging key: skip the two
+#                     facets that call staging (signin, task) and run the rest
 #
 # The staging test credential is read from RAFIKICODE_STAGING_API_KEY and
 # nowhere else. Without it the gate stops before doing anything, with exit 2:
@@ -35,6 +37,12 @@
 # release it exists to stop. RAFIKICODE_STAGING_GATEWAY_URL and
 # RAFIKICODE_STAGING_CONSOLE_URL point the build at staging when staging is not
 # the product default.
+#
+# --no-live is the one exception, and it is explicit: the release workflow
+# passes it only for a pre-release when the secret is not configured. It is
+# refused for a version without a pre-release part and when a key is set, and
+# signin and task are then recorded as "skipped (no staging key, pre-release)",
+# never as a pass. A missing key without --no-live still stops the gate.
 #
 # Windows builds are gated by install/release-gate.ps1, which does the same
 # with install.ps1.
@@ -47,6 +55,8 @@ PORT="${PORT:-4170}"
 MIN_FREE_MIB="${RAFIKICODE_GATE_MIN_FREE_MIB:-2048}"
 IMAGE_PREFIX=rafikicode-gate
 FACETS=(install version licence signin task)
+LIVE_FACETS=" signin task "
+SKIPPED_VERDICT="skipped (no staging key, pre-release)"
 
 target=""
 version=""
@@ -56,6 +66,7 @@ image=""
 host=false
 results_out=""
 npm_tarball=""
+live=true
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --target)      target="${2:?--target needs a build name}"; shift 2 ;;
@@ -66,7 +77,8 @@ while [[ $# -gt 0 ]]; do
         --npm-tarball) npm_tarball="${2:?--npm-tarball needs a path}"; shift 2 ;;
         --results)     results_out="${2:?--results needs a path}"; shift 2 ;;
         --host)        host=true; shift ;;
-        -h|--help)     sed -n '2,36p' "$0"; exit 0 ;;
+        --no-live)     live=false; shift ;;
+        -h|--help)     sed -n '2,48p' "$0"; exit 0 ;;
         *) echo "unknown option '$1'" >&2; exit 2 ;;
     esac
 done
@@ -88,7 +100,12 @@ esac
 archive="rafikicode-${target}${ext}"
 
 # Fail closed, before anything else is done, and name the secret.
-if [ -z "${RAFIKICODE_STAGING_API_KEY:-}" ]; then
+if [ "$live" = "false" ]; then
+    # Skipping the live facets is asked for, never inferred from an empty key.
+    [[ "$version" == *-* ]] || die "--no-live is for a pre-release only, and ${version} has no pre-release part: a release is gated against staging"
+    [ -z "${RAFIKICODE_STAGING_API_KEY:-}" ] || die "--no-live was given while RAFIKICODE_STAGING_API_KEY is set: drop --no-live to run the live facets, or unset the key"
+    note "release gate: --no-live, a pre-release without the staging key: signin and task are skipped, every other facet runs."
+elif [ -z "${RAFIKICODE_STAGING_API_KEY:-}" ]; then
     note "release gate: RAFIKICODE_STAGING_API_KEY is not set."
     note "  The gate signs in with a staging test account and runs one task against"
     note "  staging. Without that credential it cannot say the build works, so it"
@@ -177,8 +194,12 @@ done
 LOG="$WORK/probe.log"
 probe_env=(
     "GATE_TARGET=$target" "GATE_VERSION=$version" "GATE_MIRROR=$MIRROR" "GATE_CHANNEL=$channel"
-    "RAFIKICODE_API_KEY=$RAFIKICODE_STAGING_API_KEY"
 )
+if [ "$live" = "true" ]; then
+    probe_env+=("RAFIKICODE_API_KEY=$RAFIKICODE_STAGING_API_KEY")
+else
+    probe_env+=("GATE_LIVE=0")
+fi
 [ -n "${RAFIKICODE_STAGING_GATEWAY_URL:-}" ] && probe_env+=("RAFIKICODE_GATEWAY_URL=$RAFIKICODE_STAGING_GATEWAY_URL")
 [ -n "${RAFIKICODE_STAGING_CONSOLE_URL:-}" ] && probe_env+=("RAFIKICODE_CONSOLE_URL=$RAFIKICODE_STAGING_CONSOLE_URL")
 [ -n "${GATE_PROMPT:-}" ] && probe_env+=("GATE_PROMPT=$GATE_PROMPT")
@@ -257,7 +278,7 @@ fi
 # -------------------------------------------------------------------- verdict --
 
 # The credential is not echoed by the probe; this is the belt to that brace.
-GATE_REDACT="$RAFIKICODE_STAGING_API_KEY" awk '
+GATE_REDACT="${RAFIKICODE_STAGING_API_KEY:-}" awk '
     BEGIN { key = ENVIRON["GATE_REDACT"]; n = length(key) }
     {
         while (n > 0 && (i = index($0, key)) > 0) $0 = substr($0, 1, i - 1) "[staging credential]" substr($0, i + n)
@@ -267,6 +288,7 @@ GATE_REDACT="$RAFIKICODE_STAGING_API_KEY" awk '
 RESULTS="$WORK/results.tsv"
 : > "$RESULTS"
 failed=0
+skipped=0
 echo
 echo "release gate: ${target} ${version} via ${channel} ($([ "$host" = "true" ] && echo "this machine" || echo "$image"))"
 for f in "${FACETS[@]}"; do
@@ -279,7 +301,13 @@ for f in "${FACETS[@]}"; do
         verdict=fail
         detail="the probe did not report this facet (exit ${status})"
     fi
-    [ "$verdict" = "pass" ] || { verdict=fail; failed=$((failed + 1)); }
+    if [ "$verdict" = "skipped" ] && [ "$live" = "false" ] && [[ "$LIVE_FACETS" == *" $f "* ]]; then
+        verdict="$SKIPPED_VERDICT"
+        skipped=$((skipped + 1))
+    elif [ "$verdict" != "pass" ]; then
+        verdict=fail
+        failed=$((failed + 1))
+    fi
     printf '%s\t%s\t%s\t%s\t%s\n' "$target" "$channel" "$f" "$verdict" "$detail" >> "$RESULTS"
     printf '  %-8s %-5s %s\n' "$f" "$verdict" "$detail"
 done
@@ -288,5 +316,9 @@ done
 if [ "$failed" != "0" ]; then
     echo "release gate: ${target} FAILED (${failed} of ${#FACETS[@]} facets). This build blocks the release."
     exit 1
+fi
+if [ "$skipped" != "0" ]; then
+    echo "release gate: ${target} passed $(( ${#FACETS[@]} - skipped )) of ${#FACETS[@]} facets; signin and task were ${SKIPPED_VERDICT}."
+    exit 0
 fi
 echo "release gate: ${target} passed all ${#FACETS[@]} facets."
