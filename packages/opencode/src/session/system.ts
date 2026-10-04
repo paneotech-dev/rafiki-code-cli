@@ -27,7 +27,8 @@ import { MCP } from "@/mcp"
 import { PermissionV1 } from "@opencode-ai/core/v1/permission"
 
 export function provider(model: Provider.Model) {
-  return upstream(model).map(Brand.prompt)
+  const identity = Brand.identity(model.providerID, model.id)
+  return [...(identity ? [identity] : []), ...upstream(model).map(Brand.prompt)]
 }
 
 function upstream(model: Provider.Model) {
