@@ -842,7 +842,8 @@ install_from_binary() {
 
 # macOS marks files downloaded by a browser with com.apple.quarantine, and
 # Gatekeeper refuses to run a quarantined binary that is not notarised: these
-# builds are ad-hoc signed only. curl and unzip do not set the attribute, so for
+# builds are signed ad hoc only (since 0.1.10 both architectures; no Developer
+# ID, no notarisation). curl and unzip do not set the attribute, so for
 # a normal install this does nothing. It matters for --binary pointed at a file
 # that came out of a browser download, which is what someone does after taking
 # the archive from the release page by hand.

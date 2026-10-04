@@ -73,20 +73,20 @@ counted with `git diff --numstat -M` against the upstream base.
 
 <!-- upstream-files:start -->
 
-Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 177. Changed lines: 6342 (3603 added, 2739 removed).
+Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 177. Changed lines: 6360 (3618 added, 2742 removed).
 
 | Class | Files | Added | Removed |
 | --- | ---: | ---: | ---: |
 | Source: a call into this fork's modules | 35 | 370 | 137 |
 | Source: product name, file names and wording | 43 | 185 | 175 |
-| Source: behaviour changed in place | 12 | 491 | 190 |
+| Source: behaviour changed in place | 12 | 499 | 193 |
 | Tests of upstream, adapted | 33 | 554 | 177 |
 | Generated files | 3 | 366 | 181 |
 | Package identity and packaging | 9 | 20 | 479 |
-| Documentation | 23 | 189 | 1182 |
+| Documentation | 23 | 196 | 1182 |
 | Repository tooling and workflows | 6 | 23 | 8 |
 | Editor extension | 13 | 1405 | 210 |
-| Total | 177 | 3603 | 2739 |
+| Total | 177 | 3618 | 2742 |
 
 ### Source: a call into this fork's modules
 
@@ -187,7 +187,7 @@ On a conflict: Merge by hand and read both sides. These are the files to thin ne
 | File | Added | Removed | Why |
 | --- | ---: | ---: | --- |
 | `packages/core/src/effect/layer-node.ts` | 6 | 0 | An undefined layer dependency raises an error that names the chain. Not specific to this product. |
-| `packages/opencode/script/build.ts` | 103 | 11 | Output and user agent use the package name; every target the build host can execute is started once, each binary is hashed, and a coverage report is written (`script/platform-coverage.ts`). The order of the `abi` filter is a fix that is not specific to this product. |
+| `packages/opencode/script/build.ts` | 111 | 14 | Output and user agent use the package name; every target the build host can execute is started once, each binary is hashed, and a coverage report is written (`script/platform-coverage.ts`). Every darwin binary is signed ad hoc once it is final, with rcodesign when the host is not a Mac, and its signature checked page by page (`script/macos-signature.ts`). The order of the `abi` filter is a fix that is not specific to this product. |
 | `packages/opencode/src/acp/error.ts` | 24 | 1 | A defect that escapes an ACP handler is written to stderr instead of being dropped. Not specific to this product. |
 | `packages/opencode/src/acp/service.ts` | 66 | 23 | Names and the sign in method of this product, trust warnings sent to the client, and the cancellation fix: a cancelled turn answers `cancelled`, and `usage` is omitted when there is no token accounting. The fix is not specific to this product. |
 | `packages/opencode/src/acp/session.ts` | 29 | 0 | The per turn cancellation flag used by the fix in `acp/service.ts`. |
@@ -283,7 +283,7 @@ On a conflict: Keep this fork's text. Read what upstream changed and carry over 
 | `README.it.md` | 1 | 51 | Translated pages of upstream: the install instructions are removed so that no page tells a reader to install the upstream product (`test/brand/docs-wording.test.ts`). |
 | `README.ja.md` | 1 | 51 | Translated pages of upstream: the install instructions are removed so that no page tells a reader to install the upstream product (`test/brand/docs-wording.test.ts`). |
 | `README.ko.md` | 1 | 51 | Translated pages of upstream: the install instructions are removed so that no page tells a reader to install the upstream product (`test/brand/docs-wording.test.ts`). |
-| `README.md` | 165 | 100 | This product's README, with the attribution section. |
+| `README.md` | 172 | 100 | This product's README, with the attribution section. |
 | `README.no.md` | 1 | 51 | Translated pages of upstream: the install instructions are removed so that no page tells a reader to install the upstream product (`test/brand/docs-wording.test.ts`). |
 | `README.pl.md` | 1 | 51 | Translated pages of upstream: the install instructions are removed so that no page tells a reader to install the upstream product (`test/brand/docs-wording.test.ts`). |
 | `README.ru.md` | 1 | 51 | Translated pages of upstream: the install instructions are removed so that no page tells a reader to install the upstream product (`test/brand/docs-wording.test.ts`). |

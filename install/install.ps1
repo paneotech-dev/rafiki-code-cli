@@ -73,17 +73,23 @@ function Get-EnvOrDefault([string] $Name, [string] $Default) {
 $ReleaseApi = Get-EnvOrDefault 'RAFIKICODE_RELEASE_API' "https://api.github.com/repos/$Owner/$Repo"
 $ReleaseBase = Get-EnvOrDefault 'RAFIKICODE_RELEASE_BASE' "https://github.com/$Owner/$Repo/releases"
 
-if ([string]::IsNullOrWhiteSpace($Version)) { $Version = Get-EnvOrDefault 'VERSION' '' }
-if ([string]::IsNullOrWhiteSpace($Prefix)) {
-    $Prefix = Get-EnvOrDefault 'RAFIKICODE_INSTALL_DIR' (Join-Path (Join-Path $env:USERPROFILE '.rafikicode') 'bin')
-}
-
 function Write-Step([string] $Message) { Write-Host $Message }
 function Write-Note([string] $Message) { Write-Host $Message -ForegroundColor DarkGray }
 function Fail([string] $Message) {
     Write-Host "Error: $Message" -ForegroundColor Red
     # exit still runs the finally block that removes the scratch directory.
     exit 1
+}
+
+if ([string]::IsNullOrWhiteSpace($Version)) { $Version = Get-EnvOrDefault 'VERSION' '' }
+if ([string]::IsNullOrWhiteSpace($Prefix)) { $Prefix = Get-EnvOrDefault 'RAFIKICODE_INSTALL_DIR' '' }
+if ([string]::IsNullOrWhiteSpace($Prefix)) {
+    # Windows always sets USERPROFILE. Without it this is not Windows, or not a
+    # normal session, and there is no default place to install to.
+    if ([string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
+        Fail "USERPROFILE is not set, so there is no default install directory. This installer is for Windows. On macOS or Linux run: curl -fsSL https://get.rafikiai.io | bash . To install here anyway, name the directory with -Prefix or RAFIKICODE_INSTALL_DIR."
+    }
+    $Prefix = Join-Path (Join-Path $env:USERPROFILE '.rafikicode') 'bin'
 }
 
 # Windows PowerShell 5.1 does not negotiate TLS 1.2 by default on every build,
@@ -419,25 +425,38 @@ if ($NoModifyPath) {
 # It does not suggest -Baseline: that archive is the same bytes, as recorded at
 # the variant selection above, so a reinstall would cost the user a download and
 # change nothing. An installed binary that will not run is a bug in the build.
+# The whole output is collected before the exit code is read: a pipeline into
+# Select-Object -First 1 stops reading early and leaves LASTEXITCODE at 0, so a
+# program that printed a line and then failed counted as working. Standard
+# error is dropped with the preference relaxed, because Windows PowerShell 5.1
+# turns any line on it into a terminating error under 'Stop'.
 $ok = $false
 $versionOutput = ''
 $global:LASTEXITCODE = 0
+$savedPreference = $ErrorActionPreference
 try {
-    $versionOutput = (& $targetPath --version 2>&1 | Select-Object -First 1)
-    if ($LASTEXITCODE -eq 0) { $ok = $true }
+    $ErrorActionPreference = 'Continue'
+    $output = @(& $targetPath --version 2>$null)
+    if ($LASTEXITCODE -eq 0 -and $output.Count -gt 0) {
+        $ok = $true
+        $versionOutput = "$($output[0])"
+    }
 } catch {
     $ok = $false
+} finally {
+    $ErrorActionPreference = $savedPreference
 }
 
 if ($ok) {
     Write-Note "Verified: $App $("$versionOutput".Trim())"
 } else {
-    Write-Warning "$targetPath was installed but did not run."
+    # Exit 1, so a script or CI job that runs this installer sees the failure.
     Write-Step ''
     Write-Step 'Installing a different build will not help: this is a bug worth reporting.'
     Write-Step 'Report the output of both of these, including which processor this is:'
     Write-Step "  & `"$targetPath`" --version"
     Write-Step '  Get-CimInstance Win32_Processor | Select-Object -ExpandProperty Name'
+    Fail "$targetPath was installed but did not run ($App --version failed). The installation is not usable."
 }
 
 Write-Step ''
