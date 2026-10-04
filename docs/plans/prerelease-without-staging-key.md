@@ -82,3 +82,26 @@ PowerShell gate in a throwaway `mcr.microsoft.com/powershell` container as far
 as it runs off Windows, PyYAML on the workflows, `actionlint` when it can be
 fetched as one static binary, `node docs/check.mjs`,
 `bun turbo typecheck --concurrency=3`, `test/brand` and `test/installation`.
+
+## Results
+
+- `install/test-release-gate.sh`: 27 passed, 0 failed (11 new cases for
+  `--no-live`). `test-install.sh` 54, `test-install-shells.sh` 10,
+  `test-install-url.sh` 54, all passed.
+- `release-gate.ps1` in a throwaway `mcr.microsoft.com/powershell` container,
+  with `powershell.exe`, the mirror and the task process replaced by stubs:
+  `-NoLive` records install, version and licence as pass and signin and task
+  as skipped, exit 0, and never starts whoami or run; it is refused for
+  `1.4.0` and with a key set; no key without `-NoLive` exits 2; a missing
+  licence under `-NoLive` exits 1; the live path still passes with the right
+  key and fails signin and task with a wrong one.
+- The preflight and gate record steps, taken out of the workflow and run with
+  bash: a pre-release without the key gives `live_gate=false`, a warning and
+  the summary line; a full release without it stops with exit 1; skipped
+  verdicts pass the record only for a pre-release with `live_gate=false`, and
+  a bare `skipped`, a skipped verdict in a full release or any other
+  non-pass verdict fail it.
+- PyYAML parses both workflows; actionlint 1.7.12 reports nothing on
+  `release.yml` and `install-matrix.yml`.
+- `node docs/check.mjs`, `bun turbo typecheck --concurrency=3` (30 of 30),
+  `test/brand` and `test/installation` (191 passed) pass.

@@ -151,7 +151,7 @@ What was run while these channels were written, and what was not:
 
 ## For maintainers
 
-The release workflow (`.github/workflows/release.yml`) refuses to start unless these repository secrets exist, and names the ones that are missing:
+For a release (a version without a hyphen, such as `0.2.0`), the release workflow (`.github/workflows/release.yml`) refuses to start unless these four repository secrets exist, and names the ones that are missing:
 
 | Secret | Used for |
 | --- | --- |
@@ -159,6 +159,8 @@ The release workflow (`.github/workflows/release.yml`) refuses to start unless t
 | `NPM_TOKEN` | publishing the package `rafikicode` |
 | `HOMEBREW_TAP_TOKEN` | pushing the formula to `paneotech-dev/homebrew-tap` |
 | `WINGET_TOKEN` | opening the pull request on `microsoft/winget-pkgs` |
+
+A pre-release (a version with a hyphen, such as `0.2.0-rc.1`) is published to GitHub only and needs none of them. Without `RAFIKICODE_STAGING_API_KEY` it still builds, signs and checks every build: the preflight job warns that the live checks against staging are skipped, every gate job runs install, version and licence (and `codesign --verify --strict` on macOS) and records signin and task as `skipped (no staging key, pre-release)`, the install matrix runs in full, and the release notes say that the live checks were skipped. Nothing else is skipped, and a skipped verdict is accepted only for those two facets of such a pre-release.
 
 The repository variables `RAFIKICODE_STAGING_GATEWAY_URL` and `RAFIKICODE_STAGING_CONSOLE_URL` point the gate at staging when staging is not the product default.
 
@@ -168,6 +170,8 @@ The gate for one build can be run by hand against a directory of archives:
 RAFIKICODE_STAGING_API_KEY=... install/release-gate.sh \
   --target linux-x64 --version 0.2.0 --assets packages/opencode/dist
 ```
+
+Without the key the gate stops with exit 2. For a pre-release it can skip the live checks, but only when asked to with `--no-live` (`-NoLive` for `install/release-gate.ps1`); the switch is refused for a version without a hyphen and when a key is set, so a mistyped or empty secret never skips anything by itself.
 
 ### When a release counts as published
 
