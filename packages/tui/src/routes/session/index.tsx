@@ -1472,7 +1472,14 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
   const { theme } = useTheme()
   const sync = useSync()
   const messages = createMemo(() => sync.data.message[props.message.sessionID] ?? [])
-  const model = createMemo(() => Model.name(ctx.providers(), props.message.providerID, props.message.modelID))
+  // The model that answered, and the one asked for when the gateway answered on another tier.
+  const model = createMemo(() => {
+    const name = Model.name(ctx.providers(), props.message.providerID, props.message.modelID)
+    const user = messages().find((x): x is UserMessage => x.role === "user" && x.id === props.message.parentID)
+    const asked = user?.model
+    if (!asked || asked.providerID !== props.message.providerID || asked.modelID === props.message.modelID) return name
+    return `${name} (asked for ${Model.name(ctx.providers(), asked.providerID, asked.modelID)})`
+  })
 
   const final = createMemo(() => {
     return props.message.finish && !["tool-calls", "unknown"].includes(props.message.finish)

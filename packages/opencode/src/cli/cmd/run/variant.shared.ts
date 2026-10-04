@@ -6,6 +6,7 @@
 // The saved variant persists across sessions in ~/.local/state/opencode/model.json
 // so your last-used variant sticks. Cycling (ctrl+t) updates both the active
 // variant and the persisted file.
+import { Brand } from "@opencode-ai/core/brand/brand"
 import path from "path"
 import { FSUtil } from "@opencode-ai/core/fs-util"
 import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
@@ -55,7 +56,8 @@ export function formatModelLabel(
 ): string {
   const names = modelInfo(providers, model)
   const label = variant ? ` · ${variant}` : ""
-  return `${names.model} · ${names.provider}${label}`
+  const provider = Brand.provider.label(names.provider, names.model)
+  return `${names.model}${provider ? ` · ${provider}` : ""}${label}`
 }
 
 export function cycleVariant(current: string | undefined, variants: string[]): string | undefined {
