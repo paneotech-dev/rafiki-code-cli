@@ -4,7 +4,9 @@
 # machine with --host. What is under test is the gate's own judgement: that a
 # good build passes all five facets, that each kind of bad build fails the
 # facet it should and blocks, and that a missing credential stops the gate with
-# the secret's name instead of letting it pass.
+# the secret's name instead of letting it pass. --no-live, for a pre-release
+# without the staging key, skips signin and task and nothing else, records
+# them as skipped, and is refused wherever it is not asked for explicitly.
 #
 # The fake binary accepts one key and answers the way the real commands do, so
 # the sign-in and task facets are driven without a gateway. The real binary
@@ -38,6 +40,7 @@ make_release() {
     mkdir -p "$build" "$assets"
     cat > "$build/rafikicode" <<FAKE
 #!/bin/sh
+echo "\$1" >> "$WORK/$name/calls.log"
 case "\$1" in
     --version) echo "${printed}"; exit 0 ;;
     licenses)
@@ -127,6 +130,57 @@ gate altered; rc=$?
 mkdir -p "$WORK/empty/assets"; : > "$WORK/empty/assets/SHA256SUMS"
 gate empty; rc=$?
 [ "$rc" = "2" ] && grep -q "was not produced" "$WORK/empty/out.txt"; check $? "a release with no archive for the target is refused"
+
+# --no-live: a pre-release without the staging key.
+SKIPPED="skipped (no staging key, pre-release)"
+gate_nolive() {
+    local name=$1; shift
+    env -u RAFIKICODE_STAGING_API_KEY bash "$GATE" --host --target "$target" --version 1.4.0-rc.1 \
+        --assets "$WORK/$name/assets" --results "$WORK/$name/results.tsv" --no-live "$@" > "$WORK/$name/out.txt" 2>&1
+}
+make_release rc 1.4.0-rc.1 "hello world" ok yes
+gate_nolive rc; rc=$?
+[ "$rc" = "0" ] && [ "$(verdict rc install)" = "pass" ] && [ "$(verdict rc version)" = "pass" ] \
+    && [ "$(verdict rc licence)" = "pass" ] && [ "$(verdict rc signin)" = "$SKIPPED" ] && [ "$(verdict rc task)" = "$SKIPPED" ] \
+    && [ "$(wc -l < "$WORK/rc/results.tsv" | tr -d ' ')" = "5" ] \
+    && grep -q "passed 3 of 5 facets; signin and task were ${SKIPPED}" "$WORK/rc/out.txt"; check $? "--no-live runs install, version and licence and records signin and task as skipped"
+[ "$(awk -F'\t' '$4 == "pass" {print $3}' "$WORK/rc/results.tsv" | tr '\n' ' ')" = "install version licence " ]; check $? "--no-live never records signin or task as a pass"
+grep -qx -- "--version" "$WORK/rc/calls.log" && grep -qx "licenses" "$WORK/rc/calls.log" \
+    && ! grep -qx "whoami" "$WORK/rc/calls.log" && ! grep -qx "run" "$WORK/rc/calls.log"; check $? "--no-live starts the binary for version and licence and never for whoami or run"
+
+make_release rcnolicence 1.4.0-rc.1 "hello world" ok no
+gate_nolive rcnolicence; rc=$?
+[ "$rc" = "1" ] && [ "$(verdict rcnolicence licence)" = "fail" ] && [ "$(verdict rcnolicence signin)" = "$SKIPPED" ] \
+    && grep -q "This build blocks the release" "$WORK/rcnolicence/out.txt"; check $? "--no-live still fails and blocks a build that fails an offline facet"
+
+make_release rcwrongversion 1.4.0 "hello world" ok yes
+gate_nolive rcwrongversion; rc=$?
+[ "$rc" = "1" ] && [ "$(verdict rcwrongversion version)" = "fail" ]; check $? "--no-live still fails a binary that prints another version"
+
+mkdir -p "$WORK/rcempty/build" "$WORK/rcempty/assets"
+echo "not a program" > "$WORK/rcempty/build/README"
+if [ "$ext" = ".tar.gz" ]; then tar -czf "$WORK/rcempty/assets/rafikicode-${target}${ext}" -C "$WORK/rcempty/build" .
+else (cd "$WORK/rcempty/build" && zip -q "$WORK/rcempty/assets/rafikicode-${target}${ext}" ./*); fi
+(cd "$WORK/rcempty/assets" && sha256_file "rafikicode-${target}${ext}" > SHA256SUMS)
+gate_nolive rcempty; rc=$?
+[ "$rc" = "1" ] && [ "$(verdict rcempty install)" = "fail" ] && [ "$(verdict rcempty signin)" = "fail" ] \
+    && [ "$(verdict rcempty task)" = "fail" ]; check $? "--no-live with nothing installed fails signin and task instead of skipping them"
+
+out=$(env -u RAFIKICODE_STAGING_API_KEY bash "$GATE" --host --target "$target" --version 1.4.0 --assets "$WORK/good/assets" --no-live 2>&1); rc=$?
+[ "$rc" = "2" ] && [[ "$out" == *"--no-live is for a pre-release only"* ]] && [[ "$out" != *"GATE_RESULT"* ]]; check $? "--no-live is refused for a full release"
+
+out=$(RAFIKICODE_STAGING_API_KEY="$KEY" bash "$GATE" --host --target "$target" --version 1.4.0-rc.1 --assets "$WORK/rc/assets" --no-live 2>&1); rc=$?
+[ "$rc" = "2" ] && [[ "$out" == *"while RAFIKICODE_STAGING_API_KEY is set"* ]]; check $? "--no-live is refused when a staging key is set"
+
+out=$(env -u RAFIKICODE_STAGING_API_KEY bash "$GATE" --host --target "$target" --version 1.4.0-rc.1 --assets "$WORK/rc/assets" 2>&1); rc=$?
+[ "$rc" = "2" ] && [[ "$out" == *"RAFIKICODE_STAGING_API_KEY is not set"* ]] && [[ "$out" != *"GATE_RESULT"* ]]; check $? "a pre-release without the key and without --no-live still stops the gate"
+
+out=$(RAFIKICODE_STAGING_API_KEY="  " bash "$GATE" --host --target "$target" --version 1.4.0-rc.1 --assets "$WORK/rc/assets" 2>&1); rc=$?
+[ "$rc" != "0" ] && [[ "$out" != *"skipped"* ]]; check $? "a mistyped key (blanks) without --no-live fails and skips nothing"
+
+RAFIKICODE_STAGING_API_KEY="$KEY" bash "$GATE" --host --target "$target" --version 1.4.0-rc.1 \
+    --assets "$WORK/rc/assets" --results "$WORK/rc/results-live.tsv" > "$WORK/rc/out-live.txt" 2>&1; rc=$?
+[ "$rc" = "0" ] && [ "$(awk -F'\t' '$4 == "pass"' "$WORK/rc/results-live.tsv" | wc -l | tr -d ' ')" = "5" ]; check $? "a pre-release with the key runs all five facets"
 
 out=$(RAFIKICODE_STAGING_API_KEY="$KEY" bash "$GATE" --host --target solaris-sparc --version 1.4.0 --assets "$WORK/good/assets" 2>&1); rc=$?
 [ "$rc" = "2" ] && [[ "$out" == *"is not a build this product publishes"* ]]; check $? "a target that is not a published build is refused"

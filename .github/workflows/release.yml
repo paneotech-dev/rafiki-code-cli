@@ -4,6 +4,7 @@ name: release
 # then publishes: the GitHub release first, and from it npm, Homebrew and winget.
 #
 #   preflight       the tag is a version, and every secret the run needs exists
+#                   (a pre-release needs none; see below)
 #   build           all twelve builds, packed with LICENSE and NOTICE, SHA256SUMS
 #   gate            one job per published build: a clean container or runner for
 #                   that platform, the documented install, --version, the licence
@@ -22,13 +23,18 @@ name: release
 #
 # Trigger: push a tag v<version>, for example v0.2.0.
 #
-# Secrets, all required. preflight stops the run, naming each one that is
-# absent, before anything is built:
+# Secrets. A release (no hyphen in the version) needs all four, and preflight
+# stops the run, naming each one that is absent, before anything is built:
 #   RAFIKICODE_STAGING_API_KEY  API key of the staging test account (gate)
 #   NPM_TOKEN                   npm automation token for the package rafikicode
 #   HOMEBREW_TAP_TOKEN          token that can push to paneotech-dev/homebrew-tap
 #   WINGET_TOKEN                token wingetcreate uses to open the pull request
 #                               on microsoft/winget-pkgs
+# A pre-release (v0.2.0-rc.1) is published to GitHub only and needs none of
+# them. Without RAFIKICODE_STAGING_API_KEY it runs everything except the two
+# gate facets that call staging (signin and task), which every gate job
+# records as "skipped (no staging key, pre-release)", and its release notes
+# say so.
 # Variables, optional: RAFIKICODE_STAGING_GATEWAY_URL and
 # RAFIKICODE_STAGING_CONSOLE_URL, when staging is not the product default.
 #
@@ -68,6 +74,7 @@ jobs:
       version: ${{ steps.meta.outputs.version }}
       tag: ${{ steps.meta.outputs.tag }}
       prerelease: ${{ steps.meta.outputs.prerelease }}
+      live_gate: ${{ steps.secrets.outputs.live_gate }}
     steps:
       - id: meta
         shell: bash
@@ -97,7 +104,12 @@ jobs:
       # before a build minute is spent, when it could not publish one of them
       # or could not gate the builds. Secrets are compared with the empty
       # string only; none is printed.
+      #
+      # A pre-release goes to GitHub only, so it needs no publishing token, and
+      # without the staging key it is still built, signed and gated: live_gate
+      # is then false and the gate jobs skip only signin and task, explicitly.
       - name: Require every secret the release needs
+        id: secrets
         shell: bash
         env:
           RAFIKICODE_STAGING_API_KEY: ${{ secrets.RAFIKICODE_STAGING_API_KEY }}
@@ -107,10 +119,9 @@ jobs:
           PRERELEASE: ${{ steps.meta.outputs.prerelease }}
         run: |
           set -euo pipefail
-          required=(RAFIKICODE_STAGING_API_KEY)
-          # A pre-release is gated like any release and published to GitHub only.
+          required=()
           if [ "$PRERELEASE" != "true" ]; then
-            required+=(NPM_TOKEN HOMEBREW_TAP_TOKEN WINGET_TOKEN)
+            required+=(RAFIKICODE_STAGING_API_KEY NPM_TOKEN HOMEBREW_TAP_TOKEN WINGET_TOKEN)
           fi
           missing=()
           for name in "${required[@]}"; do
@@ -127,6 +138,14 @@ jobs:
               echo "Nothing was built and nothing was published. See docs/install.md, section For maintainers."
             } >> "$GITHUB_STEP_SUMMARY"
             exit 1
+          fi
+          if [ -n "${RAFIKICODE_STAGING_API_KEY:-}" ]; then
+            echo "live_gate=true" >> "$GITHUB_OUTPUT"
+          else
+            # Only a pre-release reaches this line without the key.
+            echo "live_gate=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=release::Pre-release without the staging key: live checks against staging are skipped; every other check runs. Set the repository secret RAFIKICODE_STAGING_API_KEY to run them."
+            echo "Pre-release without the staging key: live checks against staging are skipped; every other check runs" >> "$GITHUB_STEP_SUMMARY"
           fi
           echo "All required secrets are present."
 
@@ -287,11 +306,13 @@ jobs:
           GATE_CHANNEL: ${{ matrix.channel }}
           GATE_MODE: ${{ matrix.mode }}
           GATE_VERSION: ${{ needs.preflight.outputs.version }}
+          LIVE_GATE: ${{ needs.preflight.outputs.live_gate }}
         run: |
           set -euo pipefail
           args=(--target "$GATE_TARGET" --version "$GATE_VERSION" --assets release-assets
                 --channel "$GATE_CHANNEL" --results "$RUNNER_TEMP/gate-results.tsv")
           [ "$GATE_MODE" = "host" ] && args+=(--host)
+          [ "$LIVE_GATE" = "false" ] && args+=(--no-live)
           [ "$GATE_CHANNEL" = "npm" ] && args+=(--npm-tarball "release-assets/npm/rafikicode-${GATE_VERSION}.tgz")
           install/release-gate.sh "${args[@]}"
 
@@ -304,9 +325,16 @@ jobs:
           RAFIKICODE_STAGING_CONSOLE_URL: ${{ vars.RAFIKICODE_STAGING_CONSOLE_URL }}
           GATE_TARGET: ${{ matrix.target }}
           GATE_VERSION: ${{ needs.preflight.outputs.version }}
+          LIVE_GATE: ${{ needs.preflight.outputs.live_gate }}
         run: |
-          ./install/release-gate.ps1 -Target $env:GATE_TARGET -Version $env:GATE_VERSION `
-            -Assets release-assets -Results (Join-Path $env:RUNNER_TEMP 'gate-results.tsv')
+          $gateArgs = @{
+            Target = $env:GATE_TARGET
+            Version = $env:GATE_VERSION
+            Assets = 'release-assets'
+            Results = (Join-Path $env:RUNNER_TEMP 'gate-results.tsv')
+          }
+          if ($env:LIVE_GATE -eq 'false') { $gateArgs.NoLive = $true }
+          ./install/release-gate.ps1 @gateArgs
           exit $LASTEXITCODE
 
       - name: Keep the verdicts
@@ -364,6 +392,8 @@ jobs:
         shell: bash
         env:
           VERSION: ${{ needs.preflight.outputs.version }}
+          PRERELEASE: ${{ needs.preflight.outputs.prerelease }}
+          LIVE_GATE: ${{ needs.preflight.outputs.live_gate }}
         run: |
           set -euo pipefail
           # One row per build, channel and facet, as each gate job reported it.
@@ -375,6 +405,11 @@ jobs:
             echo "platform, with the documented install command, and then asked for its version, its"
             echo "licence files, a sign-in with the staging test account and one hello world task"
             echo "against staging. The release is published only when every row is a pass."
+            if [ "$PRERELEASE" = "true" ] && [ "$LIVE_GATE" = "false" ]; then
+              echo
+              echo "This pre-release was gated without the staging key: signin and task were not run"
+              echo "and read \"skipped (no staging key, pre-release)\". Every other check ran."
+            fi
             echo
             echo "| build | channel | install | version | licence | signin | task |"
             echo "| --- | --- | --- | --- | --- | --- | --- |"
@@ -387,9 +422,15 @@ jobs:
           cat dist/RELEASE-GATE.md >> "$GITHUB_STEP_SUMMARY"
           # The jobs already failed the run if a facet failed. This is the same
           # rule applied to the record itself: thirteen rows of five passes, or
-          # the release does not go out.
+          # the release does not go out. A pre-release gated without the
+          # staging key may have signin and task skipped, and nothing else.
           rows=$(awk -F'\t' '{print $1 "\t" $2}' gate-results.tsv | sort -u | wc -l | tr -d ' ')
-          bad=$(awk -F'\t' '$4 != "pass"' gate-results.tsv | wc -l | tr -d ' ')
+          allow_skip=0
+          [ "$PRERELEASE" = "true" ] && [ "$LIVE_GATE" = "false" ] && allow_skip=1
+          bad=$(awk -F'\t' -v skip="$allow_skip" '
+            $4 == "pass" { next }
+            skip == 1 && ($3 == "signin" || $3 == "task") && $4 == "skipped (no staging key, pre-release)" { next }
+            { n++ } END { print n + 0 }' gate-results.tsv)
           total=$(wc -l < gate-results.tsv | tr -d ' ')
           if [ "$rows" != "13" ] || [ "$total" != "65" ] || [ "$bad" != "0" ]; then
             echo "::error title=release gate::Expected 13 gated builds with 5 passing facets each; found ${rows} builds, ${total} verdicts, ${bad} not passing."
@@ -404,6 +445,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           TAG: ${{ needs.preflight.outputs.tag }}
           PRERELEASE: ${{ needs.preflight.outputs.prerelease }}
+          LIVE_GATE: ${{ needs.preflight.outputs.live_gate }}
         run: |
           set -euo pipefail
           # install.sh and install.ps1 ship as release assets so that
@@ -459,6 +501,18 @@ jobs:
           done
           [ "$(printf '%s\n' "${assets[@]}" | grep -c '^rafikicode-.*\.\(tar\.gz\|zip\)$')" = "12" ] || { echo "::error title=release::Expected 12 archives."; missing=1; }
           [ "$missing" = "0" ] || exit 1
+
+          # A pre-release gated without the staging key says so on its page.
+          # The draft may be left by an earlier attempt, so the line is added once.
+          if [ "$PRERELEASE" = "true" ] && [ "$LIVE_GATE" = "false" ]; then
+            line="Live checks against staging were skipped for this pre-release because the staging key is not configured."
+            notes="$RUNNER_TEMP/release-notes.md"
+            gh release view "$TAG" --json body --jq '.body' > "$notes"
+            if ! grep -qxF "$line" "$notes"; then
+              printf '\n%s\n' "$line" >> "$notes"
+              gh release edit "$TAG" --notes-file "$notes"
+            fi
+          fi
 
           if [ "$PRERELEASE" = "true" ]; then
             gh release edit "$TAG" --draft=false --prerelease

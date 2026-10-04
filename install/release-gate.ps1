@@ -10,7 +10,8 @@
     staging. Any facet that is not a pass fails the gate.
 
     The staging test credential is read from RAFIKICODE_STAGING_API_KEY. Without
-    it the gate stops with exit code 2 before doing anything.
+    it the gate stops with exit code 2 before doing anything, unless -NoLive
+    is given.
 
     This script has not been run on Windows. It was written against
     install.ps1 and release-gate.sh and is exercised for the first time by the
@@ -27,6 +28,15 @@
 
 .PARAMETER Results
     Optional path of a TSV file: target, channel, facet, verdict, detail.
+
+.PARAMETER NoLive
+    A pre-release without the staging key. The two facets that call staging,
+    signin and task, are not run and are recorded as "skipped (no staging key,
+    pre-release)", never as a pass; install, version and licence run as
+    always. Refused for a version without a pre-release part and when
+    RAFIKICODE_STAGING_API_KEY is set. The release workflow passes it only
+    when the secret is not configured for a pre-release; a missing key without
+    it still stops the gate.
 #>
 [CmdletBinding()]
 param(
@@ -35,7 +45,8 @@ param(
     [Parameter(Mandatory = $true)] [string] $Assets,
     [string] $Results,
     [int] $Port = 4170,
-    [int] $TaskTimeoutSeconds = 180
+    [int] $TaskTimeoutSeconds = 180,
+    [switch] $NoLive
 )
 
 Set-StrictMode -Version 1.0
@@ -43,6 +54,7 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
 $Facets = @('install', 'version', 'licence', 'signin', 'task')
+$SkippedVerdict = 'skipped (no staging key, pre-release)'
 $Version = $Version -replace '^v', ''
 
 function Stop-Gate([string] $Message) {
@@ -59,7 +71,17 @@ if ($Version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$') {
 
 # Fail closed, before anything else is done, and name the secret.
 $key = [Environment]::GetEnvironmentVariable('RAFIKICODE_STAGING_API_KEY')
-if ([string]::IsNullOrWhiteSpace($key)) {
+if ($NoLive) {
+    # Skipping the live facets is asked for, never inferred from an empty key.
+    if ($Version -notmatch '-') {
+        Stop-Gate "-NoLive is for a pre-release only, and $Version has no pre-release part: a release is gated against staging"
+    }
+    if (-not [string]::IsNullOrWhiteSpace($key)) {
+        Stop-Gate '-NoLive was given while RAFIKICODE_STAGING_API_KEY is set: drop -NoLive to run the live facets, or unset the key'
+    }
+    $key = ''
+    [Console]::Error.WriteLine('release gate: -NoLive, a pre-release without the staging key: signin and task are skipped, every other facet runs.')
+} elseif ([string]::IsNullOrWhiteSpace($key)) {
     [Console]::Error.WriteLine('release gate: RAFIKICODE_STAGING_API_KEY is not set.')
     [Console]::Error.WriteLine('  The gate signs in with a staging test account and runs one task against')
     [Console]::Error.WriteLine('  staging. Without that credential it cannot say the build works, so it')
@@ -96,12 +118,20 @@ Copy-Item -LiteralPath $archivePath -Destination (Join-Path $download $archive)
 
 $rows = New-Object System.Collections.Generic.List[string]
 $failed = 0
+$skipped = 0
+function Write-Verdict([string] $Facet, [string] $Verdict, [string] $Detail) {
+    $clean = $Detail -replace "[`r`n`t]+", ' '
+    if ($key -ne '') { $clean = $clean.Replace($key, '[staging credential]') }
+    $script:rows.Add("$Target`tinstaller`t$Facet`t$Verdict`t$clean")
+    Write-Host ("  {0,-8} {1,-5} {2}" -f $Facet, $Verdict, $clean)
+}
 function Add-Verdict([string] $Facet, [bool] $Ok, [string] $Detail) {
-    $verdict = if ($Ok) { 'pass' } else { 'fail' }
     if (-not $Ok) { $script:failed++ }
-    $clean = ($Detail -replace "[`r`n`t]+", ' ').Replace($key, '[staging credential]')
-    $script:rows.Add("$Target`tinstaller`t$Facet`t$verdict`t$clean")
-    Write-Host ("  {0,-8} {1,-5} {2}" -f $Facet, $verdict, $clean)
+    Write-Verdict $Facet $(if ($Ok) { 'pass' } else { 'fail' }) $Detail
+}
+function Add-Skipped([string] $Facet, [string] $Detail) {
+    $script:skipped++
+    Write-Verdict $Facet $SkippedVerdict $Detail
 }
 
 # The mirror: python's static file server on loopback, GitHub's layout.
@@ -152,7 +182,12 @@ try {
             -and (Test-Path -LiteralPath (Join-Path $licenceDir 'LICENSE')) `
             -and (Test-Path -LiteralPath (Join-Path $licenceDir 'NOTICE'))
         Add-Verdict 'licence' $licenceOk $(if ($licenceOk) { "printed by the binary, and LICENSE and NOTICE are in $licenceDir" } else { 'the licence text or the licence files are missing' })
+    }
 
+    if ($installed -and $NoLive) {
+        Add-Skipped 'signin' 'whoami against staging was not run'
+        Add-Skipped 'task' 'no task was sent to staging'
+    } elseif ($installed) {
         $env:RAFIKICODE_API_KEY = $key
         $gateway = [Environment]::GetEnvironmentVariable('RAFIKICODE_STAGING_GATEWAY_URL')
         $console = [Environment]::GetEnvironmentVariable('RAFIKICODE_STAGING_CONSOLE_URL')
@@ -191,6 +226,10 @@ try {
 if ($failed -ne 0) {
     Write-Host "release gate: $Target FAILED ($failed of $($Facets.Count) facets). This build blocks the release."
     exit 1
+}
+if ($skipped -ne 0) {
+    Write-Host "release gate: $Target passed $($Facets.Count - $skipped) of $($Facets.Count) facets; signin and task were $SkippedVerdict."
+    exit 0
 }
 Write-Host "release gate: $Target passed all $($Facets.Count) facets."
 exit 0
