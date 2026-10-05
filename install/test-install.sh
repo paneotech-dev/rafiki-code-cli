@@ -884,7 +884,7 @@ write_stub "$WORK/bin-clock/curl" "#!/bin/sh\ncase \"\$*\" in *-skI*) exec $(com
 write_stub "$WORK/bin-clock/date" "#!/bin/sh\nfor a; do case \"\$a\" in -d) exec $(command -v date) \"\$@\" ;; esac; done\ncase \"\$*\" in *%%s*) echo 978307200 ;; *%%Y-%%m-%%d*) echo '2001-01-01 00:00 UTC' ;; *%%Y*) echo 2001 ;; *) exec $(command -v date) \"\$@\" ;; esac\n"
 h=$(fresh_home home-clock)
 out=$(env PATH="$WORK/bin-clock" HOME="$h" RAFIKICODE_INSTALL_DIR="$h/.rafikicode/bin" \
-    CLOCK_URL="http://127.0.0.1:${PORT}/" "$BASH_BIN" "$INSTALLER" --no-login --no-modify-path --version 1.2.3 2>&1 | plain) && rc=0 || rc=$?
+    CLOCK_URL="http://127.0.0.1:${PORT}/" RAFIKICODE_INSTALL_DOWNLOADERS=curl "$BASH_BIN" "$INSTALLER" --no-login --no-modify-path --version 1.2.3 2>&1 | plain) && rc=0 || rc=$?
 [ "$rc" != "0" ] && [[ "$out" == *"This machine's clock says 2001-01-01 00:00 UTC"* ]] \
     && [[ "$out" == *"sudo timedatectl set-ntp true"* ]]; check $? "a TLS failure with the clock years off names the clock and how to set it"
 
@@ -963,6 +963,72 @@ out=$(env HOME="$h" "$BASH_BIN" "$INSTALLER" --no-login --no-modify-path --versi
 [ "$rc" != "0" ] && [[ "$out" == *"A report of this install was saved to $h/.rafikicode/install.log."* ]] \
     && grep -q "^error: could not download SHA256SUMS" "$h/.rafikicode/install.log" \
     && grep -q "^target: " "$h/.rafikicode/install.log"; check $? "a failed install writes install.log with the error, and names info@paneo.tech"
+
+
+# --- Defects found by an independent run in Debian and Alpine containers ------
+
+# sh/ash with no startup file at all: ~/.profile is made, never /etc/profile,
+# each file is announced once, and a new login shell finds the command.
+h=$(fresh_home home-ash)
+etc_before=$(sha256sum /etc/profile 2>/dev/null || true)
+out=$(env HOME="$h" SHELL=/bin/sh PATH="$safe_path" RAFIKICODE_INSTALL_DIR="$h/.rafikicode/bin" \
+    "$BASH_BIN" "$INSTALLER" --no-login 2>&1 | plain) && rc=0 || rc=$?
+[ "$rc" = "0" ] && grep -Fxq "export PATH=$h/.rafikicode/bin:\$PATH" "$h/.profile" \
+    && [ "$(sha256sum /etc/profile 2>/dev/null || true)" = "$etc_before" ] \
+    && [ "$(printf '%s\n' "$out" | grep -c "already present in $h/.profile")" = "0" ] \
+    && [[ "$out" == *"rafikicode 1.2.3 runs in a new login shell"* ]] && [[ "$out" == *"Ready."* ]]; check $? "sh with no startup file: ~/.profile is made, /etc/profile untouched, a new login shell finds it"
+
+# A temporary folder that cannot be used, for a reason other than space: the
+# TMPDIR line goes into the startup files too, once, and is printed for now.
+h=$(fresh_home home-tmpfile)
+: > "$h/.bashrc"
+: > "$WORK/tmp-is-a-file"
+for round in 1 2; do
+    out=$(env HOME="$h" SHELL=/bin/bash PATH="$safe_path" TMPDIR="$WORK/tmp-is-a-file" RAFIKICODE_INSTALL_DIR="$h/.rafikicode/bin" \
+        "$BASH_BIN" "$INSTALLER" --no-login 2>&1 | plain) && rc=0 || rc=$?
+    # The second round reinstalls over a removed binary, so it runs every step.
+    if [ "$round" = 1 ]; then first_out=$out; rm -f "$h/.rafikicode/bin/rafikicode"; fi
+done
+out=$first_out
+[ "$rc" = "0" ] && [ "$(grep -cFx 'export TMPDIR=$HOME/.rafikicode/tmp' "$h/.bashrc")" = "1" ] \
+    && [ "$(grep -cFx 'export TMPDIR=$HOME/.rafikicode/tmp' "$h/.profile")" = "1" ] \
+    && [[ "$out" == *"New terminals use ~/.rafikicode/tmp on their own. In this one, run:"* ]]; check $? "an unusable temporary folder: TMPDIR goes into the startup files once and is printed for this terminal"
+
+# BusyBox wget, which has no --max-redirect: used with the options it has.
+if command -v busybox >/dev/null 2>&1 && busybox wget --help >/dev/null 2>&1; then
+    mkbin "$WORK/bin-bbwget" "curl wget python3 perl"
+    ln -sf "$(command -v busybox)" "$WORK/bin-bbwget/wget"
+    h=$(fresh_home home-bbwget)
+    out=$(env PATH="$WORK/bin-bbwget" HOME="$h" RAFIKICODE_INSTALL_DIR="$h/.rafikicode/bin" \
+        "$BASH_BIN" "$INSTALLER" --no-login --no-modify-path 2>&1 | plain) && rc=0 || rc=$?
+    [ "$rc" = "0" ] && [[ "$out" == *"downloads use wget"* ]] && [[ "$out" != *"firewall"* ]] \
+        && [ "$("$h/.rafikicode/bin/rafikicode" --version)" = "1.2.3" ]; check $? "BusyBox wget downloads with the options it has"
+fi
+
+# A downloader that fails: the next one on the machine tries before giving up.
+mkbin "$WORK/bin-badcurl" ""
+write_stub "$WORK/bin-badcurl/curl" '#!/bin/sh\necho "curl: (7) Failed to connect" >&2\nexit 7\n'
+h=$(fresh_home home-badcurl)
+out=$(env PATH="$WORK/bin-badcurl" HOME="$h" RAFIKICODE_INSTALL_DIR="$h/.rafikicode/bin" \
+    "$BASH_BIN" "$INSTALLER" --no-login --no-modify-path --version 1.2.3 2>&1 | plain) && rc=0 || rc=$?
+[ "$rc" = "0" ] && [[ "$out" == *"curl could not download it (status 7); trying wget."* ]] \
+    && [ "$("$h/.rafikicode/bin/rafikicode" --version)" = "1.2.3" ]; check $? "a downloader that fails hands over to the next one"
+
+# Missing C++ runtime: the remedy first, three loader lines at most, and the
+# cause in install.log.
+ldir="$WORK/site/dl/download/v1.4.0"
+mkdir -p "$ldir" "$WORK/build-1.4.0"
+{ printf '#!/bin/sh\n'; for i in $(seq 1 55); do printf 'echo "Error loading shared library libstdc++.so.6: No such file or directory (needed by /x) line %s" >&2\n' "$i"; done; printf 'exit 127\n'; } > "$WORK/build-1.4.0/rafikicode"
+chmod 755 "$WORK/build-1.4.0/rafikicode"
+if [ "$ext" = ".tar.gz" ]; then tar -czf "$ldir/rafikicode-${target}${ext}" -C "$WORK/build-1.4.0" rafikicode; else (cd "$WORK/build-1.4.0" && zip -q "$ldir/rafikicode-${target}${ext}" rafikicode); fi
+(cd "$ldir" && sha256sum "rafikicode-${target}${ext}" > SHA256SUMS)
+h=$(fresh_home home-libstdcxx)
+out=$(env HOME="$h" RAFIKICODE_INSTALL_DIR="$h/.rafikicode/bin" "$BASH_BIN" "$INSTALLER" --no-login --no-modify-path --version 1.4.0 2>&1 | plain) && rc=0 || rc=$?
+remedy_line=$(printf '%s\n' "$out" | grep -n "lacks the C++ runtime" | cut -d: -f1 | head -n 1)
+first_loader=$(printf '%s\n' "$out" | grep -n "Error loading shared library" | cut -d: -f1 | head -n 1)
+[ "$rc" != "0" ] && [ -n "$remedy_line" ] && [ -n "$first_loader" ] && [ "$remedy_line" -lt "$first_loader" ] \
+    && [ "$(printf '%s\n' "$out" | grep -c "Error loading shared library")" -le 3 ] \
+    && grep -q "^error: the C++ runtime (libstdc++, libgcc) is missing" "$h/.rafikicode/install.log"; check $? "a missing C++ runtime: the remedy first, the loader output cut short, the cause in install.log"
 
 echo "install tests: ${pass} passed, ${fail} failed"
 [ "$fail" = "0" ]

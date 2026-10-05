@@ -370,6 +370,14 @@ pick_downloader() {
         if [ "$tool" = "python3" ]; then
             python3 -c 'import urllib.request, ssl' >/dev/null 2>&1 || continue
         fi
+        # BusyBox's wget (Alpine, minimal images) takes fewer options than GNU
+        # wget: no --max-redirect, so it follows redirects itself.
+        if [ "$tool" = "wget" ]; then
+            WGET_BUSYBOX=""
+            if wget --help 2>&1 | grep -qi busybox || readlink -f "$(command -v wget)" 2>/dev/null | grep -q busybox; then
+                WGET_BUSYBOX=1
+            fi
+        fi
         DOWNLOADER=$tool
         if [ "$tool" != "curl" ]; then
             print_message info "${MUTED}curl is not installed, so downloads use ${NC}${tool}${MUTED}.${NC}" >&2
@@ -456,8 +464,28 @@ if ($out eq "-") { binmode STDOUT; print $r->{content}; } else { open(my $fh, ">
 
 # wget follows redirects by itself with no way to hold them to https, so each
 # hop is taken one at a time and checked. Its exit status is mapped to curl's.
+busybox_wget_fetch() {
+    local mode=$1 url=$2 out=$3 accept=$4 errors status=0
+    # Redirects are followed by BusyBox itself, so there is no location to read.
+    [ "$mode" = "location" ] && return 0
+    if pinned && [[ "$url" != https://* ]]; then return 1; fi
+    errors=$(mktemp "${TMPDIR:-/tmp}/${APP}-wget.XXXXXX") || return 23
+    wget -q -T 60 ${accept:+--header "Accept: $accept"} -O "$out" "$url" 2>"$errors" || status=$?
+    if [ "$status" != "0" ]; then
+        cat "$errors" >&2
+        if grep -qiE 'server returned error|HTTP/[0-9.]+ [45][0-9][0-9]' "$errors"; then status=22
+        elif grep -qiE 'bad address|resolve|unknown host' "$errors"; then status=6
+        elif grep -qiE 'ssl|tls|certificate' "$errors"; then status=60
+        elif grep -qiE 'timed out|timeout' "$errors"; then status=28
+        else status=7; fi
+    fi
+    rm -f "$errors"
+    return "$status"
+}
+
 wget_fetch() {
     local mode=$1 url=$2 out=$3 accept=$4 hop=0 headers status code location
+    if [ -n "${WGET_BUSYBOX:-}" ]; then busybox_wget_fetch "$mode" "$url" "$out" "$accept"; return; fi
     headers=$(mktemp "${TMPDIR:-/tmp}/${APP}-wget.XXXXXX") || return 23
     while [ "$hop" -lt 10 ]; do
         if pinned && [[ "$url" != https://* ]]; then rm -f "$headers"; return 1; fi
@@ -545,7 +573,32 @@ retryable() {
 
 RETRY_DELAY=${RAFIKICODE_INSTALL_RETRY_DELAY:-2}
 # fetch, up to three times, waiting RETRY_DELAY, then twice that, between tries.
+# When the tool in use still cannot get it (anything but an HTTP error, which
+# every tool would get alike), the next tool on this machine tries once.
 fetch_retry() {
+    local status=0 tool previous
+    fetch_retry_one "$1" "$2" || status=$?
+    [ "$status" = "0" ] || [ "$status" = "22" ] && return "$status"
+    previous=$DOWNLOADER
+    for tool in ${RAFIKICODE_INSTALL_DOWNLOADERS:-curl wget python3 perl}; do
+        [ "$tool" != "$previous" ] || continue
+        command -v "$tool" >/dev/null 2>&1 || continue
+        case "$tool" in
+            perl) perl -MHTTP::Tiny -e 'exit(HTTP::Tiny->can_ssl ? 0 : 1)' >/dev/null 2>&1 || continue ;;
+            python3) python3 -c 'import urllib.request, ssl' >/dev/null 2>&1 || continue ;;
+        esac
+        print_message info "${MUTED}${DOWNLOADER} could not download it (status ${status}); trying ${tool}.${NC}" >&2
+        DOWNLOADER=$tool
+        [ "$tool" = "wget" ] && { WGET_BUSYBOX=""; wget --help 2>&1 | grep -qi busybox && WGET_BUSYBOX=1; }
+        status=0
+        fetch "$1" "$2" || status=$?
+        [ "$status" = "0" ] && return 0
+    done
+    DOWNLOADER=$previous
+    return "$status"
+}
+
+fetch_retry_one() {
     local url=$1 out=$2 attempt=1 status=0 wait=$RETRY_DELAY
     while :; do
         status=0
@@ -1229,15 +1282,22 @@ clear_quarantine() {
 # steps promise new terminals find the command on their own, and that promise is
 # true only when a file on disk says so.
 path_written=""
+startup_files=""
 add_to_path() {
     local config_file=$1
     local command=$2
+    case " $startup_files " in *" $config_file "*) ;; *) startup_files="${startup_files}${startup_files:+ }$config_file" ;; esac
     if grep -Fxq "$command" "$config_file" 2>/dev/null; then
-        print_message info "${MUTED}PATH entry already present in ${NC}$config_file"
+        case " ${announced:-} " in
+            *" $config_file "*) ;;
+            *) print_message info "${MUTED}PATH entry already present in ${NC}$config_file" ;;
+        esac
+        announced="${announced:-} $config_file"
         path_written="$config_file"
     elif [[ -w $config_file ]]; then
         echo -e "\n# ${APP}" >> "$config_file"
         echo "$command" >> "$config_file"
+        announced="${announced:-} $config_file"
         print_message info "${MUTED}Added ${NC}${INSTALL_DIR}${MUTED} to PATH in ${NC}$config_file"
         path_written="$config_file"
     else
@@ -1267,7 +1327,9 @@ path_note() {
             command="export PATH=$INSTALL_DIR:\$PATH"
             ;;
         ash|sh)
-            config_files="$HOME_DIR/.ashrc $HOME_DIR/.profile /etc/profile"
+            # Only this user's own files: /etc/profile belongs to every user of
+            # the machine, and a user who cannot write it would get nothing.
+            config_files="$HOME_DIR/.profile $HOME_DIR/.ashrc"
             primary_config="$HOME_DIR/.profile"
             command="export PATH=$INSTALL_DIR:\$PATH"
             ;;
@@ -1339,6 +1401,13 @@ path_note() {
                 esac
                 if [[ -f $file ]]; then login_file=$file; break; fi
             done
+            # No login file at all (a user made without the skeleton files):
+            # a login shell, `su - user` or ssh, would never see the PATH line,
+            # so make the one it reads.
+            if [ -z "$login_file" ]; then
+                if [ "$current_shell" = "zsh" ]; then login_file="${ZDOTDIR:-$HOME_DIR}/.zprofile"; else login_file="$HOME_DIR/.profile"; fi
+                touch "$login_file" 2>/dev/null && print_message info "${MUTED}Created ${NC}$login_file" || login_file=""
+            fi
             if [ -n "$login_file" ] && [ "$login_file" != "$config_file" ]; then
                 add_to_path "$login_file" "$command"
             fi
@@ -1392,10 +1461,40 @@ verify_runs() {
     if [ "$status" = "0" ] && [ -n "$out" ]; then
         return 0
     fi
+    LAST_ERROR="${bin} --version exited with status ${status}: $(printf '%s' "$out" | sed -n '1p')"
+    case "$out" in
+        *"libstdc++"*|*"libgcc_s"*|*"Error relocating"*)
+            LAST_ERROR="the C++ runtime (libstdc++, libgcc) is missing; ${LAST_ERROR}"
+            print_message error "Error: ${APP} is installed, but this system lacks the C++ runtime it needs (libstdc++ and libgcc)." >&2
+            {
+                if [ -f /etc/alpine-release ] || command -v apk >/dev/null 2>&1; then pkgcmd="apk add libstdc++ libgcc"
+                elif command -v apt-get >/dev/null 2>&1; then pkgcmd="apt-get install -y libstdc++6"
+                elif command -v dnf >/dev/null 2>&1; then pkgcmd="dnf install -y libstdc++"
+                else pkgcmd=""; fi
+                if [ -n "$pkgcmd" ]; then
+                    if [ "$(id -u 2>/dev/null)" = "0" ]; then
+                        printf '  Install it:\n    %s\n' "$pkgcmd"
+                    elif command -v sudo >/dev/null 2>&1; then
+                        printf '  Install it (this needs administrator rights):\n    sudo %s\n' "$pkgcmd"
+                        printf '  If you cannot use sudo, ask whoever runs this machine to run that line.\n'
+                    else
+                        printf '  This needs administrator rights, which this account does not have. Ask whoever runs this machine to run:\n    %s\n' "$pkgcmd"
+                    fi
+                else
+                    printf '  Install your distribution'"'"'s libstdc++ and libgcc packages.\n'
+                fi
+                printf '  Then check it with: %s --version\n' "$bin"
+                printf '  The binary is already in place, so there is nothing to install again.\n'
+                printf '  What the loader said (first lines):\n'
+                printf '%s\n' "$out" | sed -n '1,3p' | sed 's/^/    /'
+            } >&2
+            exit 1
+            ;;
+    esac
     print_message error "Error: ${APP} was installed to ${bin} but does not run." >&2
     {
         printf '  %s --version exited with status %s\n' "$bin" "$status"
-        if [ -n "$out" ]; then printf '  it said: %s\n' "$out"; fi
+        if [ -n "$out" ]; then printf '  it said: %s\n' "$(printf '%s' "$out" | sed -n '1,5p')"; fi
 
         # A missing shared library is not a guess, it is in the loader's own
         # words, so name it and the package that carries it instead of listing
@@ -1600,9 +1699,12 @@ check_disk_space_tmp() {
         print_message info "${MUTED}${tmp} ${why}, so the download goes to ${NC}${fallback}${MUTED} instead.${NC}"
         TMPDIR="$fallback"
         export TMPDIR
-        # The interface needs room in TMPDIR at every start too; a noexec
-        # directory it works around by itself (check_exec_tmp below).
-        case "$why" in *"MB free"*) tmp_fallback="$fallback" ;; esac
+        # The program writes to TMPDIR at every start as well, so whatever
+        # the reason, the next shells get the same folder: the line goes into
+        # the startup files with the PATH line (persist_tmpdir), and the next
+        # steps print it for this window.
+        tmp_fallback="$fallback"
+        tmp_fallback_why="$why"
         return 0
     fi
     print_message error "Error: not enough free disk space to unpack ${APP}." >&2
@@ -1734,9 +1836,9 @@ net_fail() {
             7)
                 printf '  That status means the address resolved but refused the connection: there is\n'
                 printf '  no route out, or a firewall is blocking port 443.\n'
-                printf '  If this network needs a proxy, tell curl about it and run the installer again:\n'
+                printf '  If this network needs a proxy, set it and run the installer again:\n'
                 printf '    export https_proxy=http://proxy.example.com:8080\n'
-                printf '  Check with: curl -sSI https://github.com\n'
+                if command -v curl >/dev/null 2>&1; then printf '  Check with: curl -sSI https://github.com\n'; fi
                 ;;
             28)
                 printf '  That status means the connection timed out. The network may be very slow, or\n'
@@ -1864,20 +1966,67 @@ write_install_log() {
     printf 'If you need help, send that file to info@paneo.tech.\n' >&2
 }
 
+# The temporary folder fallback, kept for the shells to come: the same line in
+# every startup file that carries the PATH line, once.
+persist_tmpdir() {
+    [ -n "$tmp_fallback" ] || return 0
+    [ "$no_modify_path" = "true" ] && return 0
+    local line="export TMPDIR=\$HOME/.${APP}/tmp" file
+    for file in $startup_files; do
+        case "$file" in *config.fish) continue ;; esac
+        if ! grep -Fxq "$line" "$file" 2>/dev/null; then
+            printf '%s\n' "$line" >> "$file" 2>/dev/null && print_message info "${MUTED}Added TMPDIR=\$HOME/.${APP}/tmp to ${NC}$file"
+        fi
+    done
+    for file in $startup_files; do
+        case "$file" in *config.fish)
+            grep -Fxq "set -gx TMPDIR \$HOME/.${APP}/tmp" "$file" 2>/dev/null \
+                || printf 'set -gx TMPDIR $HOME/.%s/tmp\n' "$APP" >> "$file" 2>/dev/null || true ;;
+        esac
+    done
+}
+
 # The check at the end: does the program run, does the gateway answer, and does
 # the folder doctor find every folder it needs. A short summary, green when all
 # of it holds; red, with the report written, when something does not.
 self_check() {
-    local bin="${INSTALL_DIR}/${BIN_NAME}" version gateway root folders status=0 bad=""
-    version=$("$bin" --version 2>/dev/null | head -n 1) || version=""
+    local bin="${INSTALL_DIR}/${BIN_NAME}" version gateway root folders status=0 bad="" fresh shell_bin login=""
+    # As the next terminal will: a login shell with nothing inherited from this
+    # one (no TMPDIR from a fallback, no PATH), reading the startup files. When
+    # the startup files were left alone, the program is called by its path.
+    shell_bin=$(command -v "$(basename "${SHELL:-sh}")" 2>/dev/null || command -v sh 2>/dev/null || printf '%s' "$BASH")
+    fresh() {
+        env -i HOME="$HOME_DIR" USER="${USER:-$(id -un 2>/dev/null)}" LOGNAME="${LOGNAME:-$(id -un 2>/dev/null)}" \
+            TERM="${TERM:-dumb}" PATH="/usr/local/bin:/usr/bin:/bin" ${RAFIKICODE_GATEWAY_URL:+RAFIKICODE_GATEWAY_URL="$RAFIKICODE_GATEWAY_URL"} \
+            "$shell_bin" -l -c "$1" 2>&1
+    }
+    if [ "$no_modify_path" != "true" ] && [ -n "$startup_files$linked_path" ]; then
+        login=$(fresh "command -v ${APP}" | sed '$!d' || true)
+        if [ "$login" = "$bin" ] || [ "$(readlink -f "$login" 2>/dev/null)" = "$(readlink -f "$bin" 2>/dev/null)" ]; then
+            bin_cmd="$APP"
+        else
+            bin_cmd="$bin"
+            bad="a new login shell does not find this ${APP} (it finds ${login:-nothing})"
+        fi
+    else
+        bin_cmd="$bin"
+    fi
+    version=$(fresh "$bin_cmd --version" | sed '$!d') || version=""
+    case "$version" in *[0-9]*) ;; *) version="" ;; esac
     root=$(printf '%s' "${RAFIKICODE_GATEWAY_URL:-https://gateway.rafikiai.io/v1}" | sed 's|/v1/*$||')
     if fetch "${root}/health/liveliness" - >/dev/null 2>&1; then gateway=ok; else gateway=fail; fi
-    folders=$("$bin" doctor --folders 2>&1) || status=$?
+    local st='$?'
+    case "$shell_bin" in *fish) st='$status' ;; esac
+    folders=$(fresh "$bin_cmd doctor --folders; echo exit=$st" || true)
+    status=$(printf '%s\n' "$folders" | sed -n 's/^exit=//p' | sed '$!d')
+    folders=$(printf '%s\n' "$folders" | grep -v '^exit=' || true)
+    [ -n "$status" ] || status=1
     print_message info "\nCheck:"
+    case "$bad" in *"login shell does not find"*) print_message info "  ${RED}FAIL${NC}  ${bad}" ;; esac
     if [ -n "$version" ]; then
-        print_message info "  ${GREEN}ok${NC}    ${APP} ${version} runs"
+        print_message info "  ${GREEN}ok${NC}    ${APP} ${version} runs in a new login shell"
     else
-        print_message info "  ${RED}FAIL${NC}  ${APP} does not run"; bad="the program does not run"
+        print_message info "  ${RED}FAIL${NC}  ${APP} does not run in a new login shell"; bad="${bad:+$bad, }the program does not run in a new login shell"
     fi
     if [ "$gateway" = ok ]; then
         print_message info "  ${GREEN}ok${NC}    the model gateway answers (${root})"
@@ -1937,6 +2086,7 @@ link_into_path
 check_shadow
 path_note
 add_other_shells
+persist_tmpdir
 
 # What to tell the user to type. Whatever happened above, this is a command that
 # works in the terminal they already have open: the bare name once it resolves,
@@ -1993,7 +2143,7 @@ if can_sign_in; then
         print_message info "       ${start_line}"
         print_message info "${MUTED}To check the setup: ${NC}${run_cmd} doctor"
         if [ -n "$tmp_fallback" ]; then
-            print_message info "${MUTED}${TMPDIR_ORIG:-/tmp} had no room. Add this line to your shell startup file:${NC} export TMPDIR=\$HOME/.${APP}/tmp"
+            print_message info "${MUTED}${TMPDIR_ORIG:-/tmp} ${tmp_fallback_why:-cannot be used}; new terminals use ~/.${APP}/tmp. In this one, run:${NC} export TMPDIR=\$HOME/.${APP}/tmp"
         fi
         exit 0
     fi
@@ -2030,8 +2180,12 @@ print_message info "  ${step}. Check the whole setup, once signed in:"
 print_message info "       ${run_cmd} doctor"
 if [ -n "$tmp_fallback" ]; then
     step=$((step + 1))
-    print_message info "  ${step}. ${APP} unpacks part of itself into TMPDIR each time it starts, and ${TMPDIR_ORIG:-/tmp} had no room."
-    print_message info "     Add this line to your shell startup file (~/.bashrc or ~/.zshrc):"
+    print_message info "  ${step}. ${TMPDIR_ORIG:-/tmp} ${tmp_fallback_why:-cannot be used}, and ${APP} writes to TMPDIR each time it starts."
+    if [ "$no_modify_path" != "true" ] && [ -n "$startup_files" ]; then
+        print_message info "     New terminals use ~/.${APP}/tmp on their own. In this one, run:"
+    else
+        print_message info "     Add this line to your shell startup file, and run it in this terminal:"
+    fi
     print_message info "       export TMPDIR=\$HOME/.${APP}/tmp"
 fi
 step=$((step + 1))

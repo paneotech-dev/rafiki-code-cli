@@ -244,7 +244,7 @@ for (const item of targets) {
       ...(embeddedFileMap ? { "opencode-web-ui.gen.ts": embeddedFileMap } : {}),
     },
     entrypoints: [
-      "./src/index.ts",
+      "./src/main.ts",
       workerPath,
       treeSitterWorkerPath,
       ...(embeddedFileMap ? ["opencode-web-ui.gen.ts"] : []),

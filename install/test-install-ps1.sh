@@ -149,6 +149,38 @@ after=$(grep -c "GET /download/v9.9.7/rafikicode-windows-x64.zip" "$WORK/server.
     && [[ "$out" == *"send that file to info@paneo.tech"* ]] && [ -s "$WORK/home/.rafikicode/install.log" ]
 check $? "a checksum that never matches is downloaded three times, then explained, with the report written"
 
+# The exit status a caller of `pwsh -c "... | iex"` reads: 1 on failure, 0 on success.
+cat > "$WORK/c-fail.sh" <<'EOF2'
+VERSION=9.9.8 pwsh -NoProfile -Command "Get-Content $1/install.ps1 -Raw | iex"
+EOF2
+if [ "$runner" = local ]; then
+    VERSION=9.9.8 env USERPROFILE="$WORK/home" RAFIKICODE_RELEASE_BASE="http://127.0.0.1:$port" RAFIKICODE_RELEASE_API="http://127.0.0.1:9" \
+        pwsh -NoProfile -Command "Get-Content $WORK/install.ps1 -Raw | iex" >/dev/null 2>&1
+    rc_fail=$?
+else
+    docker run --rm --network host -v "$WORK:/w" -e USERPROFILE=/w/home -e VERSION=9.9.8 \
+        -e RAFIKICODE_RELEASE_BASE="http://127.0.0.1:$port" -e RAFIKICODE_RELEASE_API="http://127.0.0.1:9" \
+        "$IMAGE" pwsh -NoProfile -Command "Get-Content /w/install.ps1 -Raw | iex" >/dev/null 2>&1
+    rc_fail=$?
+fi
+mkdir -p "$WORK/home3"
+: > "$WORK/tmp-file"
+if [ "$runner" = local ]; then
+    out=$(VERSION=9.9.9 TMPDIR="$WORK/tmp-file" env USERPROFILE="$WORK/home3" RAFIKICODE_RELEASE_BASE="http://127.0.0.1:$port" RAFIKICODE_RELEASE_API="http://127.0.0.1:9" \
+        RAFIKICODE_GATEWAY_URL="http://127.0.0.1:$port/gw/v1" pwsh -NoProfile -Command "Get-Content $WORK/install.ps1 -Raw | iex" 2>&1)
+    rc_ok=$?
+else
+    out=$(docker run --rm --network host -v "$WORK:/w" -e USERPROFILE=/w/home3 -e VERSION=9.9.9 -e TMPDIR=/w/tmp-file \
+        -e RAFIKICODE_RELEASE_BASE="http://127.0.0.1:$port" -e RAFIKICODE_RELEASE_API="http://127.0.0.1:9" \
+        -e RAFIKICODE_GATEWAY_URL="http://127.0.0.1:$port/gw/v1" \
+        "$IMAGE" pwsh -NoProfile -Command "Get-Content /w/install.ps1 -Raw | iex" 2>&1)
+    rc_ok=$?
+fi
+[ "$rc_fail" != 0 ] && [ "$rc_ok" = 0 ]
+check $? "pwsh -c with iex exits non-zero on failure and zero on success"
+[[ "$out" == *"cannot be written, so the download goes to"* ]] && [[ "$out" == *"Ready."* ]]
+check $? "a temporary folder that cannot be written falls back to one under the install root"
+
 echo
 echo "$pass passed, $fail failed"
 [ "$fail" = 0 ]

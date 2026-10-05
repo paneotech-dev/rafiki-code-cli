@@ -12,6 +12,7 @@ import { spawnSync } from "child_process"
 import * as Folders from "./folders"
 
 const AGAIN = "RAFIKICODE_FOLDERS_CHECKED"
+const FIXED = "RAFIKICODE_FOLDERS_FIXED"
 const bunfs = ["/$bunfs/", "B:/~BUN/"]
 
 function compiled() {
@@ -24,11 +25,23 @@ function run() {
   // A restarted binary checks again, quietly: its parent already said it all.
   const again = process.env[AGAIN] === "1"
   const result = Folders.apply({ print: !again })
-  if (again || !result.env["TMPDIR"] || !compiled()) return
+  if (again) {
+    // What the parent fixed, so doctor in this process can still say so.
+    try {
+      const fixed = JSON.parse(process.env[FIXED] ?? "[]") as Folders.Check[]
+      Folders.remember(result.checks.map((item) => fixed.find((done) => done.name === item.name) ?? item))
+    } catch {}
+    return
+  }
+  if (!result.env["TMPDIR"] || !compiled()) return
   for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => {})
   const child = spawnSync(process.execPath, process.argv.slice(2), {
     stdio: "inherit",
-    env: { ...process.env, [AGAIN]: "1" },
+    env: {
+      ...process.env,
+      [AGAIN]: "1",
+      [FIXED]: JSON.stringify(result.checks.filter((item) => item.status !== "ok")),
+    },
   })
   if (child.error) return
   process.exit(child.status ?? 1)

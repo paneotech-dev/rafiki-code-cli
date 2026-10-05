@@ -135,7 +135,7 @@ if [ "$list" != "true" ]; then
     debian_python=$(image debian-python3 debian:12-slim "$APT python3 ca-certificates")
     ubuntu_curl=$(image ubuntu-curl ubuntu:24.04 "$APT curl ca-certificates")
     alpine_bash=$(image alpine-bash alpine:3.20 "apk add --no-cache bash curl")
-    fedora=$(image fedora fedora:40 "true")
+    fedora=$(image fedora-su fedora:40 "dnf install -y -q util-linux shadow-utils && dnf clean all")
 else
     debian_curl=x debian_wget=x debian_python=x ubuntu_curl=x alpine_bash=x fedora=x
 fi
@@ -200,6 +200,55 @@ fi
 # The API rate limited and the release page refused: the direct address.
 if cell ratelimited "$debian_curl" "-e RAFIKICODE_RELEASE_API=http://127.0.0.1:$((PORT + 1))/api -e RAFIKICODE_RELEASE_BASE=http://127.0.0.1:$((PORT + 1))/dl" "$INSTALL"; then
     [ "$rc" = 0 ] && [[ "$out" == *"downloaded directly"* ]] && [[ "$out" == *"Ready."* ]]; check $? "ratelimited: the direct latest address installs it"
+fi
+
+# --- As a normal user, the way people run it: su - user -c 'cat install.sh | bash'
+ENVS="RAFIKICODE_RELEASE_API=http://127.0.0.1:${PORT}/api RAFIKICODE_RELEASE_BASE=http://127.0.0.1:${PORT}/dl RAFIKICODE_GATEWAY_URL=http://127.0.0.1:${PORT}/gw/v1 RAFIKICODE_INSTALL_ALLOW_HTTP_LOOPBACK=1 RAFIKICODE_INSTALL_RETRY_DELAY=0"
+mkuser='(useradd -m tester 2>/dev/null || adduser -D tester 2>/dev/null)'
+as_user() { printf "%s && su - tester -c \"%s cat /i/install.sh | %s bash -s -- --no-login\"" "$mkuser" "${2:-}" "$ENVS"; }
+fresh_login='su - tester -c "command -v rafikicode; rafikicode --version; echo TMPDIR=\${TMPDIR:-unset}"'
+
+for pair in "debian:$debian_curl" "ubuntu:$ubuntu_curl" "alpine:$alpine_bash" "fedora:$fedora"; do
+    id="user-${pair%%:*}"
+    if cell "$id" "${pair#*:}" "" "$(as_user) && echo '--- fresh login ---' && $fresh_login"; then
+        after=${out##*--- fresh login ---}
+        [ "$rc" = 0 ] && [[ "$out" == *"Ready."* ]] && [[ "$after" == *"/home/tester/.rafikicode/bin/rafikicode"* ]] \
+            && [[ "$after" == *$'\n1.2.3'* ]]; check $? "$id: a normal user installs, and a fresh login shell finds it"
+    fi
+done
+
+# Alpine, root: /etc/profile is never written.
+if cell root-etc-profile "$alpine_bash" "" "cp /etc/profile /tmp/profile.before && cat /i/install.sh | $ENVS bash -s -- --no-login >/dev/null 2>&1; cmp /etc/profile /tmp/profile.before && echo UNCHANGED"; then
+    [[ "$out" == *UNCHANGED* ]]; check $? "root-etc-profile: /etc/profile is left alone"
+fi
+
+# An older copy in /usr/local/bin: a fresh login shell runs the new one.
+if cell user-older-copy "$alpine_bash" "" "printf '#!/bin/sh\necho 0.0.1\n' > /usr/local/bin/rafikicode && chmod 755 /usr/local/bin/rafikicode && $(as_user) && echo '--- fresh login ---' && $fresh_login"; then
+    after=${out##*--- fresh login ---}
+    [ "$rc" = 0 ] && [[ "$out" == *"Another rafikicode at /usr/local/bin/rafikicode"* ]] && [[ "$after" == *$'\n1.2.3'* ]]; check $? "user-older-copy: the new install wins in a fresh login shell"
+fi
+
+# Read only /tmp, normal user: the startup file carries TMPDIR, and a fresh
+# login shell has it.
+if cell user-ro-tmp "$debian_curl" "--tmpfs /tmp:ro" "$(as_user) && echo '--- fresh login ---' && $fresh_login"; then
+    after=${out##*--- fresh login ---}
+    [ "$rc" = 0 ] && [[ "$out" == *"/tmp cannot be written, so the download goes to"* ]] \
+        && [[ "$after" == *"TMPDIR=/home/tester/.rafikicode/tmp"* ]]; check $? "user-ro-tmp: TMPDIR is in the startup file, a fresh login shell has it"
+fi
+
+# Alpine with BusyBox wget only (no curl, no python3, no perl).
+alpine_bbwget=$(image alpine-bash-only alpine:3.20 "apk add --no-cache bash")
+if cell user-busybox-wget "$alpine_bbwget" "" "$(as_user)"; then
+    [ "$rc" = 0 ] && [[ "$out" == *"downloads use wget"* ]] && [[ "$out" != *"firewall"* ]] && [[ "$out" == *"Ready."* ]]; check $? "user-busybox-wget: BusyBox wget installs it"
+fi
+
+# A real binary built from this branch, when one is given: under a read only
+# /tmp with no TMPDIR, --version and the folder check work.
+if [ -n "${RAFIKICODE_CONTAINER_BINARY:-}" ] && [ -x "$RAFIKICODE_CONTAINER_BINARY" ]; then
+    if cell real-ro-tmp debian:12-slim "--tmpfs /tmp:ro -v $RAFIKICODE_CONTAINER_BINARY:/opt/rk/rafikicode:ro" "$mkuser && su - tester -c 'echo TMPDIR=\${TMPDIR:-unset}; /opt/rk/rafikicode --version && /opt/rk/rafikicode doctor --folders'"; then
+        [ "$rc" = 0 ] && [[ "$out" == *"TMPDIR=unset"* ]] && [[ "$out" == *"The temporary folder /tmp cannot be written, so rafikicode uses /home/tester/.rafikicode/tmp instead."* ]] \
+            && [[ "$out" == *"fixed: /tmp cannot be written"* ]]; check $? "real-ro-tmp: the built binary runs under a read only /tmp with no TMPDIR"
+    fi
 fi
 
 [ "$list" = "true" ] && exit 0

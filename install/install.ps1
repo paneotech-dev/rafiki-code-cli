@@ -405,9 +405,24 @@ if (Test-Path -LiteralPath $targetPath) {
 # program sit in the temporary folder together, and the program again where it
 # is installed. A disk that fills during the download fails the checksum, which
 # reads like tampering and is not.
-$tempFree = Get-FreeMB ([IO.Path]::GetTempPath())
-if ($tempFree -ge 0 -and $tempFree -lt 170) {
-    Fail "Not enough free disk space: the temporary folder $([IO.Path]::GetTempPath()) has $tempFree MB free, and unpacking $App needs about 170 MB. Free some space on that drive (Settings, System, Storage), then run the installer again."
+# A temporary folder without room, or that cannot be written, is replaced by
+# one under the install root, as install.sh does; rafikicode itself makes the
+# same switch at every start (its folder doctor), so nothing has to be set for
+# later. Only when neither has room does the install stop.
+$tempPath = [IO.Path]::GetTempPath()
+$tempFree = Get-FreeMB $tempPath
+if (($tempFree -ge 0 -and $tempFree -lt 170) -or -not (Test-Writable $tempPath)) {
+    $why = if ($tempFree -ge 0 -and $tempFree -lt 170) { "has $tempFree MB free" } else { 'cannot be written' }
+    $tempFallback = ''
+    if (-not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) { $tempFallback = Join-Path (Join-Path $env:USERPROFILE ".$App") 'tmp' }
+    $fallbackFree = if ($tempFallback -ne '') { Get-FreeMB $tempFallback } else { -1 }
+    if ($tempFallback -ne '' -and (Test-Writable $tempFallback) -and ($fallbackFree -lt 0 -or $fallbackFree -ge 170)) {
+        Write-Note "The temporary folder $tempPath $why, so the download goes to $tempFallback instead."
+        $env:TEMP = $tempFallback
+        $env:TMP = $tempFallback
+    } else {
+        Fail "Not enough free disk space: the temporary folder $tempPath $why, and $tempFallback has no room either. Unpacking $App needs about 170 MB. Free some space on that drive (Settings, System, Storage), then run the installer again."
+    }
 }
 $installFree = Get-FreeMB $Prefix
 if ($installFree -ge 0 -and $installFree -lt 70) {
@@ -418,6 +433,7 @@ Write-Step ''
 Write-Step "Installing $App version $resolved for $target"
 
 $work = Join-Path ([IO.Path]::GetTempPath()) "$App-install-$PID"
+if (-not [string]::IsNullOrWhiteSpace($env:TEMP) -and $env:TEMP -ne [IO.Path]::GetTempPath().TrimEnd('\', '/')) { $work = Join-Path $env:TEMP "$App-install-$PID" }
 if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Recurse -Force }
 New-Item -ItemType Directory -Path $work -Force | Out-Null
 
@@ -776,6 +792,16 @@ if ($onWindows -and -not $modernTerminal -and $Host.Name -eq 'ConsoleHost') {
     Remove-Variable -Name RafikicodeInstallAsFile -ErrorAction SilentlyContinue
     if ($asFile) { exit 1 }
     Remove-Variable -Name asFile -ErrorAction SilentlyContinue
+    # Through iex in a window the window must stay open, so there is no exit.
+    # Started as `powershell -c "irm ... | iex"` the process ends with the
+    # command anyway, and its exit status is all the caller has: exit 1 then.
     $global:LASTEXITCODE = 1
+    $hostArgs = @()
+    try { $hostArgs = @([Environment]::GetCommandLineArgs() | Select-Object -Skip 1) } catch { }
+    $oneShot = @($hostArgs | Where-Object { $_ -match '^-(c|command|e|ec|encodedcommand)$' }).Count -gt 0
+    $keepOpen = @($hostArgs | Where-Object { $_ -match '^-noe(xit)?$' }).Count -gt 0
+    Remove-Variable -Name hostArgs -ErrorAction SilentlyContinue
+    if ($oneShot -and -not $keepOpen) { exit 1 }
+    Remove-Variable -Name oneShot, keepOpen -ErrorAction SilentlyContinue
 }
 Remove-Variable -Name RafikicodeInstallAsFile -ErrorAction SilentlyContinue
