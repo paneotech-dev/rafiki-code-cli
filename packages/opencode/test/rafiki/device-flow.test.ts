@@ -135,6 +135,33 @@ describe("pollToken", () => {
     expect(err.message).toContain("rafikicode login")
   })
 
+  test("an account waiting for verification or approval stops at once, with exit code 2 and the reason", async () => {
+    const m = await start({ auto: "account_pending", autoAfter: 1 })
+    const { c } = fastClient(m.url)
+    const code = await DeviceFlow.requestCode(c, { label: "x" })
+    const err = await DeviceFlow.pollToken(c, code).catch((e) => e)
+    expect(err.code).toBe(Contract.ERROR.accountPending)
+    expect(err.exitCode).toBe(Contract.EXIT.usage)
+    expect(err.message).toContain("waiting for email verification or for approval")
+    expect(err.message).toContain("rafikicode login again")
+    // One poll, not the code's ten minutes of them.
+    expect(m.requests.filter((r: any) => r.path === Contract.PATH.deviceToken)).toHaveLength(1)
+  })
+
+  test("a long wait says once that a new account may not be approved yet, and the expiry says so too", async () => {
+    const m = await start()
+    const { c } = fastClient(m.url)
+    const code = await DeviceFlow.requestCode(c, { label: "x" })
+    const started = clock
+    const warnings: number[] = []
+    const err = await DeviceFlow.pollToken(c, code, { onLongWait: () => warnings.push(clock - started) }).catch((e) => e)
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toBeGreaterThanOrEqual(Contract.LONG_WAIT_SECONDS * 1000)
+    expect(warnings[0]).toBeLessThan((Contract.LONG_WAIT_SECONDS + 10) * 1000)
+    expect(err.code).toBe(Contract.ERROR.expiredToken)
+    expect(err.message).toContain("waiting for email verification or approval")
+  })
+
   test("client side deadline stops without a request", async () => {
     const m = await start()
     let now = clock

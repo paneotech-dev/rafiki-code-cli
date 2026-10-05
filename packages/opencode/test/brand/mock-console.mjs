@@ -34,6 +34,7 @@ const TYPES = {
   slow_down: "slow_down",
   access_denied: "access_denied",
   expired_token: "expired_token",
+  account_pending: "account_pending",
   invalid_grant: "invalid_grant",
   unsupported_grant_type: "unsupported_grant_type",
   rate_limited: "rate_limit_error",
@@ -51,6 +52,7 @@ const MESSAGES = {
   slow_down: "Polling too fast. Wait longer between requests.",
   access_denied: "Sign-in was denied in the browser.",
   expired_token: "That sign-in code expired. Run rafikicode login again.",
+  account_pending: "This account is waiting for email verification or approval.",
   invalid_grant: "That sign-in code is not valid.",
   unsupported_grant_type: "Only the device authorization grant is supported here.",
   rate_limited: "Too many requests. Try again shortly.",
@@ -286,6 +288,7 @@ export function createMockConsole(options = {}) {
       if (entry.status === "pending" && opts.auto !== "none" && entry.polls >= opts.autoAfter) {
         if (opts.auto === "approve") approve(entry.userCode)
         if (opts.auto === "deny") deny(entry.userCode)
+        if (opts.auto === "account_pending") return error(res, 400, "account_pending")
         if (opts.auto === "expire") {
           entry.status = "expired"
           return error(res, 400, "expired_token")

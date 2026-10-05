@@ -171,6 +171,10 @@ export const LoginCommand = effectCmd({
       DeviceFlow.pollToken(c, code, {
         onSlowDown: ({ interval }) => UI.println(`${UI.Style.TEXT_DIM}The Rafiki AI console asked to slow down; polling every ${interval} s.${UI.Style.TEXT_NORMAL}`),
         onRateLimited: ({ retryAfter }) => UI.println(`${UI.Style.TEXT_DIM}Rate limited; retrying in ${retryAfter} s.${UI.Style.TEXT_NORMAL}`),
+        onLongWait: () =>
+          UI.println(
+            `${UI.Style.TEXT_WARNING}Still waiting. If your Rafiki AI account is new and the browser shows a page about approval, your account is still waiting for email verification or approval, and this sign-in cannot finish until it is. Press Ctrl+C, check your email, and run ${Brand.name} login again once it is approved.${UI.Style.TEXT_NORMAL}`,
+          ),
       }),
     )
     const credential = store(token)
