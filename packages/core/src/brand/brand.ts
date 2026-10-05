@@ -79,23 +79,12 @@ const tierLimits: Record<(typeof models)[number], { context: number; output: num
   "rafiki-max": { context: 1_000_000, output: 128_000 },
 }
 // When a session is compacted. Until 2026-10-04 every tier was registered with
-// a 128000 token window, and a session was compacted once its tokens reached
-// that window less the output a request may ask for (64000 on fast, so at
-// 64000; 96000 on pro and max). The real windows would let a session grow to
-// about 1M tokens first, which multiplies what every later turn costs: a
-// spending decision, not a display fix. So the compaction point stays where
-// it was. It is given as the input limit, which only the compaction check
-// reads (packages/opencode/src/session/overflow.ts): that check compacts at
-// the input limit less min(20000, output), so the limit is the old point plus
-// that reserve. A RAFIKICODE_MAX_OUTPUT_TOKENS above 64000 used to move the
-// point lower, down to none at all at 128000 (a compaction after every
-// answer); such a value now compacts at 64000, the point fast has by default.
-const legacyWindow = 128_000
-const compactionReserve = 20_000
-const compactionFloor = 64_000
-function compactAt(output: number) {
-  return Math.max(legacyWindow - output, compactionFloor) + Math.min(compactionReserve, output)
-}
+// a 128000 token window, so a session was compacted at about 64000 tokens on
+// fast and 96000 on pro and max. Since 2026-10-05 (owner's decision) a session
+// uses the whole window of its tier: no input limit is registered, so the
+// compaction check (packages/opencode/src/session/overflow.ts) compacts at the
+// window less the output a request may ask for, about 936000 tokens on fast
+// and 968000 on pro and max. A long session costs more per turn as it grows.
 
 const outputFloor = 1_024
 
@@ -719,7 +708,7 @@ export const Brand = {
                   reasoning: false,
                   attachment: false,
                   temperature: true,
-                  limit: { context: tierLimits[id].context, input: compactAt(request.output), output: request.output },
+                  limit: { context: tierLimits[id].context, output: request.output },
                   cost: { input: 0, output: 0 },
                   // Every gateway call names its tier and whether it is an escalation,
                   // next to X-Rafiki-Surface. The terminal client never moves a task to

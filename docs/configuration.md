@@ -127,7 +127,7 @@ Context
 - The token figure is everything sent with the last request plus the answer: input, cached input, cache writes, output and reasoning, each counted once.
 - `cached` is the part of that input the provider read from its cache, which costs less. It is inside the token figure, not added to it.
 - The percentage is of the window of the tier that answered. `rafiki-fast` and `rafiki-pro` each have a window of 1,000,000 tokens (the documented windows of the models behind them, checked on 4 October 2026). A share under one per cent reads `<1%`.
-- A long session is still compacted (summarised, so the next requests send less) at the point it was before: about 64,000 tokens on `rafiki-fast` and 96,000 on `rafiki-pro` (less when `RAFIKICODE_MAX_OUTPUT_TOKENS` is raised, never below 64,000). So each turn of a long session keeps costing about what it did, and the percentage shown at that point is 6% to 10%.
+- A long session is compacted (summarised, so the next requests send less) only near the end of the window of its tier: at the window less the output a request may ask for, about 936,000 tokens on `rafiki-fast` and 968,000 on `rafiki-pro` and `rafiki-max`. Each turn sends the whole conversation, so the cost of a turn grows with the session; start a new session (or run `/compact`) to keep long work cheaper.
 
 When asked who it is, the agent answers that it is Rafiki Code by PANEOTECH, and names the tier it runs on rather than guessing the model behind it.
 

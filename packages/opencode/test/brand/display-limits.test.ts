@@ -1,7 +1,6 @@
-// The tiers' windows moved from 128000 to the real 1M, for the "% used"
-// figure only: a session is compacted at the point it was before, whatever
-// the output limit, because moving that point changes what a long session
-// costs. Checked with the compaction check itself (session/overflow.ts).
+// The tiers' windows are the real 1M, and since 2026-10-05 a session uses
+// the whole window before it is compacted (owner's decision). Checked with the
+// compaction check itself (session/overflow.ts).
 import { afterEach, describe, expect, test } from "bun:test"
 import { Brand } from "@opencode-ai/core/brand/brand"
 import { ConfigV1 } from "@opencode-ai/core/v1/config/config"
@@ -26,34 +25,22 @@ function registered(id: (typeof Brand.models)[number]) {
   return { providerID: Brand.provider.id, id, limit: entry.limit } as unknown as Provider.Model
 }
 
-// The tier as it was registered until 2026-10-04: a 128000 window, no input limit.
-function before(id: (typeof Brand.models)[number]) {
-  const now = registered(id)
-  return { ...now, limit: { context: 128_000, output: now.limit.output } } as Provider.Model
-}
-
 describe("the tiers' windows and the compaction point", () => {
   test("each tier's window is the real one", () => {
     for (const id of Brand.models) expect(registered(id).limit.context).toBe(1_000_000)
   })
 
-  test("a session is compacted where it was: 64000 tokens on fast, 96000 on pro and max", () => {
+  test("a session is compacted near the end of the window: 936000 tokens on fast, 968000 on pro and max", () => {
     delete process.env[Brand.env.maxOutputTokens]
-    expect(usable({ cfg, model: registered("rafiki-fast") })).toBe(64_000)
-    expect(usable({ cfg, model: registered("rafiki-pro") })).toBe(96_000)
-    expect(usable({ cfg, model: registered("rafiki-max") })).toBe(96_000)
-    for (const id of Brand.models) expect(usable({ cfg, model: registered(id) })).toBe(usable({ cfg, model: before(id) }))
+    expect(usable({ cfg, model: registered("rafiki-fast") })).toBe(936_000)
+    expect(usable({ cfg, model: registered("rafiki-pro") })).toBe(968_000)
+    expect(usable({ cfg, model: registered("rafiki-max") })).toBe(968_000)
   })
 
-  test("with an output override the point is the same as before, never below 64000", () => {
+  test("an output override leaves room for that output in the window", () => {
     process.env[Brand.env.maxOutputTokens] = "16000"
-    expect(usable({ cfg, model: registered("rafiki-fast") })).toBe(usable({ cfg, model: before("rafiki-fast") }))
-    expect(usable({ cfg, model: registered("rafiki-fast") })).toBe(112_000)
+    expect(usable({ cfg, model: registered("rafiki-fast") })).toBe(984_000)
     process.env[Brand.env.maxOutputTokens] = "128000"
-    // Before: 128000 - 128000, a compaction after every answer.
-    expect(usable({ cfg, model: before("rafiki-pro") })).toBe(0)
-    expect(usable({ cfg, model: registered("rafiki-pro") })).toBe(64_000)
-    process.env[Brand.env.maxOutputTokens] = "300000"
-    expect(usable({ cfg, model: registered("rafiki-fast") })).toBe(64_000)
+    expect(usable({ cfg, model: registered("rafiki-pro") })).toBe(872_000)
   })
 })
