@@ -52,6 +52,17 @@ param(
     [switch] $DryRun
 )
 
+# The documented install is `irm ... | iex`, which runs this text inside the
+# user's own PowerShell session. There an `exit` ends that session and closes
+# the window before anyone can read why, and strict mode, the error preference
+# and every helper function would stay behind in it. So the whole installer
+# runs in the script block below, left unindented so the here-string in it
+# keeps its closing marker in the first column: a failure is printed and ends
+# the block, and only the handler at the end decides how to stop. Run as a
+# file (.\install.ps1, pwsh -File) it exits with code 1; run through iex it
+# returns to the prompt with $LASTEXITCODE set to 1 and the window open.
+try {
+& {
 Set-StrictMode -Version 1.0
 $ErrorActionPreference = 'Stop'
 # Windows PowerShell 5.1 prints a progress bar for every byte of a download,
@@ -77,8 +88,9 @@ function Write-Step([string] $Message) { Write-Host $Message }
 function Write-Note([string] $Message) { Write-Host $Message -ForegroundColor DarkGray }
 function Fail([string] $Message) {
     Write-Host "Error: $Message" -ForegroundColor Red
-    # exit still runs the finally block that removes the scratch directory.
-    exit 1
+    # Ends the installer through the handler at the end of this file, after
+    # the finally block that removes the scratch directory has run.
+    throw 'rafikicode-install-failed'
 }
 
 if ([string]::IsNullOrWhiteSpace($Version)) { $Version = Get-EnvOrDefault 'VERSION' '' }
@@ -228,7 +240,7 @@ if ($DryRun) {
     Write-Host "  archive:   $archiveUrl"
     Write-Host "  checksums: $sumsUrl"
     Write-Host "  install:   $targetPath"
-    exit 0
+    return
 }
 
 # Already installed at this version.
@@ -237,7 +249,8 @@ if (Test-Path -LiteralPath $targetPath) {
     try { $installed = (& $targetPath --version 2>$null | Select-Object -First 1) } catch { $installed = '' }
     if ("$installed".Trim() -eq $resolved) {
         Write-Note "Version $resolved is already installed at $targetPath"
-        exit 0
+        Write-Note "Next: $App login, then $App doctor to check the setup."
+        return
     }
     if (-not [string]::IsNullOrWhiteSpace($installed)) {
         Write-Note "Installed version: $($installed.Trim())"
@@ -459,6 +472,42 @@ if ($ok) {
     Fail "$targetPath was installed but did not run ($App --version failed). The installation is not usable."
 }
 
+# A folder to start in. Started from the home folder, rafikicode works in
+# %USERPROFILE%\RafikiCode instead (a home folder is not a project, and walking
+# all of it before the first request is what made a first run hang), so the
+# folder is made here and the next steps start there. rafikicode makes it on
+# first use as well, so failing here is not an error.
+$workspace = ''
+if (-not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
+    try {
+        $workspace = Join-Path $env:USERPROFILE 'RafikiCode'
+        New-Item -ItemType Directory -Path $workspace -Force | Out-Null
+    } catch {
+        $workspace = ''
+    }
+}
+
 Write-Step ''
-Write-Step "Open a new terminal, then run $App to start."
-Write-Note "The full screen interface needs Windows Terminal. The old console window (conhost) cannot draw it; in Windows 10 install Windows Terminal from the Microsoft Store, or use $App run `"your task`" instead."
+Write-Step 'Next steps, in a new terminal (this one does not have the new PATH yet):'
+Write-Step '  1. Sign in to your Rafiki AI account:'
+Write-Step "       $App login"
+Write-Step '  2. Check the whole setup, once signed in:'
+Write-Step "       $App doctor"
+Write-Step '  3. Start it in your workspace folder, or in any project folder:'
+if ($workspace -ne '') { Write-Step '       cd $HOME\RafikiCode' }
+Write-Step "       $App"
+Write-Note "The full screen interface needs Windows Terminal. The old console window (conhost) cannot draw it; in Windows 10 install Windows Terminal from the Microsoft Store (or: winget install --id Microsoft.WindowsTerminal), or use $App run `"your task`" instead."
+}
+} catch {
+    if ("$($_.Exception.Message)" -ne 'rafikicode-install-failed') {
+        Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
+    }
+    # Run as a file, this file's own text is the invocation's script block, and
+    # the marker below is in it. Through iex the invocation is the caller's
+    # (the prompt line, or the caller's script), which does not carry it.
+    $asFile = $false
+    try { $asFile = "$($MyInvocation.MyCommand.ScriptBlock)".Contains('RAFIKICODE-INSTALL-PS1-AS-FILE') } catch { }
+    if ($asFile) { exit 1 }
+    Remove-Variable -Name asFile -ErrorAction SilentlyContinue
+    $global:LASTEXITCODE = 1
+}

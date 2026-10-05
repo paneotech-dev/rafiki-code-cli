@@ -152,6 +152,7 @@ check_override() {
 # archive between the checksum check and the install. Removed on every exit
 # path; HUP, INT and TERM exit through the same cleanup.
 TMP_DIR=""
+TMPDIR_ORIG="${TMPDIR:-}"
 cleanup() {
     if [ -n "$TMP_DIR" ]; then rm -rf "$TMP_DIR"; fi
 }
@@ -1185,23 +1186,53 @@ check_install_dir() {
 # Disk space, before the download. Checked in both places it is spent: the
 # temporary directory that holds the archive and the unpacked binary, and the
 # install directory the binary ends up in.
+# The temporary directory the download is unpacked in. TMPDIR (or /tmp) first;
+# when it lacks the room or will not run a file (a noexec mount, usual on shared
+# hosts), ~/.rafikicode/tmp instead, created here, with one line saying so. A
+# piped install (curl ... | bash) has no command line on which the user could
+# have set TMPDIR beforehand, so advising "TMPDIR=... ./install.sh" there was
+# advice nobody could follow. Only when no candidate has room does it stop, with
+# the piped form spelled out.
+tmp_fallback=""
+tmp_has_room() {
+    local free
+    free=$(free_kb "$(nearest_existing "$1")")
+    [ -z "$free" ] || [ "$free" -ge "$NEED_KB_TMP" ] 2>/dev/null
+}
+
 check_disk_space_tmp() {
-    local tmp="${TMPDIR:-/tmp}" tmp_dir_existing free
-    tmp_dir_existing=$(nearest_existing "$tmp")
-    free=$(free_kb "$tmp_dir_existing")
-    if [ -n "$free" ] && [ "$free" -lt "$NEED_KB_TMP" ] 2>/dev/null; then
-        print_message error "Error: not enough free disk space to unpack ${APP}." >&2
-        {
-            printf '  %s has %s MB free; unpacking the release needs about %s MB there.\n' \
-                "$tmp_dir_existing" "$(kb_to_mb "$free")" "$(kb_to_mb "$NEED_KB_TMP")"
-            printf '  %s is about 58 MB once extracted, and the archive is downloaded beside it.\n' "$APP"
-            printf '  Either free some space, or send the download somewhere that has room:\n'
-            printf '    TMPDIR=/path/with/space ./install.sh\n'
-            printf '  See what is using the space with: df -h %s\n' "$tmp_dir_existing"
-        } >&2
-        exit 1
+    local tmp="${TMPDIR:-/tmp}" fallback="" why="" free
+    if [ -n "$HOME_DIR" ]; then fallback="$HOME_DIR/.${APP}/tmp"; fi
+    if ! tmp_has_room "$tmp"; then
+        why="has $(kb_to_mb "$(free_kb "$(nearest_existing "$tmp")")") MB free"
+    elif [ -d "$tmp" ] && ! can_execute_in "$tmp"; then
+        why="does not allow running a file (noexec)"
     fi
-    return 0
+    if [ -z "$why" ]; then return 0; fi
+    if [ -n "$fallback" ] && [ "$fallback" != "$tmp" ] && mkdir -p "$fallback" 2>/dev/null && chmod 700 "$fallback" 2>/dev/null \
+        && tmp_has_room "$fallback"; then
+        print_message info "${MUTED}${tmp} ${why}, so the download goes to ${NC}${fallback}${MUTED} instead.${NC}"
+        TMPDIR="$fallback"
+        export TMPDIR
+        # The interface needs room in TMPDIR at every start too; a noexec
+        # directory it works around by itself (check_exec_tmp below).
+        case "$why" in *"MB free"*) tmp_fallback="$fallback" ;; esac
+        return 0
+    fi
+    print_message error "Error: not enough free disk space to unpack ${APP}." >&2
+    {
+        free=$(free_kb "$(nearest_existing "$tmp")")
+        printf '  %s has %s MB free; unpacking the release needs about %s MB there.\n' \
+            "$(nearest_existing "$tmp")" "$(kb_to_mb "$free")" "$(kb_to_mb "$NEED_KB_TMP")"
+        if [ -n "$fallback" ]; then
+            printf '  %s was tried as well and has no room either.\n' "$fallback"
+        fi
+        printf '  %s is about 58 MB once extracted, and the archive is downloaded beside it.\n' "$APP"
+        printf '  Free some space, or send the download to a directory with room:\n'
+        printf '    curl -fsSL %s | TMPDIR=$HOME/.%s/tmp bash\n' "$INSTALLER_URL" "$APP"
+        printf '  See what is using the space with: df -h ~ ; df -h %s\n' "$(nearest_existing "$tmp")"
+    } >&2
+    exit 1
 }
 
 check_disk_space_install() {
@@ -1374,6 +1405,20 @@ if [ -z "$linked_path" ] && [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
     run_cmd="${INSTALL_DIR}/${BIN_NAME}"
 fi
 
+# A folder to start in. Started from the home folder, rafikicode works in
+# ~/RafikiCode instead (a home folder is not a project, and walking all of it
+# before the first request is what made a first run hang), so the folder is
+# made here, private, and the next steps start there. Nothing fails if it
+# cannot be made: rafikicode makes it on first use as well.
+workspace_dir=""
+if [ -n "$HOME_DIR" ]; then
+    if [ -d "$HOME_DIR/RafikiCode" ] || { mkdir -p "$HOME_DIR/RafikiCode" 2>/dev/null && chmod 700 "$HOME_DIR/RafikiCode" 2>/dev/null; }; then
+        workspace_dir="$HOME_DIR/RafikiCode"
+    fi
+fi
+start_line="${run_cmd}"
+if [ -n "$workspace_dir" ]; then start_line="cd ~/RafikiCode && ${run_cmd}"; fi
+
 # Finish by signing in, instead of printing a command for someone to type.
 #
 # `login` is an OAuth device flow: it prints a short code and a link and then
@@ -1400,7 +1445,12 @@ if can_sign_in; then
     # The install has already succeeded, so a sign in that is declined or fails
     # must not fail the installer. Fall through to the written instructions.
     if "$run_cmd" login </dev/tty; then
-        print_message info "\n${MUTED}Signed in. Run ${NC}${run_cmd}${MUTED} to start, or ${NC}${run_cmd} doctor${MUTED} to check the setup.${NC}"
+        print_message info "\n${MUTED}Signed in. To start, in your workspace folder or in any project folder:${NC}"
+        print_message info "       ${start_line}"
+        print_message info "${MUTED}To check the setup: ${NC}${run_cmd} doctor"
+        if [ -n "$tmp_fallback" ]; then
+            print_message info "${MUTED}${TMPDIR_ORIG:-/tmp} had no room. Add this line to your shell startup file:${NC} export TMPDIR=\$HOME/.${APP}/tmp"
+        fi
         exit 0
     fi
     print_message warning "Sign in did not finish. You can do it whenever you like:"
@@ -1434,3 +1484,12 @@ step=$((step + 1))
 # wrong, whether the name resolves to the binary that was just written.
 print_message info "  ${step}. Check the whole setup, once signed in:"
 print_message info "       ${run_cmd} doctor"
+if [ -n "$tmp_fallback" ]; then
+    step=$((step + 1))
+    print_message info "  ${step}. ${APP} unpacks part of itself into TMPDIR each time it starts, and ${TMPDIR_ORIG:-/tmp} had no room."
+    print_message info "     Add this line to your shell startup file (~/.bashrc or ~/.zshrc):"
+    print_message info "       export TMPDIR=\$HOME/.${APP}/tmp"
+fi
+step=$((step + 1))
+print_message info "  ${step}. Start ${APP} in your workspace folder, or in any project folder:"
+print_message info "       ${start_line}"

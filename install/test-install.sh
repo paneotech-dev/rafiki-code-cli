@@ -146,7 +146,13 @@ out=$(env HOME="$linkhome" SHELL=/bin/bash PATH="$linkhome/.local/bin:$safe_path
 # installer never mentioned. It has to name the command that resolves here, the
 # same one the sign in step names.
 [[ "$out" == *"       rafikicode doctor"* ]] \
-    && [[ "$out" == *"Check the whole setup"* ]]; check $? "the next steps end by pointing at doctor"
+    && [[ "$out" == *"Check the whole setup"* ]]; check $? "the next steps point at doctor"
+
+# Started from the home folder, rafikicode works in ~/RafikiCode. The installer
+# makes that folder, private, and the last step starts there.
+[ -d "$linkhome/RafikiCode" ] \
+    && [ "$(stat -c %a "$linkhome/RafikiCode" 2>/dev/null || stat -f %Lp "$linkhome/RafikiCode")" = "700" ] \
+    && [[ "$out" == *"       cd ~/RafikiCode && rafikicode"* ]]; check $? "the workspace folder is made private and the next steps start in it"
 
 # A file that is not one of the installer's own links is left alone.
 otherhome="$WORK/keephome"
@@ -393,8 +399,36 @@ out=$(env PATH="$WORK/bin-full:$safe_path" HOME="$WORK/home" TMPDIR="$WORK/home"
 [ "$rc" != "0" ] \
     && [[ "$out" == *"not enough free disk space"* ]] \
     && [[ "$out" == *"about 58 MB once extracted"* ]] \
-    && [[ "$out" == *"TMPDIR=/path/with/space"* ]] \
-    && [[ "$out" != *"Checksum verified"* ]]; check $? "a full disk is reported before anything is downloaded"
+    && [[ "$out" == *"has no room either"* ]] \
+    && [[ "$out" == *"| TMPDIR=\$HOME/.rafikicode/tmp bash"* ]] \
+    && [[ "$out" == *"df -h ~"* ]] \
+    && [[ "$out" != *"Checksum verified"* ]]; check $? "a full disk everywhere is reported before anything is downloaded, with the piped form"
+
+# Only the temporary directory is full (a small /tmp on a shared host): the
+# download goes to ~/.rafikicode/tmp by itself, says so in one line, and the
+# next steps ask for TMPDIR in the shell startup file, because the interface
+# unpacks into TMPDIR at every start as well. The df stub reports a full disk
+# for every path except those under .rafikicode.
+mkbin "$WORK/bin-tmpfull" ""
+write_stub "$WORK/bin-tmpfull/df" '#!/bin/sh
+for a; do p=$a; done
+echo "Filesystem 1024-blocks Used Available Capacity Mounted"
+case "$p" in *.rafikicode*) echo "disk 99999999 1 99999998 1%% /" ;; *) echo "tmpfs 1024 1024 0 100%% /tmp" ;; esac
+'
+tmpfullhome="$WORK/tmpfullhome"
+mkdir -p "$tmpfullhome" "$WORK/smalltmp"
+out=$(env PATH="$WORK/bin-tmpfull:$safe_path" HOME="$tmpfullhome" TMPDIR="$WORK/smalltmp" \
+    RAFIKICODE_INSTALL_DIR="$tmpfullhome/.rafikicode/bin" \
+    "$BASH_BIN" "$INSTALLER" --no-modify-path --no-login --version 1.2.2 2>&1 | plain) && rc=0 || rc=$?
+[ "$rc" = "0" ] \
+    && [[ "$out" == *"$WORK/smalltmp has 0 MB free, so the download goes to $tmpfullhome/.rafikicode/tmp instead."* ]] \
+    && [ "$("$tmpfullhome/.rafikicode/bin/rafikicode" --version)" = "1.2.2" ] \
+    && [[ "$out" == *"export TMPDIR=\$HOME/.rafikicode/tmp"* ]]; check $? "a full temporary directory falls back to ~/.rafikicode/tmp and the next steps say to keep it"
+
+# A temporary directory with room needs no fallback and no TMPDIR line.
+out=$(env HOME="$tmpfullhome" RAFIKICODE_INSTALL_DIR="$tmpfullhome/.rafikicode/bin2" \
+    "$BASH_BIN" "$INSTALLER" --no-modify-path --no-login --version 1.2.2 2>&1 | plain) && rc=0 || rc=$?
+[ "$rc" = "0" ] && [[ "$out" != *"the download goes to"* ]] && [[ "$out" != *"export TMPDIR"* ]]; check $? "a temporary directory with room is used as it is"
 
 # An install directory the user cannot write. Root bypasses file permissions, so
 # this one drops to an unprivileged user; it is skipped where that is not
