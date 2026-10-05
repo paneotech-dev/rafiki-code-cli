@@ -70,6 +70,12 @@ export RAFIKICODE_RELEASE_BASE="http://127.0.0.1:${PORT}/dl"
 # The mock release server is plain http on loopback: the explicit test switch.
 export RAFIKICODE_INSTALL_ALLOW_HTTP_LOOPBACK=1
 export RAFIKICODE_INSTALL_DIR="$WORK/prefix/bin"
+# The closing self check asks the gateway for its health; the mock site answers.
+mkdir -p "$WORK/site/gw/health"
+echo '"I am alive!"' > "$WORK/site/gw/health/liveliness"
+export RAFIKICODE_GATEWAY_URL="http://127.0.0.1:${PORT}/gw/v1"
+# Retries wait no time here.
+export RAFIKICODE_INSTALL_RETRY_DELAY=0
 export HOME="$WORK/home"
 mkdir -p "$HOME"
 
@@ -79,7 +85,7 @@ set +e
 pass=0
 fail=0
 check() {
-    if [ "$1" = "0" ]; then pass=$((pass + 1)); echo "ok   $2"; else fail=$((fail + 1)); echo "FAIL $2"; fi
+    if [ "$1" = "0" ]; then pass=$((pass + 1)); echo "ok   $2"; else fail=$((fail + 1)); echo "FAIL $2"; if [ -n "${INSTALL_TEST_VERBOSE:-}" ]; then printf "%s\n" "${out:-}" | tail -n 12 | sed "s/^/    | /"; fi; fi
 }
 # The installer colours its output, and the escapes land between the words of a
 # single message, so assertions on whole lines read the plain text.
@@ -109,12 +115,15 @@ out=$(bash "$INSTALLER" --no-modify-path --version 9.9.9 2>&1) && rc=0 || rc=$?
 # Corrupt the archive so the published checksum no longer matches.
 echo "tampered" >> "$WORK/site/dl/download/v1.2.3/rafikicode-${target}${ext}"
 before=$(sha256sum "$RAFIKICODE_INSTALL_DIR/rafikicode" 2>/dev/null || shasum -a 256 "$RAFIKICODE_INSTALL_DIR/rafikicode")
+gets_before=$(grep -c "GET /dl/download/v1.2.3/rafikicode-${target}${ext}" "$WORK/server.log" || true)
 out=$(bash "$INSTALLER" --no-modify-path --version 1.2.3 2>&1) && rc=0 || rc=$?
+gets_after=$(grep -c "GET /dl/download/v1.2.3/rafikicode-${target}${ext}" "$WORK/server.log" || true)
 after=$(sha256sum "$RAFIKICODE_INSTALL_DIR/rafikicode" 2>/dev/null || shasum -a 256 "$RAFIKICODE_INSTALL_DIR/rafikicode")
 plainout=$(printf '%s\n' "$out" | plain)
 [ "$rc" != "0" ] && [ "$before" = "$after" ] && [ ! -e "$RAFIKICODE_INSTALL_DIR/rafikicode.new" ] \
     && [[ "$plainout" == *"is not the file the release says it is"* ]] \
-    && [[ "$plainout" == *"Nothing was installed and the download has been deleted"* ]] \
+    && [[ "$plainout" == *"It was downloaded three times and was wrong each time"* ]] \
+    && [ $((gets_after - gets_before)) = 3 ] \
     && [[ "$plainout" == *"Do not run a rafikicode binary that failed this check"* ]] \
     && [[ "$plainout" == *"expected: "* ]] && [[ "$plainout" == *"received: "* ]]; check $? "checksum mismatch fails, says what it means, and leaves the installed binary untouched"
 
@@ -445,10 +454,11 @@ if [ "$(id -u)" != "0" ] || command -v setpriv >/dev/null 2>&1; then
     fi
     out=$($runas env PATH="$safe_path" HOME="$WORK/home" \
         "$BASH_BIN" "$INSTALLER" --no-modify-path --prefix "$roprefix/bin" 2>&1 | plain) && rc=0 || rc=$?
+    # Nothing under that home can be written either, so there is no fallback.
     [ "$rc" != "0" ] \
-        && [[ "$out" == *"is not writable by you"* ]] \
-        && [[ "$out" == *'--prefix "$HOME/.rafikicode/bin"'* ]] \
-        && [[ "$out" != *"Checksum verified"* ]]; check $? "an unwritable install directory is refused before the download, with a prefix to use instead"
+        && [[ "$out" == *"is not writable by you, and neither"* ]] \
+        && [[ "$out" == *"--prefix /path/you/own/bin"* ]] \
+        && [[ "$out" != *"Checksum verified"* ]]; check $? "with no folder it can write, the install stops before the download, naming the one fix"
 else
     echo "skip an unwritable install directory (needs setpriv or a non-root user)"
 fi
@@ -729,6 +739,230 @@ out=$(env HOME="$ohome" RAFIKICODE_INSTALL_DIR="$WORK/prefix-old-archive/bin" \
     bash "$INSTALLER" --no-login --no-modify-path --version 1.2.2 2>&1 | plain) && rc=0 || rc=$?
 [ "$rc" = "0" ] && [ "$("$WORK/prefix-old-archive/bin/rafikicode" --version)" = "1.2.2" ] \
     && [ ! -e "$ohome/.rafikicode/licenses" ]; check $? "an archive without licence files still installs, and no licence directory is made up"
+
+
+# --- Every problem gets a fallback ---------------------------------------------
+#
+# Each case below takes away one thing an install needs and checks that the
+# installer works around it by itself, in one plain line, or stops with one
+# sentence and the one command that fixes it.
+make_release 1.2.3
+SANDBOX_TOOLS="$SANDBOX_TOOLS wget python3 perl getent readlink cut date env gzip tail"
+
+# fresh_home NAME: an empty home for one case.
+fresh_home() { rm -rf "${WORK:?}/${1:?}"; mkdir -p "$WORK/$1"; printf '%s\n' "$WORK/$1"; }
+
+# No curl: wget, then python3, then perl, each installs and says which it used.
+for tool in wget python3 perl; do
+    case "$tool" in
+        wget) omit="curl" ;;
+        python3) omit="curl wget" ;;
+        perl) omit="curl wget python3" ;;
+    esac
+    command -v "$tool" >/dev/null 2>&1 || { echo "skip no curl, $tool: $tool is not installed here"; continue; }
+    mkbin "$WORK/bin-via-$tool" "$omit"
+    h=$(fresh_home "home-via-$tool")
+    out=$(env PATH="$WORK/bin-via-$tool" HOME="$h" RAFIKICODE_INSTALL_DIR="$h/.rafikicode/bin" \
+        "$BASH_BIN" "$INSTALLER" --no-login --no-modify-path 2>&1 | plain) && rc=0 || rc=$?
+    [ "$rc" = "0" ] && [[ "$out" == *"curl is not installed, so downloads use ${tool}."* ]] \
+        && [ "$("$h/.rafikicode/bin/rafikicode" --version)" = "1.2.3" ]; check $? "no curl: downloads with ${tool} and installs"
+done
+
+# No tar (and no bsdtar or busybox in the sandbox): python3 unpacks it.
+if [ "$ext" = ".tar.gz" ]; then
+    mkbin "$WORK/bin-notar" "tar"
+    h=$(fresh_home home-notar)
+    out=$(env PATH="$WORK/bin-notar" HOME="$h" RAFIKICODE_INSTALL_DIR="$h/.rafikicode/bin" \
+        "$BASH_BIN" "$INSTALLER" --no-login --no-modify-path 2>&1 | plain) && rc=0 || rc=$?
+    [ "$rc" = "0" ] && [[ "$out" == *"No working tar here, so the archive was unpacked with python3."* ]] \
+        && [ "$("$h/.rafikicode/bin/rafikicode" --version)" = "1.2.3" ]; check $? "no tar: python3 unpacks the archive"
+fi
+
+# tar with no gzip beside it cannot open a .tar.gz: python3 does it instead.
+if [ "$ext" = ".tar.gz" ]; then
+    mkbin "$WORK/bin-nogzip" "gzip"
+    h=$(fresh_home home-nogzip)
+    out=$(env PATH="$WORK/bin-nogzip" HOME="$h" RAFIKICODE_INSTALL_DIR="$h/.rafikicode/bin" \
+        "$BASH_BIN" "$INSTALLER" --no-login --no-modify-path 2>&1 | plain) && rc=0 || rc=$?
+    [ "$rc" = "0" ] && [[ "$out" == *"No working tar here, so the archive was unpacked with python3."* ]] \
+        && [ "$("$h/.rafikicode/bin/rafikicode" --version)" = "1.2.3" ]; check $? "tar without gzip: python3 unpacks the archive"
+fi
+
+# A proxy given only in upper case, which wget would not read on its own: every
+# request goes through it, with curl and with wget.
+cat > "$WORK/proxy.py" <<'PYEOF'
+import http.server, sys, urllib.request
+LOG = sys.argv[2]
+class P(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        open(LOG, "a").write(self.path + "\n")
+        try:
+            with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(self.path, timeout=30) as r:
+                body = r.read()
+                self.send_response(r.status)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+        except urllib.error.HTTPError as e:
+            self.send_response(e.code)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+    def log_message(self, *a):
+        pass
+http.server.ThreadingHTTPServer(("127.0.0.1", int(sys.argv[1])), P).serve_forever()
+PYEOF
+PROXY_PORT=$((PORT + 2))
+python3 "$WORK/proxy.py" "$PROXY_PORT" "$WORK/proxy.log" >/dev/null 2>&1 &
+PROXY_PID=$!
+for _ in $(seq 1 50); do
+    curl -s -o /dev/null --noproxy '' -x "http://127.0.0.1:${PROXY_PORT}" "http://127.0.0.1:${PORT}/api/releases/latest" && break
+    sleep 0.1
+done
+for tool in curl wget; do
+    command -v "$tool" >/dev/null 2>&1 || continue
+    : > "$WORK/proxy.log"
+    if [ "$tool" = "curl" ]; then mkbin "$WORK/bin-proxy-$tool" ""; else mkbin "$WORK/bin-proxy-$tool" "curl"; fi
+    h=$(fresh_home "home-proxy-$tool")
+    out=$(env -u http_proxy -u https_proxy -u no_proxy -u NO_PROXY PATH="$WORK/bin-proxy-$tool" HOME="$h" \
+        HTTP_PROXY="http://127.0.0.1:${PROXY_PORT}" RAFIKICODE_INSTALL_DIR="$h/.rafikicode/bin" \
+        "$BASH_BIN" "$INSTALLER" --no-login --no-modify-path 2>&1 | plain) && rc=0 || rc=$?
+    [ "$rc" = "0" ] && grep -q "/dl/download/v1.2.3/SHA256SUMS" "$WORK/proxy.log" \
+        && grep -q "/dl/download/v1.2.3/rafikicode-${target}${ext}" "$WORK/proxy.log"; check $? "HTTP_PROXY alone is honoured, with ${tool}"
+done
+kill "$PROXY_PID" 2>/dev/null
+wait "$PROXY_PID" 2>/dev/null
+
+# A download cut short the first time and whole the second, and an API and a
+# release page that both refuse: the direct latest address still installs.
+cat > "$WORK/flaky.py" <<'PYEOF'
+import http.server, os, sys, functools
+SITE, PORT, STATE = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+class H(http.server.SimpleHTTPRequestHandler):
+    def do_GET(self):
+        if self.path.startswith("/api/"):
+            self.send_response(403); self.send_header("Content-Length", "0"); self.end_headers(); return
+        if self.path == "/dl/latest":
+            self.send_response(404); self.send_header("Content-Length", "0"); self.end_headers(); return
+        if self.path.startswith("/dl/latest/download/"):
+            self.path = "/dl/download/v1.2.3/" + self.path.rsplit("/", 1)[1]
+        if "rafikicode-" in self.path and not os.path.exists(STATE):
+            open(STATE, "w").write("cut")
+            full = open(os.path.join(SITE, self.path.lstrip("/")), "rb").read()
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(full)))
+            self.end_headers()
+            self.wfile.write(full[: len(full) // 3])
+            self.wfile.flush()
+            self.connection.close()
+            return
+        super().do_GET()
+    def log_message(self, *a):
+        pass
+http.server.ThreadingHTTPServer(("127.0.0.1", PORT), functools.partial(H, directory=SITE)).serve_forever()
+PYEOF
+FLAKY_PORT=$((PORT + 3))
+rm -f "$WORK/flaky.state"
+python3 "$WORK/flaky.py" "$WORK/site" "$FLAKY_PORT" "$WORK/flaky.state" >/dev/null 2>&1 &
+FLAKY_PID=$!
+for _ in $(seq 1 50); do
+    curl -s -o /dev/null "http://127.0.0.1:${FLAKY_PORT}/dl/download/v1.2.3/SHA256SUMS" && break
+    sleep 0.1
+done
+h=$(fresh_home home-flaky)
+out=$(env HOME="$h" RAFIKICODE_INSTALL_DIR="$h/.rafikicode/bin" \
+    RAFIKICODE_RELEASE_API="http://127.0.0.1:${FLAKY_PORT}/api" RAFIKICODE_RELEASE_BASE="http://127.0.0.1:${FLAKY_PORT}/dl" \
+    "$BASH_BIN" "$INSTALLER" --no-login --no-modify-path 2>&1 | plain) && rc=0 || rc=$?
+[ "$rc" = "0" ] && [[ "$out" == *"the latest release is downloaded directly"* ]] \
+    && [[ "$out" == *"trying again in 0 s (attempt 2 of 3)"* ]] \
+    && [ "$("$h/.rafikicode/bin/rafikicode" --version)" = "1.2.3" ]; check $? "API and release page refused, download cut short once: the direct address and a retry install it"
+kill "$FLAKY_PID" 2>/dev/null
+wait "$FLAKY_PID" 2>/dev/null
+
+# A TLS failure on a machine whose clock is years behind: the clock is named.
+mkbin "$WORK/bin-clock" ""
+write_stub "$WORK/bin-clock/curl" "#!/bin/sh\ncase \"\$*\" in *-skI*) exec $(command -v curl) -sI \"http://127.0.0.1:${PORT}/api/releases/latest\" ;; esac\necho 'curl: (60) SSL certificate problem: certificate is not yet valid' >&2\nexit 60\n"
+write_stub "$WORK/bin-clock/date" "#!/bin/sh\nfor a; do case \"\$a\" in -d) exec $(command -v date) \"\$@\" ;; esac; done\ncase \"\$*\" in *%%s*) echo 978307200 ;; *%%Y-%%m-%%d*) echo '2001-01-01 00:00 UTC' ;; *%%Y*) echo 2001 ;; *) exec $(command -v date) \"\$@\" ;; esac\n"
+h=$(fresh_home home-clock)
+out=$(env PATH="$WORK/bin-clock" HOME="$h" RAFIKICODE_INSTALL_DIR="$h/.rafikicode/bin" \
+    CLOCK_URL="http://127.0.0.1:${PORT}/" "$BASH_BIN" "$INSTALLER" --no-login --no-modify-path --version 1.2.3 2>&1 | plain) && rc=0 || rc=$?
+[ "$rc" != "0" ] && [[ "$out" == *"This machine's clock says 2001-01-01 00:00 UTC"* ]] \
+    && [[ "$out" == *"sudo timedatectl set-ntp true"* ]]; check $? "a TLS failure with the clock years off names the clock and how to set it"
+
+# An install folder that cannot be created: ~/.rafikicode/bin instead, in one line.
+h=$(fresh_home home-badprefix)
+: > "$WORK/a-file"
+out=$(env HOME="$h" "$BASH_BIN" "$INSTALLER" --no-login --no-modify-path --prefix "$WORK/a-file/bin" 2>&1 | plain) && rc=0 || rc=$?
+[ "$rc" = "0" ] && [[ "$out" == *"$WORK/a-file/bin is not writable by you, so rafikicode is installed into $h/.rafikicode/bin instead."* ]] \
+    && [ "$("$h/.rafikicode/bin/rafikicode" --version)" = "1.2.3" ]; check $? "an install folder that cannot be made falls back to ~/.rafikicode/bin"
+
+# HOME unset: the account's home folder from the password database (here a
+# prefix keeps everything inside the test directory; only the reading of it is
+# checked).
+mkbin "$WORK/bin-nohome" "" ""
+write_stub "$WORK/bin-nohome/getent" "#!/bin/sh\necho \"tester:x:1000:1000::$WORK/home-from-passwd:/bin/bash\"\n"
+mkdir -p "$WORK/home-from-passwd"
+out=$(env -u HOME PATH="$WORK/bin-nohome" RAFIKICODE_INSTALL_DIR="$WORK/prefix-nohome/bin" \
+    "$BASH_BIN" "$INSTALLER" --no-login --no-modify-path 2>&1 | plain) && rc=0 || rc=$?
+[ "$rc" = "0" ] && [[ "$out" == *"HOME was not set; using this account's home folder, $WORK/home-from-passwd."* ]] \
+    && [ -d "$WORK/home-from-passwd/RafikiCode" ]; check $? "HOME unset: the password database names the home folder"
+
+# Root through sudo, with someone's home: refused, with the line that works.
+if [ "$(id -u)" = "0" ]; then
+    h=$(fresh_home home-sudo)
+    out=$(env HOME="$h" SUDO_USER=someone-else RAFIKICODE_INSTALL_DIR= \
+        "$BASH_BIN" "$INSTALLER" --no-login --no-modify-path 2>&1 | plain) && rc=0 || rc=$?
+    [ "$rc" != "0" ] && [[ "$out" == *"running as root through sudo"* ]] \
+        && [[ "$out" == *"Run it as yourself, without sudo"* ]] \
+        && [ ! -e "$h/.rafikicode/bin/rafikicode" ]; check $? "root through sudo into a user's home is refused"
+fi
+
+# An older copy from npm first on PATH: named, with the command that removes it,
+# and the line that puts this install first in this terminal.
+shadowdir="$WORK/npm-global/lib/node_modules/rafikicode/bin"
+mkdir -p "$shadowdir" "$WORK/npm-bin"
+printf '#!/bin/sh\necho 0.0.1\n' > "$shadowdir/rafikicode"
+chmod 755 "$shadowdir/rafikicode"
+ln -sfn "$shadowdir/rafikicode" "$WORK/npm-bin/rafikicode"
+h=$(fresh_home home-shadow)
+: > "$h/.bashrc"
+out=$(env HOME="$h" SHELL=/bin/bash PATH="$WORK/npm-bin:$safe_path" RAFIKICODE_INSTALL_DIR="$h/.rafikicode/bin" \
+    "$BASH_BIN" "$INSTALLER" --no-login 2>&1 | plain) && rc=0 || rc=$?
+[ "$rc" = "0" ] && [[ "$out" == *"Another rafikicode at $WORK/npm-bin/rafikicode (installed with npm) comes first on your PATH"* ]] \
+    && [[ "$out" == *"npm uninstall -g rafikicode"* ]] \
+    && [[ "$out" == *"export PATH=$h/.rafikicode/bin:\$PATH && hash -r"* ]] \
+    && grep -Fxq "export PATH=$h/.rafikicode/bin:\$PATH" "$h/.bashrc"; check $? "an npm copy first on PATH is named, and this install is put first"
+
+# bash, zsh and fish all get the line, once each, when they are in use.
+h=$(fresh_home home-shells)
+: > "$h/.bashrc"
+: > "$h/.zshrc"
+mkdir -p "$h/.config/fish"
+for _ in 1 2; do
+    out=$(env HOME="$h" SHELL=/bin/bash PATH="$safe_path" RAFIKICODE_INSTALL_DIR="$h/.rafikicode/bin" \
+        "$BASH_BIN" "$INSTALLER" --no-login 2>&1 | plain) || true
+done
+[ "$(grep -cFx "export PATH=$h/.rafikicode/bin:\$PATH" "$h/.bashrc")" = "1" ] \
+    && [ "$(grep -cFx "export PATH=$h/.rafikicode/bin:\$PATH" "$h/.zshrc")" = "1" ] \
+    && [ "$(grep -cFx "fish_add_path $h/.rafikicode/bin" "$h/.config/fish/config.fish")" = "1" ]; check $? "bash, zsh and fish each get the PATH line once"
+
+# The closing check: green when all is well, red with a report when the gateway
+# does not answer; and a failed install leaves a report to send.
+h=$(fresh_home home-selfcheck)
+out=$(env HOME="$h" RAFIKICODE_INSTALL_DIR="$h/.rafikicode/bin" \
+    "$BASH_BIN" "$INSTALLER" --no-login --no-modify-path 2>&1 | plain) && rc=0 || rc=$?
+[ "$rc" = "0" ] && [[ "$out" == *"ok    rafikicode 1.2.3 runs"* ]] && [[ "$out" == *"ok    the model gateway answers"* ]] \
+    && [[ "$out" == *"ok    folders:"* ]] && [[ "$out" == *"Ready."* ]]; check $? "the closing check says Ready when the program runs and the gateway answers"
+h=$(fresh_home home-selfcheck-red)
+out=$(env HOME="$h" RAFIKICODE_INSTALL_DIR="$h/.rafikicode/bin" RAFIKICODE_GATEWAY_URL="http://127.0.0.1:9/v1" \
+    "$BASH_BIN" "$INSTALLER" --no-login --no-modify-path 2>&1 | plain) && rc=0 || rc=$?
+[ "$rc" = "0" ] && [[ "$out" == *"FAIL  the model gateway did not answer"* ]] \
+    && [[ "$out" == *"Installed, but not ready: the gateway did not answer."* ]] \
+    && [[ "$out" == *"send that file to info@paneo.tech"* ]] && [ -s "$h/.rafikicode/install.log" ]; check $? "a gateway that does not answer turns the check red and writes the report"
+h=$(fresh_home home-faillog)
+out=$(env HOME="$h" "$BASH_BIN" "$INSTALLER" --no-login --no-modify-path --version 9.9.9 2>&1 | plain) && rc=0 || rc=$?
+[ "$rc" != "0" ] && [[ "$out" == *"A report of this install was saved to $h/.rafikicode/install.log."* ]] \
+    && grep -q "^error: could not download SHA256SUMS" "$h/.rafikicode/install.log" \
+    && grep -q "^target: " "$h/.rafikicode/install.log"; check $? "a failed install writes install.log with the error, and names info@paneo.tech"
 
 echo "install tests: ${pass} passed, ${fail} failed"
 [ "$fail" = "0" ]
