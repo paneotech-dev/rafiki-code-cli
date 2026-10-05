@@ -136,3 +136,11 @@ Run at `c0bfd78c5e` on 5 October 2026.
   the message footer reads `Build · Rafiki Pro (asked for Rafiki Fast)`, and
   the system prompt the stand-in received starts with
   `You are Rafiki Code, a coding agent for the terminal made by PANEOTECH.`
+
+## Update 5 October 2026: compaction uses the whole window
+
+The owner decided that a session uses the whole window of its tier. The input
+limit that held the old compaction point is gone, so a session is compacted at
+the window less the output a request may ask for: about 936,000 tokens on
+rafiki-fast and 968,000 on rafiki-pro and rafiki-max. Tests in
+`packages/opencode/test/brand/display-limits.test.ts`.
