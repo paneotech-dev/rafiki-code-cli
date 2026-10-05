@@ -7,6 +7,7 @@ import path from "path"
 import { Brand } from "@opencode-ai/core/brand/brand"
 import * as Credentials from "@opencode-ai/core/brand/credentials"
 import * as Doctor from "../../src/rafiki/doctor"
+import * as WindowsConsole from "../../src/rafiki/windows-console"
 import { createMockConsole } from "../brand/mock-console.mjs"
 import { createMockGateway } from "../brand/mock-gateway.mjs"
 
@@ -92,6 +93,9 @@ function options(extra: Partial<Doctor.Options> = {}): Doctor.Options {
     // and to a shell that resolves the command to the process running it.
     cwd: home,
     which: () => EXEC_PATH,
+    // The Windows console line is about the machine this runs on as well; its
+    // own test below injects every answer.
+    windowsConsole: () => undefined,
     ...extra,
   }
 }
@@ -750,5 +754,36 @@ describe("key type", () => {
     expect(report.warned).toBeGreaterThanOrEqual(1)
     expect(JSON.stringify(report)).not.toContain("sk-console-plain-stub")
     expect(JSON.stringify(report)).not.toContain(uuid)
+  })
+})
+
+describe("doctor on Windows: can this console draw the interface", () => {
+  test("one line on Windows, a warning that does not fail the report when the console cannot draw", async () => {
+    await start()
+    const conhost = WindowsConsole.decide({}, WindowsConsole.fixedProbe("conhost")!)
+    const report = await Doctor.run(options({ windowsConsole: () => conhost }))
+    const line = byName(report, "terminal")
+    expect(report.lines.at(-1)).toBe(line)
+    expect(line.status).toBe("warn")
+    expect(line.detail).toBe("this console cannot draw the full screen interface (the classic Windows console host (conhost.exe))")
+    expect(line.fix).toContain("winget install --id Microsoft.WindowsTerminal")
+    expect(line.note).toBe('rafikicode run "your task" works in this console.')
+    expect(report.failed).toBe(report.lines.filter((l) => l.status === "fail").length)
+    expect(report.lines.filter((l) => l.status === "fail").map((l) => l.name)).not.toContain("terminal")
+  })
+
+  test("a console that can draw says so, and names what it is", () => {
+    const line = Doctor.checkTerminal(WindowsConsole.decide({}, WindowsConsole.fixedProbe("terminal")!))
+    expect(line).toMatchObject({ name: "terminal", status: "ok" })
+    expect(line.detail).toContain("pseudo console")
+    const legacy = Doctor.checkTerminal(WindowsConsole.decide({}, WindowsConsole.fixedProbe("legacy")!))
+    expect(legacy.status).toBe("warn")
+    expect(legacy.detail).toContain("refuses virtual terminal processing")
+  })
+
+  test("no line anywhere but Windows", async () => {
+    await start()
+    const report = await Doctor.run(options({ windowsConsole: () => WindowsConsole.check({}, "linux") }))
+    expect(report.lines.map((l) => l.name)).toEqual([...Doctor.NAMES])
   })
 })

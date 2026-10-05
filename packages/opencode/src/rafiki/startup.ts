@@ -29,6 +29,7 @@ import { isRecord } from "@/util/record"
 import { UI } from "@/cli/ui"
 import * as Contract from "./contract"
 import * as ExecTmp from "./exec-tmp"
+import * as WindowsConsole from "./windows-console"
 
 export type Kind =
   | "native_library"
@@ -262,6 +263,9 @@ export const DEFAULT_SIZE = { columns: 80, rows: 24 } as const
 export function terminal(
   env: Record<string, string | undefined> = process.env,
   out: { isTTY?: boolean; columns?: number; rows?: number } = process.stdout,
+  // Can this Windows console draw at all? Undefined on any other platform.
+  // Injectable so every answer can be tested on Linux.
+  windows: () => WindowsConsole.Verdict | undefined = () => WindowsConsole.check(env),
 ): Diagnosis | undefined {
   if (env["RAFIKICODE_TEST_TTY"]) return undefined
   const ways = `Give ${Brand.name} the task directly instead:${os.EOL}  ${Brand.name} run "your task"`
@@ -309,7 +313,28 @@ export function terminal(
       exitCode: Contract.EXIT.terminal,
     }
 
+  const host = windows()
+  if (host && !host.ok) return windowsConsole(host.reason)
+
   return undefined
+}
+
+// The words for a Windows console that cannot draw the interface. Exported for
+// the tests and for doctor, which names the same condition.
+export const WINDOWS_TERMINAL_STEP = `Open Windows Terminal (install it from the Microsoft Store, or run: winget install --id Microsoft.WindowsTerminal) and run ${Brand.name} there.`
+
+export function windowsConsole(reason: WindowsConsole.Reason): Diagnosis {
+  return {
+    kind: "terminal",
+    headline: `${Brand.product} cannot draw its full screen interface in this window.`,
+    cause:
+      reason === "no_virtual_terminal"
+        ? 'Probable cause: this console refused virtual terminal processing, which the interface draws with (Windows older than Windows 10 version 1511, or the console\'s "Use legacy console" option is on).'
+        : "Probable cause: this window is the old Windows console (conhost.exe), which Windows PowerShell and cmd open on Windows 10 outside Windows Terminal. It cannot draw the full screen interface.",
+    step: `${WINDOWS_TERMINAL_STEP}${os.EOL}Or give ${Brand.name} the task directly, which works in this window:${os.EOL}  ${Brand.name} run "your task"`,
+    ways: ["doctor", "run"],
+    exitCode: Contract.EXIT.terminal,
+  }
 }
 
 function verbose(argv: readonly string[] = process.argv, env: Record<string, string | undefined> = process.env) {
