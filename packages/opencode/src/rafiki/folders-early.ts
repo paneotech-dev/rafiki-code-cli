@@ -8,6 +8,11 @@
 // binary starts itself again with the fixed variables, once, and passes on the
 // exit code. A run from source needs no restart: the variables set here are
 // read by everything loaded after this module.
+//
+// A command whose output a program reads (--version, --help, completion) gets
+// no line about a fix and no restart: it loads no native library, and whoever
+// compares its output must see the version and nothing else. What could not be
+// repaired is still said, on stderr.
 import { spawnSync } from "child_process"
 import * as Folders from "./folders"
 
@@ -24,7 +29,8 @@ function run() {
   if (process.env["RAFIKICODE_SKIP_FOLDER_CHECKS"] === "1") return
   // A restarted binary checks again, quietly: its parent already said it all.
   const again = process.env[AGAIN] === "1"
-  const result = Folders.apply({ print: !again })
+  const quiet = Folders.machineRead(process.argv.slice(2))
+  const result = Folders.apply({ print: !again, quiet })
   if (again) {
     // What the parent fixed, so doctor in this process can still say so.
     try {
@@ -33,7 +39,7 @@ function run() {
     } catch {}
     return
   }
-  if (!result.env["TMPDIR"] || !compiled()) return
+  if (!result.env["TMPDIR"] || !compiled() || quiet) return
   for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => {})
   const child = spawnSync(process.execPath, process.argv.slice(2), {
     stdio: "inherit",

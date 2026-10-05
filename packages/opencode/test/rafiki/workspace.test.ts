@@ -126,6 +126,28 @@ describe("the folder doctor: the start folder", () => {
     expect(await moved({ cwd, probe: fake({ files: 400 }) })).toBeUndefined()
   })
 
+  test("a count that ran out of time below the limit proves nothing, so the start stays where it is", async () => {
+    const cwd = "/data/slow-disk"
+    const slow = fake({ count: async () => ({ files: 312, done: false }) })
+    const decision = await Workspace.decide({ ...base, cwd, probe: slow })
+    expect(decision?.directory).toBeUndefined()
+    expect(decision?.message).toBeUndefined()
+    expect(decision?.finding).toBe("usable; its size could not be measured in time")
+    // The real count on a deadline that has already passed: stopped early, far below the limit.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "rafikicode-slow-"))
+    try {
+      fs.mkdirSync(path.join(dir, "a"))
+      for (let i = 0; i < 5; i++) fs.writeFileSync(path.join(dir, "a", `f${i}`), "")
+      const probe: Workspace.Probe = { ...Workspace.realProbe, count: (target, limit) => Workspace.realProbe.count(target, limit, -1) }
+      const real = await Workspace.inspect({ cwd: dir, home: "/home/ana", env: {}, platform: process.platform, probe })
+      expect(real.directory).toBeUndefined()
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+    // A folder is given long enough to answer that a loaded machine is not taken for a dead drive.
+    expect(Workspace.ACCESS_MS).toBeGreaterThanOrEqual(10_000)
+  })
+
   test("the real probe: the count stops at its limit, skips node_modules, and a missing folder is missing", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "rafikicode-count-"))
     try {

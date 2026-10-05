@@ -31,6 +31,17 @@
 //           and XDG_STATE_HOME.
 //
 // Every result, fixed or not, is kept in report() for `rafikicode doctor`.
+//
+// Two rules about what is printed and what is believed:
+//   - A line about a fix goes to stderr, never to stdout, and not at all when
+//     the command's output is read by a program (--version, --help, shell
+//     completion): there only what could not be repaired is said. An installer,
+//     a release gate or a script that compares the output of --version must
+//     get the version and nothing else.
+//   - A measurement that cannot be trusted is not a finding. Free space that
+//     the system reports with a block size of 0, no blocks at all, or more
+//     free blocks than the disk has is "unknown", and an unknown is skipped:
+//     it never replaces a folder and never prints a line.
 import fs from "fs"
 import os from "os"
 import path from "path"
@@ -90,12 +101,7 @@ export const realIO: IO = {
     }
   },
   free(target) {
-    try {
-      const stat = fs.statfsSync(target)
-      return Number(stat.bavail) * Number(stat.bsize)
-    } catch {
-      return undefined
-    }
+    return freeBytes(target)
   },
   aside(target) {
     const moved = `${target}.broken-${Date.now()}`
@@ -106,6 +112,32 @@ export const realIO: IO = {
       return undefined
     }
   },
+}
+
+// Free bytes from what statfs answered, or undefined when the answer cannot be
+// right: a block size of 0, a disk of no blocks, a negative count, or more free
+// blocks than the disk holds. Some file systems (network, FUSE, a few virtual
+// ones) and some builds of the runtime answer like that, and "0 MB free" read
+// from such an answer replaced a healthy temporary folder at every start.
+export function plausibleFree(stat: { bavail: unknown; bsize: unknown; blocks: unknown }): number | undefined {
+  const bavail = Number(stat.bavail)
+  const bsize = Number(stat.bsize)
+  const blocks = Number(stat.blocks)
+  if (!Number.isFinite(bavail) || !Number.isFinite(bsize) || !Number.isFinite(blocks)) return undefined
+  if (bsize <= 0 || blocks <= 0 || bavail < 0 || bavail > blocks) return undefined
+  return bavail * bsize
+}
+
+// Free bytes on the disk holding target, or undefined when it is not known.
+export function freeBytes(
+  target: string,
+  statfs: (target: string) => { bavail: unknown; bsize: unknown; blocks: unknown } = fs.statfsSync,
+): number | undefined {
+  try {
+    return plausibleFree(statfs(target))
+  } catch {
+    return undefined
+  }
 }
 
 function mb(bytes: number) {
@@ -331,11 +363,31 @@ function cwd() {
   }
 }
 
+// Is the output of this command line read by a program rather than a person?
+// --version and --help (and their short forms) anywhere before a bare "--",
+// and the shell completion commands. For these the lines about a fix are not
+// printed: `rafikicode --version` prints the version and nothing else.
+export function machineRead(args: readonly string[]): boolean {
+  const own = args.includes("--") ? args.slice(0, args.indexOf("--")) : args
+  if (own.some((item) => item === "--version" || item === "-v" || item === "--help" || item === "-h")) return true
+  if (own.includes("--get-yargs-completions")) return true
+  return own.find((item) => !item.startsWith("-")) === "completion"
+}
+
+// The lines to print for these checks. Everything that was done or is wrong,
+// or, with quiet, only what could not be repaired (a warning or a failure).
+export function lines(checks: readonly Check[], quiet = false): string[] {
+  return checks
+    .filter((item) => item.line && (!quiet || item.status === "warn" || item.status === "fail"))
+    .map((item) => item.line!)
+}
+
 // Runs the checks for this process, sets what they changed, and prints one line
-// for each fix on stderr. Returns the variables that were changed, so the caller
-// can decide whether the process has to start again with them.
+// for each fix on stderr (with quiet, only what could not be repaired). Returns
+// the variables that were changed, so the caller can decide whether the process
+// has to start again with them.
 export function apply(
-  options: { env?: Env; platform?: string; io?: IO; print?: boolean } = {},
+  options: { env?: Env; platform?: string; io?: IO; print?: boolean; quiet?: boolean } = {},
 ) {
   const env = options.env ?? process.env
   const platform = options.platform ?? process.platform
@@ -343,6 +395,6 @@ export function apply(
   const result = check({ env, platform, cwd: cwd(), systemTemp: systemTemp(platform), user: user(env), io })
   for (const [key, value] of Object.entries(result.env)) process.env[key] = value
   remember(result.checks)
-  if (options.print !== false) for (const item of result.checks) if (item.line) process.stderr.write(item.line + "\n")
+  if (options.print !== false) for (const line of lines(result.checks, options.quiet)) process.stderr.write(line + "\n")
   return result
 }
