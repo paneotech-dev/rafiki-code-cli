@@ -1587,6 +1587,10 @@ check_disk_space_tmp() {
     if [ -n "$HOME_DIR" ]; then fallback="$HOME_DIR/.${APP}/tmp"; fi
     if ! tmp_has_room "$tmp"; then
         why="has $(kb_to_mb "$(free_kb "$(nearest_existing "$tmp")")") MB free"
+    elif [ -d "$tmp" ] && [ ! -w "$tmp" ]; then
+        why="cannot be written"
+    elif [ ! -d "$tmp" ] && ! mkdir -p "$tmp" 2>/dev/null; then
+        why="does not exist and cannot be created"
     elif [ -d "$tmp" ] && ! can_execute_in "$tmp"; then
         why="does not allow running a file (noexec)"
     fi
