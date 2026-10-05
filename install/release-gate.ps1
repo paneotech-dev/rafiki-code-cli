@@ -57,8 +57,28 @@ $Facets = @('install', 'version', 'licence', 'signin', 'task')
 $SkippedVerdict = 'skipped (no staging key, pre-release)'
 $Version = $Version -replace '^v', ''
 
+# Why a gate failed is said three times: in the log, in the job's step summary
+# ($env:GITHUB_STEP_SUMMARY), and as a workflow annotation (::error) for each
+# failing facet and for a gate that could not start. The annotation is the one
+# that can be read without the log.
+$GateName = "release gate $Target (installer)"
+function Write-Annotation([string] $Level, [string] $Title, [string] $Message) {
+    if ($env:GITHUB_ACTIONS -ne 'true') { return }
+    $data = $Message.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+    $name = $Title.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A').Replace(':', '%3A').Replace(',', '%2C')
+    Write-Host "::$Level title=$name::$data"
+}
+function Add-Summary([string] $Line) {
+    if ([string]::IsNullOrWhiteSpace($env:GITHUB_STEP_SUMMARY)) { return }
+    try { Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value $Line -Encoding utf8 } catch { }
+}
+
 function Stop-Gate([string] $Message) {
     [Console]::Error.WriteLine("release gate: $Message")
+    Write-Annotation 'error' "${GateName}: not run" $Message
+    Add-Summary "### ${GateName}: not run"
+    Add-Summary ''
+    Add-Summary $Message
     exit 2
 }
 
@@ -87,6 +107,10 @@ if ($NoLive) {
     [Console]::Error.WriteLine('  staging. Without that credential it cannot say the build works, so it')
     [Console]::Error.WriteLine('  does not run and the release is blocked. Add the repository secret')
     [Console]::Error.WriteLine('  RAFIKICODE_STAGING_API_KEY.')
+    Write-Annotation 'error' "${GateName}: not run" 'RAFIKICODE_STAGING_API_KEY is not set, so the gate cannot sign in or run a task against staging. The release is blocked until the repository secret is added.'
+    Add-Summary "### ${GateName}: not run"
+    Add-Summary ''
+    Add-Summary 'RAFIKICODE_STAGING_API_KEY is not set, so the gate cannot sign in or run a task against staging.'
     exit 2
 }
 
@@ -117,18 +141,44 @@ Copy-Item -LiteralPath $sumsPath -Destination (Join-Path $download 'SHA256SUMS')
 Copy-Item -LiteralPath $archivePath -Destination (Join-Path $download $archive)
 
 $rows = New-Object System.Collections.Generic.List[string]
+$reasons = New-Object System.Collections.Generic.List[string]
 $failed = 0
 $skipped = 0
-function Write-Verdict([string] $Facet, [string] $Verdict, [string] $Detail) {
-    $clean = $Detail -replace "[`r`n`t]+", ' '
+Add-Summary "### $GateName, $Version, on this machine"
+Add-Summary ''
+Add-Summary '| facet | verdict | detail |'
+Add-Summary '| --- | --- | --- |'
+function Get-Clean([string] $Text) {
+    $clean = ($Text -replace "[`r`n`t]+", ' ').Trim()
     if ($key -ne '') { $clean = $clean.Replace($key, '[staging credential]') }
+    if ($clean.Length -gt 400) { $clean = $clean.Substring(0, 400) }
+    return $clean
+}
+function Write-Verdict([string] $Facet, [string] $Verdict, [string] $Detail) {
+    $clean = Get-Clean $Detail
     $script:rows.Add("$Target`tinstaller`t$Facet`t$Verdict`t$clean")
     Write-Host ("  {0,-8} {1,-5} {2}" -f $Facet, $Verdict, $clean)
+    Add-Summary "| $Facet | $Verdict | $($clean.Replace('|', '\|')) |"
 }
 function Add-Verdict([string] $Facet, [bool] $Ok, [string] $Detail) {
-    if (-not $Ok) { $script:failed++ }
+    if (-not $Ok) {
+        $script:failed++
+        $clean = Get-Clean $Detail
+        $script:reasons.Add("${Facet}: $clean")
+        # One annotation per failing facet: the reason, readable without the
+        # log. A facet that only repeats "nothing was installed" adds none.
+        if ($clean -ne 'nothing was installed') { Write-Annotation 'error' "${GateName}: $Facet failed" $clean }
+    }
     Write-Verdict $Facet $(if ($Ok) { 'pass' } else { 'fail' }) $Detail
 }
+# Something worth telling that is not a verdict: a warning annotation.
+function Add-Note([string] $Facet, [string] $Text) {
+    $clean = Get-Clean $Text
+    Write-Host "  note     ${Facet}: $clean"
+    Write-Annotation 'warning' "${GateName}: $Facet note" $clean
+    $script:notes.Add("Note, ${Facet}: $clean")
+}
+$notes = New-Object System.Collections.Generic.List[string]
 function Add-Skipped([string] $Facet, [string] $Detail) {
     $script:skipped++
     Write-Verdict $Facet $SkippedVerdict $Detail
@@ -162,18 +212,59 @@ try {
     Write-Host "release gate: $Target $Version via installer (this machine)"
     $installArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $here 'install.ps1'), '-NoModifyPath')
     if ($Target -like '*-baseline') { $installArgs += '-Baseline' }
-    & powershell.exe @installArgs
-    $installStatus = $LASTEXITCODE
+    # The installer's output is shown as it comes and kept, so that a failed
+    # install is reported with the installer's own error line.
+    $installLog = Join-Path $work 'install.log'
+    # What it writes to standard error is text here, not a PowerShell error:
+    # the preference is relaxed for this one call so that a line on standard
+    # error cannot end the gate before the verdict.
+    $previousPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & powershell.exe @installArgs 2>&1 | ForEach-Object { "$_" } | Tee-Object -FilePath $installLog
+        $installStatus = $LASTEXITCODE
+    } finally { $ErrorActionPreference = $previousPreference }
     $bin = Join-Path $profileDir '.rafikicode\bin\rafikicode.exe'
     $installed = ($installStatus -eq 0) -and (Test-Path -LiteralPath $bin)
-    Add-Verdict 'install' $installed $(if ($installed) { $bin } else { "install.ps1 exited $installStatus" })
+    $installSaid = @()
+    if (Test-Path -LiteralPath $installLog) { $installSaid = @(Get-Content -LiteralPath $installLog | Where-Object { "$_".Trim() -ne '' }) }
+    $installReason = @($installSaid | Where-Object { "$_" -match '^\s*(Error|ERROR)\b' -or "$_" -match 'Installed, but not ready' } | Select-Object -First 1)
+    if ($installReason.Count -eq 0) { $installReason = @($installSaid | Select-Object -Last 1) }
+    $installWhy = if ($installReason.Count -gt 0) { "$($installReason[0])".Replace($profileDir, '~') } else { 'it printed nothing' }
+    Add-Verdict 'install' $installed $(if ($installed) { $bin } else { "install.ps1 exited $installStatus and ~\.rafikicode\bin\rafikicode.exe is $(if (Test-Path -LiteralPath $bin) { 'present' } else { 'missing' }): $installWhy" })
+    $notReady = @($installSaid | Where-Object { "$_" -match 'Installed, but not ready' } | Select-Object -First 1)
+    if ($installed -and $notReady.Count -gt 0) { Add-Note 'install' "$($notReady[0])" }
 
     if (-not $installed) {
         foreach ($facet in @('version', 'licence', 'signin', 'task')) { Add-Verdict $facet $false 'nothing was installed' }
     } else {
-        $got = ''
-        try { $got = "$(& $bin --version 2>&1 | Select-Object -First 1)".Trim() } catch { $got = "$_" }
-        Add-Verdict 'version' ($LASTEXITCODE -eq 0 -and $got -eq $Version) "printed '$got', releasing $Version"
+        # Standard output is the answer and must be the version alone, on one
+        # line: installers, update checks and scripts compare it. Standard
+        # error is kept apart and reported as a note, so a line the binary says
+        # about this machine neither passes for the version nor hides it.
+        $versionErr = Join-Path $work 'version.err.txt'
+        $versionStatus = -1
+        $printed = @()
+        $previousPreference = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try {
+            $printed = @(& $bin --version 2>$versionErr | ForEach-Object { "$_" } | Where-Object { $_.Trim() -ne '' })
+            $versionStatus = $LASTEXITCODE
+        } catch {
+            Add-Content -LiteralPath $versionErr -Value "$_"
+        } finally { $ErrorActionPreference = $previousPreference }
+        $said = @()
+        if (Test-Path -LiteralPath $versionErr) { $said = @(Get-Content -LiteralPath $versionErr | Where-Object { "$_".Trim() -ne '' }) }
+        $got = if ($printed.Count -gt 0) { "$($printed[0])".Trim() } else { '' }
+        if ($said.Count -gt 0) { Add-Note 'version' "--version wrote to standard error: $(($said | Select-Object -First 3) -join ' ')" }
+        if ($versionStatus -eq 0 -and $got -eq $Version -and $printed.Count -eq 1) {
+            Add-Verdict 'version' $true $got
+        } elseif ($versionStatus -eq 0 -and $got -eq $Version) {
+            Add-Verdict 'version' $false "standard output has $($printed.Count) lines where the version alone belongs: $($printed[1])"
+        } else {
+            $tail = if ($said.Count -gt 0) { "; standard error: $($said[0])" } else { '' }
+            Add-Verdict 'version' $false "exit $versionStatus, printed '$got' on standard output, releasing $Version$tail"
+        }
 
         $licenceText = ''
         try { $licenceText = (& $bin licenses 2>&1 | Out-String) } catch { $licenceText = '' }
@@ -223,13 +314,22 @@ try {
     if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
+Add-Summary ''
+foreach ($line in $notes) { Add-Summary $line }
 if ($failed -ne 0) {
     Write-Host "release gate: $Target FAILED ($failed of $($Facets.Count) facets). This build blocks the release."
+    foreach ($reason in $reasons) { Write-Host "release gate: reason: $reason" }
+    Add-Summary ''
+    Add-Summary "**FAILED: $failed of $($Facets.Count) facets. This build blocks the release.**"
+    Add-Summary ''
+    foreach ($reason in $reasons) { Add-Summary "- $reason" }
     exit 1
 }
 if ($skipped -ne 0) {
     Write-Host "release gate: $Target passed $($Facets.Count - $skipped) of $($Facets.Count) facets; signin and task were $SkippedVerdict."
+    Add-Summary "Passed $($Facets.Count - $skipped) of $($Facets.Count) facets; signin and task were $SkippedVerdict."
     exit 0
 }
 Write-Host "release gate: $Target passed all $($Facets.Count) facets."
+Add-Summary "Passed all $($Facets.Count) facets."
 exit 0

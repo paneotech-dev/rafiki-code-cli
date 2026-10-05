@@ -15,6 +15,10 @@ set -euo pipefail
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 GATE="$HERE/release-gate.sh"
+# The annotations and the step summary are tested by name below. Everywhere
+# else the gate must behave as it does off a runner, also when this suite is
+# itself run by a workflow.
+unset GITHUB_ACTIONS GITHUB_STEP_SUMMARY
 PORT="${PORT:-4171}"
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/rafikicode-gate-test.XXXXXX")
 trap 'rm -rf "$WORK"' EXIT
@@ -33,16 +37,21 @@ sha256_file() {
     if command -v sha256sum >/dev/null 2>&1; then sha256sum "$@"; else shasum -a 256 "$@"; fi
 }
 
-# make_release <name> <version printed> <answer of run> <whoami mode> <licence files: yes|no>
+# make_release <name> <version printed> <answer of run> <whoami mode> <licence files: yes|no> [<start mode>]
+# start mode: "noisy" writes a line to standard error at every start, the way
+# the folder checks do when they had to replace a folder; "chatty" writes a
+# second line to standard output after the version; "broken" cannot start.
 make_release() {
-    local name=$1 printed=$2 answer=$3 whoami=$4 licences=$5
+    local name=$1 printed=$2 answer=$3 whoami=$4 licences=$5 start=${6:-quiet}
     local build="$WORK/$name/build" assets="$WORK/$name/assets"
     mkdir -p "$build" "$assets"
     cat > "$build/rafikicode" <<FAKE
 #!/bin/sh
 echo "\$1" >> "$WORK/$name/calls.log"
+[ "${start}" = "noisy" ] && echo "The temporary folder /tmp has 0 MB free, so rafikicode uses /home/x/.rafikicode/tmp instead." >&2
+[ "${start}" = "broken" ] && { echo "dyld: Library not loaded: /usr/lib/libmissing.dylib" >&2; exit 133; }
 case "\$1" in
-    --version) echo "${printed}"; exit 0 ;;
+    --version) echo "${printed}"; [ "${start}" = "chatty" ] && echo "A newer version is available."; exit 0 ;;
     licenses)
         if [ "${licences}" = "yes" ]; then echo "MIT License"; echo "Permission is hereby granted, free of charge"; exit 0; fi
         echo "unknown command: licenses" >&2; exit 1 ;;
@@ -131,6 +140,66 @@ mkdir -p "$WORK/empty/assets"; : > "$WORK/empty/assets/SHA256SUMS"
 gate empty; rc=$?
 [ "$rc" = "2" ] && grep -q "was not produced" "$WORK/empty/out.txt"; check $? "a release with no archive for the target is refused"
 
+# Standard error is not the version. A binary that says something about the
+# machine on standard error while printing its version (the folder checks did,
+# on a machine whose temporary folder they replaced) still prints the version
+# on standard output, and the gate reads that: the facet passes and the line is
+# kept as a note. Standard output with anything beside the version fails.
+make_release noisy 1.4.0 "hello world" ok yes noisy
+gate noisy; rc=$?
+[ "$rc" = "0" ] && [ "$(verdict noisy version)" = "pass" ] && [ "$(verdict noisy licence)" = "pass" ] \
+    && grep -q "note     version: --version wrote to standard error: The temporary folder /tmp has 0 MB free" "$WORK/noisy/out.txt"; check $? "a line on standard error does not fail the version facet, and is reported as a note"
+
+make_release chatty 1.4.0 "hello world" ok yes chatty
+gate chatty; rc=$?
+[ "$rc" = "1" ] && [ "$(verdict chatty version)" = "fail" ] \
+    && grep -q "standard output has 2 lines where the version alone belongs: A newer version is available." "$WORK/chatty/out.txt"; check $? "a second line on standard output fails the version facet, and the verdict quotes it"
+
+# The reason for each failing facet, where it can be read without the log: one
+# ::error annotation per facet and the job's step summary, on a runner only.
+gate_on_runner() {
+    local name=$1; shift
+    : > "$WORK/$name/summary.md"
+    GITHUB_ACTIONS=true GITHUB_STEP_SUMMARY="$WORK/$name/summary.md" RAFIKICODE_STAGING_API_KEY="$KEY" \
+        bash "$GATE" --host --target "$target" --version 1.4.0 \
+        --assets "$WORK/$name/assets" --results "$WORK/$name/results.tsv" "$@" > "$WORK/$name/out.txt" 2>&1
+}
+gate_on_runner wrongversion; rc=$?
+[ "$rc" = "1" ] && grep -qx "::error title=release gate ${target} (installer)%3A version failed::exit 0, printed '1.3.9' on standard output, releasing 1.4.0" "$WORK/wrongversion/out.txt" \
+    && [ "$(grep -c '^::error ' "$WORK/wrongversion/out.txt")" = "1" ]; check $? "on a runner a failing facet is one ::error annotation carrying its reason"
+grep -q "release gate: reason: version: exit 0, printed '1.3.9' on standard output, releasing 1.4.0" "$WORK/wrongversion/out.txt"; check $? "the log names the reason for each failing facet on a line of its own"
+grep -q "| version | fail | exit 0, printed '1.3.9' on standard output, releasing 1.4.0 |" "$WORK/wrongversion/summary.md" \
+    && grep -q "FAILED: 1 of 5 facets" "$WORK/wrongversion/summary.md" && grep -q "^- version: exit 0, printed '1.3.9'" "$WORK/wrongversion/summary.md" \
+    && grep -q "| install | pass |" "$WORK/wrongversion/summary.md" && grep -q "GATE_RESULT version fail" "$WORK/wrongversion/summary.md"; check $? "the step summary has the verdict table, the reasons and the end of the probe log"
+! grep -q "$KEY" "$WORK/wrongversion/summary.md" "$WORK/wrongversion/out.txt"; check $? "the credential is in neither the annotations nor the step summary"
+
+gate_on_runner noisy; rc=$?
+[ "$rc" = "0" ] && ! grep -q '^::error ' "$WORK/noisy/out.txt" \
+    && grep -q "^::warning title=release gate ${target} (installer)%3A version note::--version wrote to standard error: The temporary folder /tmp has 0 MB free" "$WORK/noisy/out.txt" \
+    && grep -q "^Note, version: --version wrote to standard error" "$WORK/noisy/summary.md" \
+    && grep -q "Passed all 5 facets." "$WORK/noisy/summary.md"; check $? "a note is a ::warning annotation and a line of the summary, never an error"
+
+gate_on_runner good; rc=$?
+[ "$rc" = "0" ] && ! grep -q '^::' "$WORK/good/out.txt" && grep -q "Passed all 5 facets." "$WORK/good/summary.md"; check $? "a good build makes no annotation at all"
+
+make_release broken 1.4.0 "hello world" ok yes broken
+gate_on_runner broken; rc=$?
+[ "$rc" = "1" ] && [ "$(verdict broken install)" = "fail" ] \
+    && grep -q "^::error title=release gate ${target} (installer)%3A install failed::the install command exited 1 and ~/.rafikicode/bin/rafikicode is present: Error: rafikicode was installed to ~/.rafikicode/bin/rafikicode but does not run. (it said: dyld: Library not loaded: /usr/lib/libmissing.dylib)" "$WORK/broken/out.txt" \
+    && [ "$(grep -c '^::error ' "$WORK/broken/out.txt")" = "1" ]; check $? "a failed install is one annotation, with the installer's own error line and what the binary said"
+
+gate_on_runner altered; rc=$?
+[ "$rc" = "2" ] && grep -q "^::error title=release gate ${target} (installer)%3A not run::rafikicode-${target}${ext} does not match SHA256SUMS" "$WORK/altered/out.txt" \
+    && grep -q "not run" "$WORK/altered/summary.md"; check $? "a gate that could not start says why in an annotation and in the summary"
+
+: > "$WORK/good/summary.md"
+out=$(env -u RAFIKICODE_STAGING_API_KEY GITHUB_ACTIONS=true GITHUB_STEP_SUMMARY="$WORK/good/summary.md" bash "$GATE" --host --target "$target" --version 1.4.0 --assets "$WORK/good/assets" 2>&1); rc=$?
+[ "$rc" = "2" ] && [[ "$out" == *"::error title=release gate ${target} (installer)%3A not run::RAFIKICODE_STAGING_API_KEY is not set"* ]] \
+    && grep -q "RAFIKICODE_STAGING_API_KEY is not set" "$WORK/good/summary.md"; check $? "a missing credential is annotated by name"
+
+out=$(GITHUB_ACTIONS=true RAFIKICODE_STAGING_API_KEY="$KEY" bash "$GATE" --host --target "$target" --version 1.4.0 --assets "$WORK/100%/a,b:c" 2>&1); rc=$?
+[ "$rc" = "2" ] && [[ "$out" == *"::error title=release gate ${target} (installer)%3A not run::--assets must name the directory"* ]]; check $? "an annotation title is escaped for the runner"
+
 # --no-live: a pre-release without the staging key.
 SKIPPED="skipped (no staging key, pre-release)"
 gate_nolive() {
@@ -165,6 +234,7 @@ else (cd "$WORK/rcempty/build" && zip -q "$WORK/rcempty/assets/rafikicode-${targ
 gate_nolive rcempty; rc=$?
 [ "$rc" = "1" ] && [ "$(verdict rcempty install)" = "fail" ] && [ "$(verdict rcempty signin)" = "fail" ] \
     && [ "$(verdict rcempty task)" = "fail" ]; check $? "--no-live with nothing installed fails signin and task instead of skipping them"
+[[ "$(awk -F'\t' '$3 == "install" {print $5}' "$WORK/rcempty/results.tsv")" == *"is missing: Error: "*"does not contain rafikicode"* ]]; check $? "the install verdict carries the installer's own error line"
 
 out=$(env -u RAFIKICODE_STAGING_API_KEY bash "$GATE" --host --target "$target" --version 1.4.0 --assets "$WORK/good/assets" --no-live 2>&1); rc=$?
 [ "$rc" = "2" ] && [[ "$out" == *"--no-live is for a pre-release only"* ]] && [[ "$out" != *"GATE_RESULT"* ]]; check $? "--no-live is refused for a full release"
