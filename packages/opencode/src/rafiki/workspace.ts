@@ -19,6 +19,13 @@
 // not answer cannot hang the start either. Once the folder is chosen, a disk
 // with less than LOW_DISK free gets one warning.
 //
+// A slow answer is not a finding. A count that ran out of time before it
+// reached TOO_MANY_FILES proves nothing about the folder (a slow disk, a busy
+// machine, a cold cache), so the start stays where it is: only a count that
+// really reached the limit moves it. And a folder is "not answering" only
+// after ACCESS_MS, long enough that a loaded machine is not mistaken for a
+// disconnected drive.
+//
 // It never moves a run whose folder the user named (`--dir` for run, the
 // project argument for the interface), nor with RAFIKICODE_NO_DEFAULT_WORKSPACE=1.
 // A folder that is itself a git repository is a project its owner chose (a
@@ -28,12 +35,15 @@ import fs from "fs"
 import os from "os"
 import path from "path"
 import { Brand } from "@opencode-ai/core/brand/brand"
-import { homeDir } from "./folders"
+import { freeBytes, homeDir } from "./folders"
 
 export const FOLDER = "RafikiCode"
 export const OPT_OUT = "RAFIKICODE_NO_DEFAULT_WORKSPACE"
 export const TOO_MANY_FILES = 50_000
 export const PROBE_MS = 2_000
+// How long the start folder may take to answer at all before it is treated as
+// unreachable (a disconnected network drive never answers; a slow one does).
+export const ACCESS_MS = 10_000
 export const LOW_DISK = 500 * 1024 * 1024
 // Folders a project holds many files in that say nothing about whether the
 // folder is a project: skipped by the count.
@@ -138,7 +148,8 @@ export interface Probe {
   repository(dir: string): boolean
   // Is it anywhere inside a git work tree?
   inRepository(dir: string): boolean
-  // Files counted, stopping at limit or after ms; done is false when it stopped early.
+  // Files counted, stopping at limit or after ms. done is false when it stopped
+  // early: at the limit (files equals limit), or because the time ran out.
   count(dir: string, limit: number, ms: number): Promise<{ files: number; done: boolean }>
   // Free bytes on the disk holding dir.
   free(dir: string): number | undefined
@@ -178,7 +189,7 @@ export const realProbe: Probe = {
         return "unwritable" as const
       }
     })()
-    return within(check, PROBE_MS, "unreachable" as const)
+    return within(check, ACCESS_MS, "unreachable" as const)
   },
   repository(dir) {
     try {
@@ -221,12 +232,7 @@ export const realProbe: Probe = {
     return { files, done: true }
   },
   free(dir) {
-    try {
-      const stat = fs.statfsSync(dir)
-      return Number(stat.bavail) * Number(stat.bsize)
-    } catch {
-      return undefined
-    }
+    return freeBytes(dir)
   },
 }
 
@@ -279,7 +285,7 @@ export async function inspect(input: Omit<Input, "command" | "explicit" | "attac
   if (access === "missing") return move("the folder you started in no longer exists", "the start folder no longer exists")
   if (access === "unreachable")
     return move(
-      `started from ${input.cwd}, which did not answer within ${PROBE_MS / 1000} seconds, perhaps a disconnected network drive`,
+      `started from ${input.cwd}, which did not answer within ${ACCESS_MS / 1000} seconds, perhaps a disconnected network drive`,
       "the start folder did not answer",
     )
 
@@ -292,11 +298,13 @@ export async function inspect(input: Omit<Input, "command" | "explicit" | "attac
     return move(`started from ${input.cwd}, which this account cannot write to`, "the start folder cannot be written")
   if (!kind && !input.probe.inRepository(input.cwd)) {
     const counted = await input.probe.count(input.cwd, TOO_MANY_FILES, PROBE_MS)
-    if (!counted.done)
+    if (!counted.done && counted.files >= TOO_MANY_FILES)
       return move(
         `started from ${input.cwd}, which holds more than ${counted.files.toLocaleString("en-US")} files and is not a git repository`,
         "the start folder is too big to be a project",
       )
+    // Out of time below the limit: not known, so not acted on.
+    if (!counted.done) return { finding: "usable; its size could not be measured in time" }
   }
   return { finding: "ok" }
 }

@@ -145,16 +145,29 @@ fi
 
 # -------------------------------------------------------------------- version --
 
-out=$("$BIN" --version 2>&1); status=$?
+# Standard output is the answer and must be the version alone, on one line:
+# that is what an installer, an update check or a script compares. Standard
+# error is kept apart, so a line the binary says about this machine (a home or
+# temporary folder it had to replace, which is what these cells are about)
+# neither passes for the version nor hides it. It is shown in the log.
+out=$("$BIN" --version 2>"$LOGDIR/version.err"); status=$?
+said=$(decolour < "$LOGDIR/version.err" 2>/dev/null | grep -v '^[[:space:]]*$')
+if [ -n "$said" ]; then
+    echo "=== --version wrote to standard error ==="
+    printf '%s\n' "$said"
+fi
 if [ "$status" = "0" ] && [ -n "$out" ]; then
     got=$(printf '%s' "$out" | tr -d '\r' | head -1)
-    if [ -z "$VERSION" ] || [ "$got" = "$VERSION" ]; then
+    count=$(printf '%s\n' "$out" | grep -c -v '^[[:space:]]*$')
+    if [ "$count" != "1" ]; then
+        say version fail "standard output has $count lines where the version alone belongs: $(printf '%s' "$out" | sed -n '2p')"
+    elif [ -z "$VERSION" ] || [ "$got" = "$VERSION" ]; then
         say version pass "$got"
     else
         say version fail "printed $got, installed $VERSION"
     fi
 else
-    say version fail "exit $status: $out"
+    say version fail "exit $status: ${out:-$said}"
 fi
 
 # --------------------------------------------------------------------- doctor --

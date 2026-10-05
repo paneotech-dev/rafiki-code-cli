@@ -44,6 +44,13 @@
 # signin and task are then recorded as "skipped (no staging key, pre-release)",
 # never as a pass. A missing key without --no-live still stops the gate.
 #
+# Why a gate failed is said three times: in the log, in the job's step summary
+# ($GITHUB_STEP_SUMMARY), and as a workflow annotation (::error) for each
+# failing facet and for a gate that could not start. The annotation is the one
+# that can be read without the log: the reason travels with the run itself.
+# What the binary wrote to standard error while it printed its version, and an
+# installer that finished "not ready", are annotated as warnings.
+#
 # Windows builds are gated by install/release-gate.ps1, which does the same
 # with install.ps1.
 set -euo pipefail
@@ -84,7 +91,31 @@ while [[ $# -gt 0 ]]; do
 done
 
 note() { printf '%s\n' "$*" >&2; }
-die() { note "release gate: $*"; exit 2; }
+
+# annotate <error|warning|notice> <title> <message>: a workflow command, on a
+# GitHub runner only. The data is escaped the way the runner expects.
+annotate() {
+    [ "${GITHUB_ACTIONS:-}" = "true" ] || return 0
+    local level=$1 title=$2 message=$3
+    message=${message//'%'/%25}; message=${message//$'\r'/%0D}; message=${message//$'\n'/%0A}
+    title=${title//'%'/%25}; title=${title//$'\r'/%0D}; title=${title//$'\n'/%0A}
+    title=${title//':'/%3A}; title=${title//','/%2C}
+    printf '::%s title=%s::%s\n' "$level" "$title" "$message"
+}
+# summary <line>: one line of the job's step summary, when there is one.
+summary() {
+    [ -n "${GITHUB_STEP_SUMMARY:-}" ] || return 0
+    printf '%s\n' "$*" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+}
+gate_name() { printf 'release gate %s (%s)' "${target:-unknown build}" "${channel:-installer}"; }
+die() {
+    note "release gate: $*"
+    annotate error "$(gate_name): not run" "$*"
+    summary "### $(gate_name): not run"
+    summary ""
+    summary "$*"
+    exit 2
+}
 
 [ -n "$target" ] || die "--target is required"
 [ -n "$assets" ] && [ -d "$assets" ] || die "--assets must name the directory holding the release archives"
@@ -112,6 +143,10 @@ elif [ -z "${RAFIKICODE_STAGING_API_KEY:-}" ]; then
     note "  does not run and the release is blocked. Add the repository secret"
     note "  RAFIKICODE_STAGING_API_KEY (an API key of the staging test account,"
     note "  created with the Rafiki Code option ticked)."
+    annotate error "$(gate_name): not run" "RAFIKICODE_STAGING_API_KEY is not set, so the gate cannot sign in or run a task against staging. The release is blocked until the repository secret is added."
+    summary "### $(gate_name): not run"
+    summary ""
+    summary "RAFIKICODE_STAGING_API_KEY is not set, so the gate cannot sign in or run a task against staging."
     exit 2
 fi
 
@@ -278,28 +313,42 @@ fi
 # -------------------------------------------------------------------- verdict --
 
 # The credential is not echoed by the probe; this is the belt to that brace.
+# Everything below reads the redacted copy, never the log itself.
+SHOWN="$WORK/probe.shown.log"
 GATE_REDACT="${RAFIKICODE_STAGING_API_KEY:-}" awk '
     BEGIN { key = ENVIRON["GATE_REDACT"]; n = length(key) }
     {
         while (n > 0 && (i = index($0, key)) > 0) $0 = substr($0, 1, i - 1) "[staging credential]" substr($0, i + n)
         print
-    }' "$LOG"
+    }' "$LOG" > "$SHOWN"
+cat "$SHOWN"
 
 RESULTS="$WORK/results.tsv"
 : > "$RESULTS"
 failed=0
 skipped=0
+where=$([ "$host" = "true" ] && echo "this machine" || echo "$image")
+# The last thing the probe said that is not a verdict: the reason, when the
+# probe stopped before it could give one.
+last_said=$(grep -a -v -e '^GATE_' -e '^[[:space:]]*$' "$SHOWN" 2>/dev/null | tail -1 | cut -c1-200 || true)
 echo
-echo "release gate: ${target} ${version} via ${channel} ($([ "$host" = "true" ] && echo "this machine" || echo "$image"))"
+echo "release gate: ${target} ${version} via ${channel} (${where})"
+summary "### $(gate_name), ${version}, on ${where}"
+summary ""
+summary "| facet | verdict | detail |"
+summary "| --- | --- | --- |"
+reasons=()
+# A vertical bar inside a table cell of the summary.
+BAR='\|'
 for f in "${FACETS[@]}"; do
-    line=$(grep -a "^GATE_RESULT $f " "$LOG" 2>/dev/null | tail -1 || true)
+    line=$(grep -a "^GATE_RESULT $f " "$SHOWN" 2>/dev/null | tail -1 || true)
     if [ -n "$line" ]; then
         verdict=$(printf '%s' "$line" | awk '{print $3}')
         detail=$(printf '%s' "$line" | cut -d' ' -f4-)
     else
         # Not reached is not known, and not known does not ship.
         verdict=fail
-        detail="the probe did not report this facet (exit ${status})"
+        detail="the probe did not report this facet (exit ${status}); the last thing it said: ${last_said:-nothing}"
     fi
     if [ "$verdict" = "skipped" ] && [ "$live" = "false" ] && [[ "$LIVE_FACETS" == *" $f "* ]]; then
         verdict="$SKIPPED_VERDICT"
@@ -307,18 +356,57 @@ for f in "${FACETS[@]}"; do
     elif [ "$verdict" != "pass" ]; then
         verdict=fail
         failed=$((failed + 1))
+        reasons+=("${f}: ${detail}")
+        # One annotation per failing facet: the reason, readable without the
+        # log. A facet that only repeats "nothing was installed" adds none: the
+        # install facet's annotation already says why, and a step shows few.
+        [ "$detail" = "nothing was installed" ] || annotate error "$(gate_name): ${f} failed" "${detail}"
     fi
     printf '%s\t%s\t%s\t%s\t%s\n' "$target" "$channel" "$f" "$verdict" "$detail" >> "$RESULTS"
     printf '  %-8s %-5s %s\n' "$f" "$verdict" "$detail"
+    summary "| ${f} | ${verdict} | ${detail//|/$BAR} |"
 done
 [ -n "$results_out" ] && cp "$RESULTS" "$results_out"
 
+# What the probe noted without judging it: said in the log, the summary and a
+# warning annotation, because a line on standard error today is a failed
+# comparison somewhere tomorrow.
+notes=$(grep -a '^GATE_NOTE ' "$SHOWN" 2>/dev/null || true)
+if [ -n "$notes" ]; then
+    summary ""
+    while IFS= read -r line; do
+        facet=$(printf '%s' "$line" | awk '{print $2}')
+        text=$(printf '%s' "$line" | cut -d' ' -f3-)
+        echo "  note     ${facet}: ${text}"
+        annotate warning "$(gate_name): ${facet} note" "$text"
+        summary "Note, ${facet}: ${text}"
+    done <<NOTES
+$notes
+NOTES
+fi
+
 if [ "$failed" != "0" ]; then
     echo "release gate: ${target} FAILED (${failed} of ${#FACETS[@]} facets). This build blocks the release."
+    for reason in "${reasons[@]}"; do echo "release gate: reason: ${reason}"; done
+    summary ""
+    summary "**FAILED: ${failed} of ${#FACETS[@]} facets. This build blocks the release.**"
+    summary ""
+    for reason in "${reasons[@]}"; do summary "- ${reason}"; done
+    summary ""
+    summary "The end of the probe log:"
+    summary ""
+    summary '```'
+    if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+        grep -a -v '^[[:space:]]*$' "$SHOWN" 2>/dev/null | tail -40 >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+    fi
+    summary '```'
     exit 1
 fi
+summary ""
 if [ "$skipped" != "0" ]; then
     echo "release gate: ${target} passed $(( ${#FACETS[@]} - skipped )) of ${#FACETS[@]} facets; signin and task were ${SKIPPED_VERDICT}."
+    summary "Passed $(( ${#FACETS[@]} - skipped )) of ${#FACETS[@]} facets; signin and task were ${SKIPPED_VERDICT}."
     exit 0
 fi
 echo "release gate: ${target} passed all ${#FACETS[@]} facets."
+summary "Passed all ${#FACETS[@]} facets."

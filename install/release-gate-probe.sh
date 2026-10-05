@@ -5,6 +5,11 @@
 #
 #   GATE_RESULT <facet> <pass|fail> <detail>
 #
+# and, when something is worth telling without being a verdict (the binary
+# wrote to standard error while printing its version, for example):
+#
+#   GATE_NOTE <facet> <text>
+#
 #   install  the documented install command ran to completion
 #   version  --version prints the version being released
 #   licence  the licence and the notice arrived with the binary
@@ -44,16 +49,26 @@ LIVE=${GATE_LIVE:-1}
 ESC=$(printf '\033')
 decolour() { sed -e "s/${ESC}\\[[0-9;?]*[a-zA-Z]//g" | tr -d '\r'; }
 say() {
-    detail=$(printf '%s' "$3" | tr '\n\t' '  ' | decolour | cut -c1-240)
+    detail=$(printf '%s' "$3" | tr '\n\t' '  ' | decolour | cut -c1-400)
     printf 'GATE_RESULT %s %s %s\n' "$1" "$2" "$detail"
+}
+note() {
+    text=$(printf '%s' "$2" | tr '\n\t' '  ' | decolour | cut -c1-400)
+    printf 'GATE_NOTE %s %s\n' "$1" "$text"
 }
 rest_fail() {
     reason=$1; shift
     for f in "$@"; do say "$f" fail "$reason"; done
 }
+# A scratch file, in the temporary folder when mktemp works and in the home
+# folder when it does not.
+scratch() { mktemp 2>/dev/null || echo "${HOME}/.gate-$1"; }
 
 echo "=== gate probe: ${TARGET} ${VERSION} via ${CHANNEL} ==="
 echo "whoami: $(id -un 2>/dev/null || id -u)   home: ${HOME-<unset>}   arch: $(uname -m) ($(uname -s))"
+# What the machine looked like, for whoever reads this log after a failure.
+echo "folder: $(pwd 2>/dev/null)   TMPDIR: ${TMPDIR-<unset>}   bash: $(bash -c 'echo $BASH_VERSION' 2>/dev/null || echo none)"
+df -Pk "${TMPDIR:-/tmp}" "${HOME:-/}" 2>/dev/null | sed 's/^/df: /'
 
 # The key must never appear in the log. The installer is run without it, so
 # that it behaves as it does for someone installing before they have a key.
@@ -77,13 +92,14 @@ case "$CHANNEL" in
         echo "=== curl -fsSL ${MIRROR}/install.sh | bash -s -- --target ${TARGET} --no-login --allow-http-loopback ==="
         # POSIX sh has no pipefail, and the last command of this pipeline only
         # strips colours, so the installer's own status goes through a file.
-        statusfile=$(mktemp 2>/dev/null || echo "${HOME}/.gate-install-status")
+        statusfile=$(scratch install-status)
+        installlog=$(scratch install-log)
         {
             curl -fsSL "${MIRROR}/install.sh" \
                 | RAFIKICODE_RELEASE_API="${MIRROR}/api" RAFIKICODE_RELEASE_BASE="${MIRROR}/dl" \
                   bash -s -- --target "$TARGET" --no-login --allow-http-loopback
             echo $? > "$statusfile"
-        } 2>&1 | decolour
+        } 2>&1 | decolour | tee "$installlog"
         status=$(cat "$statusfile" 2>/dev/null || echo 1)
         rm -f "$statusfile"
         BIN="${HOME}/.rafikicode/bin/rafikicode"
@@ -95,10 +111,12 @@ case "$CHANNEL" in
             exit 0
         fi
         echo "=== npm install -g ${GATE_NPM_TARBALL:-<no tarball>} ==="
+        installlog=$(scratch install-log)
         RAFIKICODE_RELEASE_BASE="${MIRROR}/dl" RAFIKICODE_INSTALL_ALLOW_HTTP_LOOPBACK=1 \
             RAFIKICODE_INSTALL_TARGET="$TARGET" \
-            npm install -g "${GATE_NPM_TARBALL:?GATE_NPM_TARBALL is required for the npm channel}" 2>&1
+            npm install -g "${GATE_NPM_TARBALL:?GATE_NPM_TARBALL is required for the npm channel}" > "$installlog" 2>&1
         status=$?
+        cat "$installlog"
         BIN="$(npm prefix -g 2>/dev/null)/bin/rafikicode"
         ;;
     *)
@@ -108,11 +126,34 @@ case "$CHANNEL" in
         ;;
 esac
 
+# What the install said was wrong, in its own words: its first "Error:" line,
+# or its last line when it named none. The verdict carries it, because the
+# verdict is what reaches the workflow annotations and the log does not.
+install_reason() {
+    reason=$(grep -a -i -m 1 -e '^error:' -e '^npm err' "$installlog" 2>/dev/null)
+    [ -n "$reason" ] || reason=$(grep -a -v '^[[:space:]]*$' "$installlog" 2>/dev/null | tail -1)
+    # What the binary itself said, when the installer quotes it.
+    quoted=$(grep -a -m 1 '^  it said:' "$installlog" 2>/dev/null | sed 's/^ *//')
+    # The home folder is a long temporary path here; the reason reads better without it.
+    printf '%s%s' "${reason:-it printed nothing}" "${quoted:+ ($quoted)}" | sed "s|${HOME:-/nonexistent}|~|g"
+}
+# The installer's closing check, when it found the install not ready: the build
+# is installed all the same, so this is a note and the facets below decide.
+if grep -a -q 'Installed, but not ready' "${installlog:-/nonexistent}" 2>/dev/null; then
+    note install "$(grep -a 'Installed, but not ready' "$installlog" | head -1)"
+fi
 if [ "$status" != "0" ] || [ ! -x "$BIN" ]; then
-    say install fail "the install command exited ${status} and ${BIN} is $([ -x "$BIN" ] && echo present || echo missing)"
+    elsewhere=""
+    if [ "$status" = "0" ]; then
+        # Exit 0 with nothing at the expected path: say where it went instead.
+        elsewhere=$(grep -a -m 1 -e 'is installed into' -e 'Installed .* at ' "$installlog" 2>/dev/null)
+    fi
+    say install fail "the install command exited ${status} and ~/.rafikicode/bin/rafikicode is $([ -x "$BIN" ] && echo present || echo missing): ${elsewhere:-$(install_reason)}"
     rest_fail "nothing was installed" version licence signin task
+    rm -f "$installlog"
     exit 0
 fi
+rm -f "$installlog"
 say install pass "$BIN"
 
 # The npm launcher downloads on first use when scripts were skipped; keep the
@@ -126,12 +167,28 @@ RAFIKICODE_DISABLE_AUTOUPDATE=1; export RAFIKICODE_DISABLE_AUTOUPDATE
 
 # -------------------------------------------------------------------- version --
 
-out=$("$BIN" --version 2>&1); status=$?
+# Standard output is the answer and must be the version alone, on one line:
+# installers, update checks and scripts compare it. Standard error is kept
+# apart and reported as a note, so a line the binary says about this machine (a
+# folder it had to replace, for example) neither passes for the version nor
+# hides it.
+errfile=$(scratch version-stderr)
+out=$("$BIN" --version 2>"$errfile"); status=$?
+said=$(decolour < "$errfile" 2>/dev/null | grep -v '^[[:space:]]*$')
+rm -f "$errfile"
 got=$(printf '%s' "$out" | decolour | head -1)
-if [ "$status" = "0" ] && [ "$got" = "$VERSION" ]; then
+count=$(printf '%s\n' "$out" | decolour | grep -c -v '^[[:space:]]*$')
+if [ -n "$said" ]; then
+    echo "=== --version wrote to standard error ==="
+    printf '%s\n' "$said"
+    note version "--version wrote to standard error: $(printf '%s' "$said" | head -3)"
+fi
+if [ "$status" = "0" ] && [ "$got" = "$VERSION" ] && [ "$count" = "1" ]; then
     say version pass "$got"
+elif [ "$status" = "0" ] && [ "$got" = "$VERSION" ]; then
+    say version fail "standard output has ${count} lines where the version alone belongs: $(printf '%s' "$out" | decolour | sed -n '2p')"
 else
-    say version fail "exit ${status}, printed '${got}', releasing ${VERSION}"
+    say version fail "exit ${status}, printed '${got}' on standard output, releasing ${VERSION}${said:+; standard error: $(printf '%s' "$said" | head -1)}"
 fi
 
 # -------------------------------------------------------------------- licence --
@@ -139,7 +196,7 @@ fi
 out=$("$BIN" licenses 2>&1); status=$?
 problem=""
 if [ "$status" != "0" ]; then
-    problem="rafikicode licenses exited ${status}"
+    problem="rafikicode licenses exited ${status}: $(printf '%s' "$out" | decolour | grep -v '^[[:space:]]*$' | tail -1)"
 elif ! printf '%s' "$out" | grep -q "Permission is hereby granted"; then
     problem="rafikicode licenses did not print the licence text"
 fi

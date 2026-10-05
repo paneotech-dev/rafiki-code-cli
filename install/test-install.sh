@@ -958,6 +958,27 @@ out=$(env HOME="$h" RAFIKICODE_INSTALL_DIR="$h/.rafikicode/bin" RAFIKICODE_GATEW
 [ "$rc" = "0" ] && [[ "$out" == *"FAIL  the model gateway did not answer"* ]] \
     && [[ "$out" == *"Installed, but not ready: the gateway did not answer."* ]] \
     && [[ "$out" == *"send that file to info@paneo.tech"* ]] && [ -s "$h/.rafikicode/install.log" ]; check $? "a gateway that does not answer turns the check red and writes the report"
+# A gateway that accepts the connection and then says nothing must not hold the
+# installer: the check gives up after its time limit, and the install is done.
+if command -v python3 >/dev/null 2>&1; then
+    silent_port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+    python3 -c 'import socket, sys
+s = socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+s.bind(("127.0.0.1", int(sys.argv[1]))); s.listen(5)
+held = []
+while True:
+    held.append(s.accept()[0])' "$silent_port" >/dev/null 2>&1 &
+    silent_pid=$!
+    sleep 0.5
+    h=$(fresh_home home-selfcheck-silent)
+    started=$(date +%s)
+    out=$(env HOME="$h" RAFIKICODE_INSTALL_DIR="$h/.rafikicode/bin" RAFIKICODE_GATEWAY_URL="http://127.0.0.1:${silent_port}/v1" \
+        RAFIKICODE_INSTALL_CHECK_TIMEOUT=2 "$BASH_BIN" "$INSTALLER" --no-login --no-modify-path 2>&1 | plain) && rc=0 || rc=$?
+    took=$(( $(date +%s) - started ))
+    kill "$silent_pid" 2>/dev/null; wait "$silent_pid" 2>/dev/null
+    [ "$rc" = "0" ] && [ "$took" -lt 20 ] && [[ "$out" == *"FAIL  the model gateway did not answer"* ]] \
+        && [ -x "$h/.rafikicode/bin/rafikicode" ]; check $? "a gateway that accepts and never answers is given up on after the time limit (${took} s), and the install is done"
+fi
 h=$(fresh_home home-faillog)
 out=$(env HOME="$h" "$BASH_BIN" "$INSTALLER" --no-login --no-modify-path --version 9.9.9 2>&1 | plain) && rc=0 || rc=$?
 [ "$rc" != "0" ] && [[ "$out" == *"A report of this install was saved to $h/.rafikicode/install.log."* ]] \

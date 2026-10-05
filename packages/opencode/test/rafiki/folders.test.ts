@@ -159,6 +159,51 @@ describe("the folder doctor: the folders rafikicode needs", () => {
     expect(byName(result, "data").detail).toBe("/home/Zoë Müller/.local/share/rafikicode is writable")
   })
 
+  test("free space that cannot be right is unknown, and an unknown never replaces the temporary folder", () => {
+    // What a healthy disk answers.
+    expect(Folders.plausibleFree({ bavail: 1000, bsize: 4096, blocks: 5000 })).toBe(4096000)
+    expect(Folders.plausibleFree({ bavail: 10n, bsize: 4096n, blocks: 20n })).toBe(40960)
+    // A really full disk is a finding.
+    expect(Folders.plausibleFree({ bavail: 0, bsize: 4096, blocks: 5000 })).toBe(0)
+    // Answers no disk gives: a block size of 0, no blocks, more free than there is, not a number.
+    expect(Folders.plausibleFree({ bavail: 1000, bsize: 0, blocks: 5000 })).toBeUndefined()
+    expect(Folders.plausibleFree({ bavail: 0, bsize: 4096, blocks: 0 })).toBeUndefined()
+    expect(Folders.plausibleFree({ bavail: 6000, bsize: 4096, blocks: 5000 })).toBeUndefined()
+    expect(Folders.plausibleFree({ bavail: -1, bsize: 4096, blocks: 5000 })).toBeUndefined()
+    expect(Folders.plausibleFree({ bavail: undefined, bsize: 4096, blocks: 5000 })).toBeUndefined()
+    expect(Folders.freeBytes("/x", () => ({ bavail: 123, bsize: 0, blocks: 456 }))).toBeUndefined()
+    expect(
+      Folders.freeBytes("/x", () => {
+        throw new Error("ENOSYS")
+      }),
+    ).toBeUndefined()
+    expect(Folders.freeBytes(os.tmpdir())).toBeGreaterThan(0)
+
+    // The check itself: unknown free space keeps the folder and prints nothing.
+    const { io } = memory({ dirs: ["/home/ana", "/tmp"] })
+    const unknown = run({ HOME: "/home/ana", TMPDIR: "/tmp" }, { ...io, free: () => undefined })
+    expect(byName(unknown, "temp").status).toBe("ok")
+    expect(unknown.env).toEqual({})
+    expect(Folders.lines(unknown.checks)).toEqual([])
+  })
+
+  test("a command whose output a program reads gets no line about a fix, only what could not be repaired", () => {
+    for (const args of [["--version"], ["-v"], ["--help"], ["run", "-h"], ["completion"], ["--get-yargs-completions", "ru"], ["--print-logs", "--version"]])
+      expect({ args, quiet: Folders.machineRead(args) }).toEqual({ args, quiet: true })
+    for (const args of [[], ["run", "say hello"], ["doctor", "--folders"], ["licenses"], ["run", "--", "--version"], ["run", "completion"]])
+      expect({ args, quiet: Folders.machineRead(args) }).toEqual({ args, quiet: false })
+
+    const fixed = run({ HOME: "/home/ana", TMPDIR: "/tmp" }, memory({ dirs: ["/home/ana", "/tmp"], free: { "/tmp": 0 } }).io)
+    expect(Folders.lines(fixed.checks)).toEqual(["The temporary folder /tmp has 0 MB free, so rafikicode uses /home/ana/.rafikicode/tmp instead."])
+    expect(Folders.lines(fixed.checks, true)).toEqual([])
+    const stuck = run(
+      { HOME: "/home/ana", TMPDIR: "/tmp" },
+      memory({ dirs: ["/home/ana", "/tmp"], free: { "/tmp": 0, "/home/ana": 1024 } }).io,
+    )
+    expect(Folders.lines(stuck.checks, true)).toHaveLength(1)
+    expect(Folders.lines(stuck.checks, true)[0]).toContain("Free some space, or set TMPDIR to a folder with room.")
+  })
+
   test("doctor prints what was checked and what was fixed, for support to read", async () => {
     const result = run({ HOME: "/home/ana", TMPDIR: "/tmp" }, memory({ dirs: ["/home/ana", "/tmp"], free: { "/tmp": 0 } }).io)
     const probe: Workspace.Probe = {
@@ -179,9 +224,10 @@ describe("the folder doctor: the folders rafikicode needs", () => {
   })
 })
 
-// The real entry point, with real folders. `--version` is enough: the checks
-// run before any command, and every fix prints its line on stderr.
-async function start(env: Record<string, string | undefined>, args = ["--version"]) {
+// The real entry point, with real folders. `licenses` is enough: the checks run
+// before any command, and every fix prints its line on stderr. `--version` is
+// the other half: its output is read by programs, so it stays the version alone.
+async function start(env: Record<string, string | undefined>, args = ["licenses"]) {
   const full: Record<string, string | undefined> = { ...process.env, ...env }
   for (const [key, value] of Object.entries(env)) if (value === undefined) delete full[key]
   delete full["RAFIKICODE_SKIP_FOLDER_CHECKS"]
@@ -217,10 +263,10 @@ describe("the folder doctor through the real entry point", () => {
           XDG_CACHE_HOME: undefined,
           XDG_STATE_HOME: undefined,
         },
-        ["--version"],
+        ["licenses"],
       )
       expect(result.exitCode).toBe(0)
-      expect(result.stdout.trim()).not.toBe("")
+      expect(result.stdout).toContain("Permission is hereby granted")
       const fallbackHome = result.stderr.match(/keeps its files in (\S+)\./)?.[1]
       expect(result.stderr).toContain(`Your home folder (${homeFile}) cannot be written, so rafikicode keeps its files in`)
       expect(fallbackHome).toBeTruthy()
@@ -255,4 +301,40 @@ describe("the folder doctor through the real entry point", () => {
     expect(result.stderr).not.toContain("rafikicode keeps its files")
     expect(result.stderr).not.toContain("instead.")
   }, 60_000)
+
+  test("--version prints the version and nothing else, whatever had to be fixed", async () => {
+    const base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "rafikicode-folders-")))
+    try {
+      const healthy = await start({}, ["--version"])
+      const tmpFile = path.join(base, "tmp-is-a-file")
+      fs.writeFileSync(tmpFile, "")
+      const data = path.join(base, "data")
+      fs.mkdirSync(data)
+      fs.writeFileSync(path.join(data, "rafikicode"), "not a folder")
+      const env = {
+        HOME: undefined,
+        OPENCODE_TEST_HOME: undefined,
+        TMPDIR: tmpFile,
+        XDG_DATA_HOME: data,
+        XDG_CONFIG_HOME: undefined,
+        XDG_CACHE_HOME: undefined,
+        XDG_STATE_HOME: undefined,
+      }
+      const result = await start(env, ["--version"])
+      expect(result.exitCode).toBe(0)
+      expect(result.stdout).toBe(healthy.stdout)
+      expect(result.stdout.trim().split("\n")).toHaveLength(1)
+      expect(result.stderr).toBe("")
+      // The same start with a command a person reads says what it did.
+      const spoken = await start(env, ["licenses"])
+      expect(spoken.stderr).toContain("Your home folder is not set, so rafikicode keeps its files in")
+      expect(spoken.stderr).toContain(`The temporary folder ${tmpFile} is a file, not a folder`)
+      for (const text of [result.stderr, spoken.stderr]) {
+        const fallbackHome = text.match(/keeps its files in (\S+)\./)?.[1]
+        if (fallbackHome && fallbackHome.includes("rafikicode-home-")) fs.rmSync(fallbackHome, { recursive: true, force: true })
+      }
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true })
+    }
+  }, 120_000)
 })
