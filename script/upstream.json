@@ -170,7 +170,7 @@
     {
       "path": "packages/opencode/script/build.ts",
       "class": "logic",
-      "why": "Output and user agent use the package name; every target the build host can execute is started once, each binary is hashed, and a coverage report is written (`script/platform-coverage.ts`). Every darwin binary is signed ad hoc once it is final, with rcodesign when the host is not a Mac, and its signature checked page by page (`script/macos-signature.ts`). The order of the `abi` filter is a fix that is not specific to this product."
+      "why": "Output and user agent use the package name; every target the build host can execute is started once, each binary is hashed, and a coverage report is written (`script/platform-coverage.ts`). Every darwin binary is signed ad hoc once it is final, with rcodesign when the host is not a Mac, and its signature checked page by page (`script/macos-signature.ts`). The order of the `abi` filter is a fix that is not specific to this product. The compiled entry is `src/main.ts`, which runs the folder checks and the crash handlers before anything else is loaded."
     },
     {
       "path": "packages/opencode/script/postinstall.mjs",

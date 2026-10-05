@@ -73,20 +73,20 @@ counted with `git diff --numstat -M` against the upstream base.
 
 <!-- upstream-files:start -->
 
-Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 182. Changed lines: 6503 (3726 added, 2777 removed).
+Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 182. Changed lines: 6505 (3727 added, 2778 removed).
 
 | Class | Files | Added | Removed |
 | --- | ---: | ---: | ---: |
 | Source: a call into this fork's modules | 38 | 415 | 145 |
 | Source: product name, file names and wording | 43 | 194 | 183 |
-| Source: behaviour changed in place | 14 | 553 | 212 |
+| Source: behaviour changed in place | 14 | 554 | 213 |
 | Tests of upstream, adapted | 33 | 554 | 177 |
 | Generated files | 3 | 366 | 181 |
 | Package identity and packaging | 9 | 20 | 479 |
 | Documentation | 23 | 196 | 1182 |
 | Repository tooling and workflows | 6 | 23 | 8 |
 | Editor extension | 13 | 1405 | 210 |
-| Total | 182 | 3726 | 2777 |
+| Total | 182 | 3727 | 2778 |
 
 ### Source: a call into this fork's modules
 
@@ -190,7 +190,7 @@ On a conflict: Merge by hand and read both sides. These are the files to thin ne
 | File | Added | Removed | Why |
 | --- | ---: | ---: | --- |
 | `packages/core/src/effect/layer-node.ts` | 6 | 0 | An undefined layer dependency raises an error that names the chain. Not specific to this product. |
-| `packages/opencode/script/build.ts` | 111 | 14 | Output and user agent use the package name; every target the build host can execute is started once, each binary is hashed, and a coverage report is written (`script/platform-coverage.ts`). Every darwin binary is signed ad hoc once it is final, with rcodesign when the host is not a Mac, and its signature checked page by page (`script/macos-signature.ts`). The order of the `abi` filter is a fix that is not specific to this product. |
+| `packages/opencode/script/build.ts` | 112 | 15 | Output and user agent use the package name; every target the build host can execute is started once, each binary is hashed, and a coverage report is written (`script/platform-coverage.ts`). Every darwin binary is signed ad hoc once it is final, with rcodesign when the host is not a Mac, and its signature checked page by page (`script/macos-signature.ts`). The order of the `abi` filter is a fix that is not specific to this product. The compiled entry is `src/main.ts`, which runs the folder checks and the crash handlers before anything else is loaded. |
 | `packages/opencode/src/acp/error.ts` | 24 | 1 | A defect that escapes an ACP handler is written to stderr instead of being dropped. Not specific to this product. |
 | `packages/opencode/src/acp/service.ts` | 66 | 23 | Names and the sign in method of this product, trust warnings sent to the client, and the cancellation fix: a cancelled turn answers `cancelled`, and `usage` is omitted when there is no token accounting. The fix is not specific to this product. |
 | `packages/opencode/src/acp/session.ts` | 29 | 0 | The per turn cancellation flag used by the fix in `acp/service.ts`. |
