@@ -85,6 +85,29 @@ reached the gateway. To be investigated on Linux with a large tree and a fake
 gateway before any change; the cause and the fix are recorded in the results
 below.
 
+Owner decision, recorded before the fix: started from the home folder or a
+filesystem or drive root (not itself a git repository), the interface and
+`run` work in `<home>/RafikiCode`, created on first use (mode 700 on Unix),
+and print one line saying so. `--dir`, the interface's project argument and
+`RAFIKICODE_NO_DEFAULT_WORKSPACE=1` keep the current directory. Both
+installers create the folder and name it in their next steps. Separately, the
+first model request must never wait on an unbounded scan.
+
+## Third item: first run audit findings N30, N31, N33
+
+- N30: `install.ps1` under `irm | iex` ends the user's session on any error.
+  The body runs in a script block; a failure prints and ends the block; only
+  a run as a file exits 1, through iex it returns with `$LASTEXITCODE` 1.
+- N31: `install.ps1` never names `rafikicode login`. Its next steps name
+  login, doctor and the RafikiCode folder.
+- N33: a user not yet approved waits ten minutes in `login`. The Console's
+  token endpoint cannot tell (the device code stays `authorization_pending`,
+  because `/device` sends a pending user to `/approval-pending`), so the CLI
+  says once after two minutes that a new account may still be waiting, the
+  expiry message says so, and a new `account_pending` answer, specified in
+  `docs/contracts/device-account-pending.md`, stops `login` at once. The
+  Console side of that answer is not on this branch.
+
 ## Results
 
-To be filled in when the work is done.
+RESULTS_PLACEHOLDER

@@ -53,6 +53,12 @@ Options of `install.sh`, passed after `bash -s --`:
 
 Options of `install.ps1`: `-Version 0.1.9`, `-Prefix DIR`, `-Baseline`, `-NoModifyPath`, `-DryRun`.
 
+Both installers also create a `RafikiCode` folder in your home folder (`~/RafikiCode`, `%USERPROFILE%\RafikiCode` on Windows), private to you on macOS and Linux, and end with the next steps: sign in with `rafikicode login`, check the setup with `rafikicode doctor`, then start in that folder or in any project folder (`cd ~/RafikiCode`, or `cd $HOME\RafikiCode` in PowerShell). `rafikicode` started from the home folder itself, or from the root of a drive, works in that folder and says so; see [Troubleshooting](./troubleshooting.md#running-tasks).
+
+`install.ps1` can be run through `irm ... | iex` safely: an error is printed and the script returns to your prompt with `$LASTEXITCODE` set to 1, so the window stays open. Run as a file, it exits with code 1.
+
+On Windows, run `rafikicode` in Windows Terminal, the default terminal on Windows 11. On Windows 10, Windows PowerShell and `cmd` open in the old console window (`conhost.exe`), which cannot draw the full screen interface; `rafikicode` says so there and exits with code 7. Install Windows Terminal from the Microsoft Store, or with `winget install --id Microsoft.WindowsTerminal`. `rafikicode run "your task"` works in any console, and `rafikicode doctor` says on its `terminal` line whether the current window can draw the interface.
+
 A copy installed this way updates itself, see [Updates](#updates).
 
 ## npm
@@ -141,7 +147,7 @@ What was run while these channels were written, and what was not:
 | Piece | Run | Not run |
 | --- | --- | --- |
 | `install.sh` | its test suites; the release gate in a Debian container with a real build; the twenty cell install matrix (Debian, Ubuntu, Alpine, arm64 under emulation) against the published 0.1.9 archives | on macOS, including the `--target` option |
-| `install.ps1` | under PowerShell 7 on Linux: dry runs, a full install against a local mirror and of the 0.1.9 archive, its exit code 1 when the installed program does not run, its message when `USERPROFILE` is not set | on Windows, ever; the licence file copy |
+| `install.ps1` | under PowerShell 7 on Linux: dry runs, a full install against a local mirror and of the 0.1.9 archive, its exit code 1 when the installed program does not run, its message when `USERPROFILE` is not set, and `install/test-install-ps1.sh`: run as a file and through `iex`, a failure and a success, and that nothing is left in the caller's session | on Windows, ever; the licence file copy |
 | npm package | its tests against a mock release, and an install of the packed package in a Node container with a real build | a publish to the registry; Windows; macOS |
 | Homebrew formula | rendering, checked by tests | `brew install` and `brew test`: Homebrew has not read this formula |
 | winget manifests | rendering, checked by tests | `winget validate`, a submission, an install: winget has not read these manifests |

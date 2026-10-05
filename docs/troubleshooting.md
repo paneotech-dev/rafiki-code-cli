@@ -74,7 +74,11 @@ irm https://github.com/paneotech-dev/rafiki-code-cli/releases/latest/download/in
 
 **Windows: SmartScreen warns that the publisher is unknown.** The `.exe` is not Authenticode signed. The archive is verified against the published `SHA256SUMS` before it is installed, which is the check that matters; `Get-FileHash -Algorithm SHA256` on the downloaded archive reproduces it. Choose **More info**, then **Run anyway**, or unblock the file with `Unblock-File`.
 
-**Windows: the interactive interface draws garbage, or boxes and colours are wrong.** The old console window (`conhost.exe`, what you get from `cmd.exe` started from the Run box) cannot draw the full screen interface. Use Windows Terminal, which is the default on Windows 11 and installable from the Microsoft Store on Windows 10. `rafikicode run "your task"` prints plain lines and works in either.
+**Windows: `Rafiki Code cannot draw its full screen interface in this window.`** You started `rafikicode` in the old Windows console (`conhost.exe`), which is what Windows PowerShell and `cmd` open on Windows 10 unless Windows Terminal is installed and set as the default. That console cannot draw the full screen interface, so `rafikicode` says so and exits with code 7 instead of showing nothing. Open Windows Terminal (from the Microsoft Store, or `winget install --id Microsoft.WindowsTerminal`) and run `rafikicode` there, or give the task directly with `rafikicode run "your task"`, which works in any console. The same message, with another cause, appears when the console refuses virtual terminal processing (Windows older than Windows 10 version 1511, or the console's "Use legacy console" option is on). `rafikicode doctor` has a `terminal` line on Windows that says whether the current window can draw the interface. Windows Terminal, the VS Code terminal, WezTerm, Git Bash and SSH sessions are not refused. If your console draws the interface well anyway, `RAFIKICODE_FORCE_TUI=1` skips the check.
+
+**Windows: the interactive interface draws garbage, or boxes and colours are wrong.** Use Windows Terminal, which is the default on Windows 11 and installable from the Microsoft Store on Windows 10. `rafikicode run "your task"` prints plain lines and works in any console.
+
+**PowerShell: the installer printed an error and the window stayed open.** That is intended. Run as `irm ... | iex`, `install.ps1` returns to your prompt after an error, with `$LASTEXITCODE` set to 1, instead of closing the window before the error can be read. Run as a file (`.\install.ps1`), it exits with code 1.
 
 **Windows: the installed program does not start, or exits immediately with no message.** `install.ps1` checks this itself: it runs `rafikicode --version` after installing and exits with code 1 and the message `was installed but did not run` when that fails. This is not an old processor, and the baseline build will not fix it. The published builds need no recent instruction set: the ordinary binary has been run on an emulated 2008 processor with neither AVX nor AVX2. The four archives labelled `baseline` are byte identical to the siblings they exist to replace, so `-Baseline` fetches the same bytes and changes nothing. Please report it, with the processor named:
 
@@ -119,7 +123,9 @@ If you do not have one, the message carries a line you can send to whoever runs 
 
 **`RAFIKICODE_API_KEY is set, so this session is already authenticated with a server key.`** Signing in is unnecessary while the variable is set, and the variable takes precedence over a stored sign in. Unset it (`unset RAFIKICODE_API_KEY`) if you want to use `login`. Exit code 2.
 
-**The code expired before you approved it.** A code is valid for the time `login` prints (10 minutes). Run `rafikicode login` again for a new code.
+**`Your Rafiki AI account cannot sign in yet: it is waiting for email verification or for approval.`** A new account has to verify its email address and then be approved before it can sign in. `login` stops as soon as the Rafiki AI console says so. Open the verification link in your email if you have not, wait for the approval message, then run `rafikicode login` again. Exit code 2.
+
+**`login` says `Still waiting`, or the code expired before you approved it.** A code is valid for the time `login` prints (10 minutes). After two minutes with no answer from the browser, `login` says once that a new account may still be waiting for email verification or approval: if the browser showed a page about approval, that is the cause, and the sign in cannot finish until the account is approved. Otherwise run `rafikicode login` again for a new code.
 
 **The approval page shows a different code.** Do not approve it. Approve only the code your own terminal printed, then run `rafikicode login` again if in doubt.
 
@@ -200,7 +206,9 @@ git config --global user.email "you@example.com"
 
 **Project plugins, custom tools, a local MCP server, a formatter or a language server declared in the repository do not load.** The workspace is not trusted. `rafikicode doctor` says so on its `trust` line, as a `WARN` rather than a failure, with the list of what was dropped on the line below and the command that fixes it: `rafikicode trust` in the repository, or `RAFIKICODE_TRUST_WORKSPACE=1` for one run. Trust only repositories whose contents you would run as a script; see [workspace trust](./security/workspace-trust.md).
 
-**Slow first request.** The first run in a repository indexes the project and starts language servers. Later requests are faster.
+**`Working in ~/RafikiCode (started from your home folder).`** You started `rafikicode` (the interface or `run`) in your home folder, or at the root of a drive or of the file system. Neither is a project, and treating one as the project meant reading the whole tree before the first request, which on Windows could hang `run` after its first line. So `rafikicode` works in the `RafikiCode` folder of your home folder instead, creating it on first use, and prints that line on standard error. To work on a project, `cd` into it first. To work in the home folder anyway: `rafikicode run --dir . "your task"`, `rafikicode .` for the interface, or `RAFIKICODE_NO_DEFAULT_WORKSPACE=1`. A home folder that is itself a git repository is used as it is.
+
+**Slow first request.** The first run in a repository indexes the project and starts language servers. Later requests are faster. The file checkpoints that undo uses are skipped for a directory with more than 10,000 changed or untracked files, or when listing them takes longer than 10 seconds, so a huge directory never holds back the first request; the log says `snapshots off for this directory` when that happens, and undo cannot restore files changed there.
 
 ## When the connection drops
 
