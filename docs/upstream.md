@@ -73,20 +73,20 @@ counted with `git diff --numstat -M` against the upstream base.
 
 <!-- upstream-files:start -->
 
-Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 178. Changed lines: 6401 (3655 added, 2746 removed).
+Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 178. Changed lines: 6404 (3658 added, 2746 removed).
 
 | Class | Files | Added | Removed |
 | --- | ---: | ---: | ---: |
-| Source: a call into this fork's modules | 35 | 373 | 137 |
+| Source: a call into this fork's modules | 35 | 377 | 137 |
 | Source: product name, file names and wording | 43 | 185 | 175 |
-| Source: behaviour changed in place | 13 | 533 | 197 |
+| Source: behaviour changed in place | 13 | 532 | 197 |
 | Tests of upstream, adapted | 33 | 554 | 177 |
 | Generated files | 3 | 366 | 181 |
 | Package identity and packaging | 9 | 20 | 479 |
 | Documentation | 23 | 196 | 1182 |
 | Repository tooling and workflows | 6 | 23 | 8 |
 | Editor extension | 13 | 1405 | 210 |
-| Total | 178 | 3655 | 2746 |
+| Total | 178 | 3658 | 2746 |
 
 ### Source: a call into this fork's modules
 
@@ -112,7 +112,7 @@ On a conflict: Take upstream's side of the conflict, then put the call back at t
 | `packages/opencode/src/config/config.ts` | 46 | 40 | File names and the schema address come from the brand module; substitution limits, workspace trust, the provider scope and redacted secrets are calls into `brand/guard.ts`, `brand/trust.ts` and `brand/serve.ts`. |
 | `packages/opencode/src/config/tui.ts` | 9 | 5 | Substitution limits and plugin trust for the interface configuration (`brand/guard.ts`, `brand/trust.ts`). |
 | `packages/opencode/src/config/variable.ts` | 9 | 1 | The `restrict` option that `brand/guard.ts` uses to limit substitution in a project file. |
-| `packages/opencode/src/index.ts` | 57 | 10 | Registers this product's commands, installs the startup guard, applies a staged update, restarts from a usable temporary directory, reports an unexpected error through `rafiki/startup.ts`, and moves a start in the home folder or a drive root to the default workspace (`rafiki/workspace.ts`). |
+| `packages/opencode/src/index.ts` | 61 | 10 | Registers this product's commands, installs the startup guard, applies a staged update, restarts from a usable temporary directory, reports an unexpected error through `rafiki/startup.ts`, runs the folder checks before anything else is loaded (`rafiki/folders-early.ts`), and moves a start in a folder that is not a project to the default workspace (`rafiki/workspace.ts`). |
 | `packages/opencode/src/provider/error.ts` | 15 | 2 | Gateway errors are classified by `rafiki/gateway-errors.ts`; a message names this product's sign in step. |
 | `packages/opencode/src/provider/provider.ts` | 4 | 1 | `BrandGuard.request` in front of every provider request keeps the key on the gateway (`test/rafiki/key-guard.test.ts`); the model priority list is extended from the brand module. |
 | `packages/opencode/src/provider/transform.ts` | 8 | 1 | The cache marker is set by tier (`rafiki/cache-prefix.ts`); the output limit of the gateway provider is the model's own. |
@@ -197,7 +197,7 @@ On a conflict: Merge by hand and read both sides. These are the files to thin ne
 | `packages/opencode/src/config/parse.ts` | 38 | 0 | `normalizeLoaded` and `issuesOf` live beside the decoder so that `doctor` validates a file the way a session does, without loading the configuration layer. |
 | `packages/opencode/src/installation/index.ts` | 59 | 111 | The update source, the install method detection and the upgrade commands are this product's (`rafiki/update.ts`); upstream's installer and package addresses are removed. |
 | `packages/opencode/src/skill/index.ts` | 29 | 16 | The built in configuration skill is this product's, hidden skills are removed, and skill discovery honours the switch that disables project configuration. |
-| `packages/opencode/src/snapshot/index.ts` | 34 | 4 | A snapshot is bounded (10,000 files, 10 seconds) and skipped in the home folder or a filesystem root (`rafiki/workspace.ts`), so the first model request never waits on a scan of an unbounded tree. Upstream stages one pathspec per file, which grows with the square of the count. |
+| `packages/opencode/src/snapshot/index.ts` | 33 | 4 | A snapshot is bounded (10,000 files, 10 seconds) and skipped in the home folder or a filesystem root (`rafiki/workspace.ts`), so the first model request never waits on a scan of an unbounded tree. Upstream stages one pathspec per file, which grows with the square of the count. |
 | `packages/tui/src/feature-plugins/sidebar/context.tsx` | 5 | 2 | The amount spent is hidden when it is zero, because the cost plugin shows the estimate. |
 
 ### Tests of upstream, adapted

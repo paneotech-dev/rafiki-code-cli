@@ -34,7 +34,17 @@ Run the installer without `--version` to get the latest release.
 
 **`rafikicode` updated itself and I did not ask it to.** A copy installed by the installer script looks for a new release once a day, downloads it in the background, verifies it against the published `SHA256SUMS`, and uses it from the next start, printing `rafikicode updated from <old> to <new>.` when it does. Set `"autoupdate": false` in `~/.rafikicode/config.json` to turn that off, or `RAFIKICODE_DISABLE_AUTOUPDATE=1` for one process. See [Install and update](./install.md#updates).
 
-**Checksum mismatch during install.** The downloaded archive did not match the published `SHA256SUMS`. Nothing was installed. Run the installer again; if it repeats, a proxy or mirror is altering downloads, and you should fetch from the release page directly.
+**Checksum mismatch during install.** The downloaded archive did not match the published `SHA256SUMS`. The installer downloads it again, three times in all, before it says so, so a single download cut short is not the cause. Nothing was installed. A proxy or company filter is replacing the file: try another network, or fetch from the release page directly.
+
+**The installer says the clock is wrong.** A TLS failure on a machine whose clock is off by more than a day is reported as that, because every certificate looks expired or not yet valid. Set the clock (`sudo timedatectl set-ntp true`, or `sudo date -s "YYYY-MM-DD HH:MM"`) and run the installer again.
+
+**The installer used another tool, folder or address than usual.** It said so in one line: `curl is not installed, so downloads use wget`, `No working tar here, so the archive was unpacked with python3`, `/tmp has 0 MB free, so the download goes to ~/.rafikicode/tmp instead`, `... is not writable by you, so rafikicode is installed into ~/.rafikicode/bin instead`, or `the latest release is downloaded directly`. Each of these is a fallback, not an error, and the install carries on.
+
+**The installer ends with `Installed, but not ready`.** The program is installed, and the closing check found a problem: the program does not run, the model gateway did not answer (check the network or the proxy), or `rafikicode doctor --folders` found a folder it cannot use. A report is in `~/.rafikicode/install.log`; send it to info@paneo.tech if the line above it does not say enough.
+
+**`this installer is running as root through sudo`.** Run it as yourself: `curl -fsSL https://get.rafikiai.io | bash`. It never needs root, and as root it would write files into your home folder that you could not update later.
+
+**`Another rafikicode at ... comes first on your PATH`.** An older copy, from npm, Homebrew or an earlier install, would run instead of the one just installed. New terminals use the new one first; in the current one run the line the installer printed (`export PATH=... && hash -r`), and remove the old copy with the command it named.
 
 **macOS refuses to open the binary, or says the developer cannot be verified.** The macOS builds carry an ad-hoc signature, which is what lets them run on Apple Silicon at all, but they are not notarised with an Apple Developer ID. Gatekeeper only blocks a file that is *quarantined*, and macOS sets that attribute on files a browser downloaded. The installer fetches with `curl`, which does not set it, so an install from `https://get.rafikiai.io` is not affected. If you took the `.zip` from the release page in a browser instead, clear the attribute:
 
@@ -54,7 +64,11 @@ Or right click the file in the Finder and choose Open once. `xattr -p com.apple.
 echo 'export PATH=$HOME/.rafikicode/bin:$PATH' >> ~/.zshrc
 ```
 
-**The installer says `unzip` is missing.** The macOS builds and the Windows builds installed from Git Bash are `.zip` archives, so the shell installer needs `unzip` there; Linux uses `tar`. Install `unzip` with your package manager. In Git Bash, `command -v unzip` says whether it is there; when it is not, use `install.ps1` in PowerShell instead, which needs no extra tool.
+**The installer says `unzip` is missing.** The macOS builds and the Windows builds installed from Git Bash are `.zip` archives. Without `unzip` the installer uses `bsdtar`, `busybox` or `python3`, and says this only when none of them is there either. Install `unzip` with your package manager. In Git Bash, use `install.ps1` in PowerShell instead, which needs no extra tool.
+
+**Windows: the installer says the binary `was written and then removed`.** Antivirus software took it away as it was written. Open Windows Security, Protection history, restore `rafikicode.exe`, and run the installer again.
+
+**Windows: PowerShell refuses to run `install.ps1`.** The execution policy blocks downloaded script files. Use `irm https://github.com/paneotech-dev/rafiki-code-cli/releases/latest/download/install.ps1 | iex`, which it does not block, or `powershell -ExecutionPolicy Bypass -File .\install.ps1`.
 
 **Alpine: the installed binary does not start and the installer prints `apk add libstdc++ libgcc`.** The musl build needs the C++ runtime, which a minimal Alpine system does not have. Run `apk add libstdc++ libgcc`, then the installer again.
 
@@ -96,6 +110,8 @@ $env:Path = "$env:USERPROFILE\.rafikicode\bin;$env:Path"
 ```
 
 ## When it will not start
+
+**A line about a folder when `rafikicode` starts.** Before anything else, `rafikicode` checks the folders it needs and fixes what it can, with one line for each fix: a home folder that is not set or cannot be written (`Your home folder ... so rafikicode keeps its files in ...`), a temporary folder that is full, missing or cannot be written (`The temporary folder ... so rafikicode uses ~/.rafikicode/tmp instead`), and a configuration, data, cache or state folder that is a file or cannot be written (moved aside and recreated, or replaced by a folder under `~/.rafikicode/fallback`). A configuration folder that is only read only is kept, because your sign in is read from it, and the line says changes are not saved there. `rafikicode doctor` lists every one of these checks and what was done; `rafikicode doctor --folders` lists only them, with no network. Send its output when asking for help.
 
 When `rafikicode` cannot start, it says what it thinks the cause is, gives one command to try, and prints the original error under `Original error:` so you can paste it to us. Add `--print-logs` to the same command for the full error and its stack. Two exit codes carry the result for scripts: 6 means this machine or this build cannot run `rafikicode` at all, 7 means it runs but this terminal cannot host the full screen interface.
 
@@ -206,7 +222,7 @@ git config --global user.email "you@example.com"
 
 **Project plugins, custom tools, a local MCP server, a formatter or a language server declared in the repository do not load.** The workspace is not trusted. `rafikicode doctor` says so on its `trust` line, as a `WARN` rather than a failure, with the list of what was dropped on the line below and the command that fixes it: `rafikicode trust` in the repository, or `RAFIKICODE_TRUST_WORKSPACE=1` for one run. Trust only repositories whose contents you would run as a script; see [workspace trust](./security/workspace-trust.md).
 
-**`Working in ~/RafikiCode (started from your home folder).`** You started `rafikicode` (the interface or `run`) in your home folder, or at the root of a drive or of the file system. Neither is a project, and treating one as the project meant reading the whole tree before the first request, which on Windows could hang `run` after its first line. So `rafikicode` works in the `RafikiCode` folder of your home folder instead, creating it on first use, and prints that line on standard error. To work on a project, `cd` into it first. To work in the home folder anyway: `rafikicode run --dir . "your task"`, `rafikicode .` for the interface, or `RAFIKICODE_NO_DEFAULT_WORKSPACE=1`. A home folder that is itself a git repository is used as it is.
+**`Working in ~/RafikiCode (started from ...)`.** You started `rafikicode` (the interface or `run`) in a folder that is not a project: your home folder, the root of a drive or of the file system, a system folder (`C:\Windows`, `Program Files`, `/usr`, `/etc` and the like), your Desktop or Downloads folder, the root of your OneDrive, or a folder with more than 50,000 files that is not a git repository. Treating one of these as the project meant reading the whole tree before the first request, which on Windows could hang `run` after its first line. The same line appears when the folder was deleted, cannot be written, or did not answer within 2 seconds (a disconnected network drive). In every case `rafikicode` works in the `RafikiCode` folder of your home folder instead, creating it on first use, and prints that line on standard error. When the disk holding the folder it works in has less than 500 MB free, one more line says so. To work on a project, `cd` into it first. To work in the home folder anyway: `rafikicode run --dir . "your task"`, `rafikicode .` for the interface, or `RAFIKICODE_NO_DEFAULT_WORKSPACE=1`. A home folder that is itself a git repository is used as it is.
 
 **Slow first request.** The first run in a repository indexes the project and starts language servers. Later requests are faster. The file checkpoints that undo uses are skipped for a directory with more than 10,000 changed or untracked files, or when listing them takes longer than 10 seconds, so a huge directory never holds back the first request; the log says `snapshots off for this directory` when that happens, and undo cannot restore files changed there.
 
