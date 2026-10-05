@@ -365,7 +365,7 @@
     {
       "path": "packages/opencode/src/index.ts",
       "class": "hook",
-      "why": "Registers this product's commands, installs the startup guard, applies a staged update, restarts from a usable temporary directory, and reports an unexpected error through `rafiki/startup.ts`."
+      "why": "Registers this product's commands, installs the startup guard, applies a staged update, restarts from a usable temporary directory, reports an unexpected error through `rafiki/startup.ts`, and moves a start in the home folder or a drive root to the default workspace (`rafiki/workspace.ts`)."
     },
     {
       "path": "packages/opencode/src/installation/index.ts",
@@ -431,6 +431,11 @@
       "path": "packages/opencode/src/session/llm/native-runtime.ts",
       "class": "hook",
       "why": "The native runtime is refused when it would send the key anywhere but the gateway (`BrandGuard.allowed`)."
+    },
+    {
+      "path": "packages/opencode/src/snapshot/index.ts",
+      "class": "logic",
+      "why": "A snapshot is bounded (10,000 files, 10 seconds) and skipped in the home folder or a filesystem root (`rafiki/workspace.ts`), so the first model request never waits on a scan of an unbounded tree. Upstream stages one pathspec per file, which grows with the square of the count."
     },
     {
       "path": "packages/opencode/src/session/llm/request.ts",

@@ -35,6 +35,7 @@ import * as Startup from "./rafiki/startup"
 import { DoctorCommand, LicensesCommand, LoginCommand, LogoutCommand, ProvidersCommand, TrustCommand, UsageCommand, WhoamiCommand, markHeadless, refuseMissingKey, refuseUnsafeCredential } from "./rafiki/cmd"
 import * as ExecTmp from "./rafiki/exec-tmp"
 import * as Autoupdate from "./rafiki/autoupdate"
+import * as Workspace from "./rafiki/workspace"
 
 // An update downloaded and verified by an earlier session is put in place here,
 // before anything is parsed, and the new binary takes over with the same
@@ -97,6 +98,8 @@ const cli = yargs(args)
     refuseUnsafeCredential(opts._[0])
     markHeadless(opts._[0])
     refuseMissingKey(opts)
+    // Started from the home folder or a drive root: work in ~/RafikiCode.
+    Workspace.apply(opts)
   })
   .usage("")
   .completion("completion", "generate shell completion script")

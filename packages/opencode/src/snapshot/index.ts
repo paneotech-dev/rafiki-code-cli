@@ -10,6 +10,7 @@ import { Hash } from "@opencode-ai/core/util/hash"
 import { Config } from "@/config/config"
 import { Global } from "@opencode-ai/core/global"
 import { Info } from "@opencode-ai/schema/file-diff"
+import { homeOrRoot } from "@/rafiki/workspace"
 
 export const Patch = Schema.Struct({
   hash: Schema.String,
@@ -22,6 +23,15 @@ export type FileDiff = typeof FileDiff.Type
 
 const prune = "7.days"
 const limit = 2 * 1024 * 1024
+// Bounds on one snapshot, so the first model request of a turn never waits on
+// a scan of an unbounded tree. Staging stages one literal pathspec per file,
+// and git matches each file against every pathspec: 10k untracked files took
+// 2 s, 40k took 31 s, and a home folder that is a git repository hung the turn
+// for good. Past either bound the snapshot is turned off for this directory,
+// with a warning, rather than retried at every step.
+export const MAX_FILES = 10_000
+export const BUDGET = Duration.seconds(10)
+
 const core = ["-c", "core.longpaths=true", "-c", "core.symlinks=true"]
 const cfg = ["-c", "core.autocrlf=false", ...core]
 const quote = [...cfg, "-c", "core.quotepath=false"]
@@ -71,6 +81,9 @@ const layer: Layer.Layer<Service, never, FSUtil.Service | AppProcess.Service | C
           gitdir: path.join(Global.Path.data, "snapshot", ctx.project.id, Hash.fast(ctx.worktree)),
           vcs: ctx.project.vcs,
         }
+
+        // Why snapshots are off for this directory, once a bound was hit.
+        let off: string | undefined
 
         const args = (cmd: string[]) => ["--git-dir", state.gitdir, "--work-tree", state.worktree, ...cmd]
 
@@ -166,6 +179,8 @@ const layer: Layer.Layer<Service, never, FSUtil.Service | AppProcess.Service | C
 
         const enabled = Effect.fnUntraced(function* () {
           if (state.vcs !== "git") return false
+          if (off) return false
+          if (homeOrRoot(state.worktree) || homeOrRoot(state.directory)) return false
           return (yield* config.get()).snapshot !== false
         })
 
@@ -252,13 +267,18 @@ const layer: Layer.Layer<Service, never, FSUtil.Service | AppProcess.Service | C
               otherCode: other.code,
               otherStderr: other.stderr,
             })
-            return
+            return true
           }
 
           const tracked = diff.text.split("\0").filter(Boolean)
           const untracked = other.text.split("\0").filter(Boolean)
           const all = Array.from(new Set([...tracked, ...untracked]))
-          if (!all.length) return
+          if (all.length > MAX_FILES) {
+            off = `${all.length} changed or untracked files, more than ${MAX_FILES}`
+            yield* Effect.logWarning("snapshots off for this directory", { reason: off, directory: state.directory })
+            return false
+          }
+          if (!all.length) return true
 
           // Resolve source-repo ignore rules against the exact candidate set.
           // --no-index keeps this pattern-based even when a path is already tracked.
@@ -272,7 +292,7 @@ const layer: Layer.Layer<Service, never, FSUtil.Service | AppProcess.Service | C
           }
 
           const allow = all.filter((item) => !ignored.has(item))
-          if (!allow.length) return
+          if (!allow.length) return true
 
           const large = new Set(
             (yield* Effect.all(
@@ -295,6 +315,7 @@ const layer: Layer.Layer<Service, never, FSUtil.Service | AppProcess.Service | C
           yield* sync(Array.from(block))
           // Stage only the allowed candidate paths so snapshot updates stay scoped.
           yield* stage(allow.filter((item) => !block.has(item)))
+          return true
         })
 
         const cleanup = Effect.fnUntraced(function* () {
@@ -337,7 +358,15 @@ const layer: Layer.Layer<Service, never, FSUtil.Service | AppProcess.Service | C
                 yield* seed()
                 yield* Effect.logInfo("initialized")
               }
-              yield* add()
+              // Bounded in time as well as in files: a listing of a huge tree
+              // is slow before there is anything to count.
+              const added = yield* add().pipe(Effect.timeoutOption(BUDGET))
+              if (added._tag === "None") {
+                off = `listing and staging took longer than ${Duration.format(BUDGET)}`
+                yield* Effect.logWarning("snapshots off for this directory", { reason: off, directory: state.directory })
+                return
+              }
+              if (!added.value) return
               const result = yield* git(args(["write-tree"]), { cwd: state.directory })
               const hash = result.text.trim()
               yield* Effect.logInfo("tracking", { hash, cwd: state.directory, git: state.gitdir })
