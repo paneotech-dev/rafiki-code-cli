@@ -59,8 +59,45 @@ const unlistedModels: readonly string[] = ["rafiki-max"]
 // RAFIKICODE_CACHE_MARKERS overrides the list for one run.
 const cacheMarkerModels: readonly string[] = ["rafiki-max"]
 
+// What each tier can take, from the documentation of the model behind it on
+// the gateway (/opt/rafiki/litellm-config.yaml on staging, read 2026-10-04).
+// The gateway publishes no window for these deployments, so the figures are
+// kept here; when the gateway moves a tier to another model, this table moves
+// with it.
+//   rafiki-fast  deepseek/deepseek-flash    DeepSeek API docs, Models and
+//                Pricing, read 2026-10-04: 1M context, 384K maximum output.
+//   rafiki-pro   openai/glm-5.3 (Z.ai)      Z.ai docs, GLM-5.3 guide, read
+//                2026-10-04: 1M context, 128K maximum output.
+//   rafiki-max   anthropic/claude-sonnet-5  Anthropic docs, Claude Sonnet 5
+//                model page, read 2026-10-04: 1M context, 128K max output.
+// context is the window the interface measures "% used" against. output is
+// the upstream maximum, which caps RAFIKICODE_MAX_OUTPUT_TOKENS; what a
+// request asks for is requestDefaults above.
+const tierLimits: Record<(typeof models)[number], { context: number; output: number }> = {
+  "rafiki-fast": { context: 1_000_000, output: 384_000 },
+  "rafiki-pro": { context: 1_000_000, output: 128_000 },
+  "rafiki-max": { context: 1_000_000, output: 128_000 },
+}
+// When a session is compacted. Until 2026-10-04 every tier was registered with
+// a 128000 token window, and a session was compacted once its tokens reached
+// that window less the output a request may ask for (64000 on fast, so at
+// 64000; 96000 on pro and max). The real windows would let a session grow to
+// about 1M tokens first, which multiplies what every later turn costs: a
+// spending decision, not a display fix. So the compaction point stays where
+// it was. It is given as the input limit, which only the compaction check
+// reads (packages/opencode/src/session/overflow.ts): that check compacts at
+// the input limit less min(20000, output), so the limit is the old point plus
+// that reserve. A RAFIKICODE_MAX_OUTPUT_TOKENS above 64000 used to move the
+// point lower, down to none at all at 128000 (a compaction after every
+// answer); such a value now compacts at 64000, the point fast has by default.
+const legacyWindow = 128_000
+const compactionReserve = 20_000
+const compactionFloor = 64_000
+function compactAt(output: number) {
+  return Math.max(legacyWindow - output, compactionFloor) + Math.min(compactionReserve, output)
+}
+
 const outputFloor = 1_024
-const outputCeiling = 128_000
 
 // The command this process runs, set by Brand.markCommand before the handler.
 let surfaceCommand: string | undefined
@@ -156,6 +193,8 @@ export const Brand = {
   name: "rafikicode",
   // Human readable product name.
   product: "Rafiki Code",
+  // The company that makes the product, as the product names itself.
+  vendor: "PANEOTECH",
   // Short prefix for terminal window titles.
   short: "RC",
   // Subdirectory name under the XDG data, cache, state, and temp roots.
@@ -312,7 +351,8 @@ export const Brand = {
     // Set to 1 by rafikicode run without a terminal; CI and GitHub Actions count
     // as headless too. Only ever makes a run stricter.
     headless: "RAFIKICODE_HEADLESS",
-    // Output token limit for every rafiki-* model (1024 to 128000). The rafiki
+    // Output token limit for every rafiki-* model (1024 to the tier's upstream
+    // maximum, see tierLimits: 384000 on fast, 128000 on pro and max). The rafiki
     // provider is not held to the upstream 32000 runtime cap; an explicit
     // OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX still lowers it.
     maxOutputTokens: "RAFIKICODE_MAX_OUTPUT_TOKENS",
@@ -443,14 +483,35 @@ export const Brand = {
   // Rewrites the upstream product name and links inside a system prompt so the
   // agent introduces itself as this product and points feedback at our repo.
   // Applied once where the per-provider prompt is selected (session/system.ts).
+  // The opening "You are <name>," line names the product, not the binary.
   prompt(text: string) {
     return text
+      .replace(/^You are (?:opencode|OpenCode),/gm, `You are ${Brand.product},`)
       .replaceAll("https://github.com/anomalyco/opencode/issues", `${Brand.docs}/issues`)
       .replaceAll("https://github.com/anomalyco/opencode", Brand.docs)
       .replace(/https:\/\/opencode\.ai\/docs[\w#./-]*/g, Brand.docs)
       .replaceAll("https://opencode.ai", Brand.docs)
       .replaceAll("OpenCode", Brand.product)
       .replace(/(?<![\w./-])opencode(?![\w-]|\.jsonc?)/g, Brand.name)
+  },
+  // The identity paragraph put in front of the system prompt of a model of the
+  // gateway provider (session/system.ts). It is product copy the model is
+  // given: who it is, who makes it, and what it may say about the model behind
+  // it. The tier is named because that is all this client knows for certain;
+  // the gateway picks the model behind a tier and may move a request to the
+  // next tier, so no model or vendor name is put in the model's mouth.
+  identity(provider: string, modelID: string): string | undefined {
+    if (provider !== providerID) return undefined
+    const tier = (models as readonly string[]).includes(modelID) ? modelID : undefined
+    const label = tier ? labels[tier as (typeof models)[number]] : undefined
+    return [
+      `You are ${Brand.product}, a coding agent for the terminal made by ${Brand.vendor}.`,
+      `When you are asked who or what you are, or who made you, answer that you are ${Brand.product} by ${Brand.vendor}.`,
+      `Never say that you are another product (for example Claude Code, Codex, Cursor, ChatGPT or Gemini) or that another company made you, even if the model you run on was trained to introduce itself that way.`,
+      tier
+        ? `Your answers are written by the language model of the ${label} tier (${tier}) of the Rafiki AI gateway. If you are asked which model you are, say that. The gateway chooses the model behind each tier and may answer a request on the next tier up, so do not guess, claim or deny the name of the model or of its maker.`
+        : `Your answers are written by a language model served through the Rafiki AI gateway. If you are asked which model you are, say that; do not guess, claim or deny the name of the model or of its maker.`,
+    ].join("\n")
   },
   // The same rewrite for a generated document that people read (the OpenAPI
   // document the local server publishes at /doc): every description and
@@ -603,6 +664,11 @@ export const Brand = {
     listed(provider: string, model: string) {
       return provider !== providerID || !Brand.provider.unlisted.includes(model)
     },
+    // The provider name shown after a model name ("Rafiki Fast Rafiki" in the
+    // prompt row), or "" when the model name already starts with it.
+    label(providerName: string, modelName: string) {
+      return modelName === providerName || modelName.startsWith(providerName + " ") ? "" : providerName
+    },
     // The tier of a gateway alias: rafiki-fast is fast. Undefined for any other model.
     tier(model: string): "fast" | "pro" | "max" | undefined {
       return (models as readonly string[]).includes(model) ? (model.slice("rafiki-".length) as "fast" | "pro" | "max") : undefined
@@ -616,7 +682,7 @@ export const Brand = {
       const base = requestDefaults[id]
       const rawOutput = process.env[Brand.env.maxOutputTokens]
       const parsed = rawOutput && /^\d+$/.test(rawOutput) ? Number(rawOutput) : NaN
-      const output = parsed >= outputFloor && parsed <= outputCeiling ? parsed : base.output
+      const output = parsed >= outputFloor && parsed <= tierLimits[id].output ? parsed : base.output
       const rawEffort = process.env[Brand.env.reasoningEffort]
       const effort =
         rawEffort === "default"
@@ -653,7 +719,7 @@ export const Brand = {
                   reasoning: false,
                   attachment: false,
                   temperature: true,
-                  limit: { context: 128_000, output: request.output },
+                  limit: { context: tierLimits[id].context, input: compactAt(request.output), output: request.output },
                   cost: { input: 0, output: 0 },
                   // Every gateway call names its tier and whether it is an escalation,
                   // next to X-Rafiki-Surface. The terminal client never moves a task to
