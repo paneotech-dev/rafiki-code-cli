@@ -96,6 +96,9 @@ function options(extra: Partial<Doctor.Options> = {}): Doctor.Options {
     // The Windows console line is about the machine this runs on as well; its
     // own test below injects every answer.
     windowsConsole: () => undefined,
+    // The folder lines are about this machine too; test/rafiki/folders.test.ts
+    // drives them with fake folders.
+    folders: async () => [],
     ...extra,
   }
 }

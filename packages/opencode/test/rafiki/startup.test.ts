@@ -207,9 +207,7 @@ describe("startup diagnosis in the terminal", () => {
     expect(result.exitCode).toBe(6)
   }, 30_000)
 
-  test("a home directory it cannot write to is reported without any injected error", async () => {
-    // No RAFIKICODE_TEST_STARTUP_ERROR: this crash happens for real, while
-    // the module graph is still loading, and used to print a raw runtime dump.
+  test("a home directory it cannot write to is replaced by the folder doctor, and the command runs", async () => {
     const broken = "/dev/null/no-home"
     const result = await run(["models"], {
       HOME: broken,
@@ -217,6 +215,27 @@ describe("startup diagnosis in the terminal", () => {
       XDG_DATA_HOME: undefined,
       XDG_STATE_HOME: undefined,
       XDG_CACHE_HOME: undefined,
+    })
+    expect(result.stderr).toContain(`Your home folder (${broken}) does not exist, so rafikicode keeps its files in`)
+    expect(result.all).toContain("rafiki/rafiki-fast")
+    expect(result.exitCode).toBe(0)
+    const fallback = result.stderr.match(/keeps its files in (\S+)\./)?.[1]
+    if (fallback?.includes("rafikicode-home-")) fs.rmSync(fallback, { recursive: true, force: true })
+  }, 30_000)
+
+  test("with the folder doctor off, a home directory it cannot write to is still reported without any injected error", async () => {
+    // No RAFIKICODE_TEST_STARTUP_ERROR: this crash happens for real, while
+    // the module graph is still loading, and used to print a raw runtime dump.
+    // The folder doctor fixes it first (above); this is what is left when no
+    // folder at all can be written, which RAFIKICODE_SKIP_FOLDER_CHECKS stands in for.
+    const broken = "/dev/null/no-home"
+    const result = await run(["models"], {
+      HOME: broken,
+      OPENCODE_TEST_HOME: broken,
+      XDG_DATA_HOME: undefined,
+      XDG_STATE_HOME: undefined,
+      XDG_CACHE_HOME: undefined,
+      RAFIKICODE_SKIP_FOLDER_CHECKS: "1",
     })
 
     expect(result.all).not.toContain("Unexpected error")

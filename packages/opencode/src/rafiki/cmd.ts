@@ -396,13 +396,18 @@ export const DoctorCommand = effectCmd({
   describe: `check this terminal's ${Brand.product} setup: config, project config, workspace trust, key, gateway, tiers, Rafiki AI console, PATH, version`,
   instance: false,
   builder: (yargs: Argv) =>
-    yargs.option("timeout", {
-      type: "number",
-      default: Doctor.DEFAULT_TIMEOUT_MS / 1000,
-      describe: "seconds to wait for each network check",
-    }),
+    yargs
+      .option("timeout", {
+        type: "number",
+        default: Doctor.DEFAULT_TIMEOUT_MS / 1000,
+        describe: "seconds to wait for each network check",
+      })
+      .option("folders", {
+        type: "boolean",
+        describe: "check only the folders (home, temporary, config, data, start folder, disk), with no network",
+      }),
   handler: Effect.fn("Cli.rafiki.doctor")(function* (args) {
-    const report = yield* Effect.promise(() => Doctor.run({ timeoutMs: Math.max(1, Number(args.timeout) || 1) * 1000 }))
+    const report = yield* Effect.promise(() => Doctor.run({ timeoutMs: Math.max(1, Number(args.timeout) || 1) * 1000, foldersOnly: Boolean(args.folders) }))
     for (const line of report.lines) {
       const color =
         line.status === "ok"

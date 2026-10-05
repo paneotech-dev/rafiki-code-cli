@@ -22,59 +22,153 @@ import { MAX_FILES } from "../../src/snapshot"
 const root = path.resolve(import.meta.dir, "../..")
 const KEY = "sk-workspace-stub"
 
-describe("where the default workspace applies", () => {
+// A probe that answers as a folder would, without touching the disk.
+function fake(answers: Partial<Workspace.Probe> & { files?: number } = {}): Workspace.Probe {
+  return {
+    access: answers.access ?? (async () => "ok"),
+    repository: answers.repository ?? (() => false),
+    inRepository: answers.inRepository ?? (() => false),
+    count:
+      answers.count ??
+      (async (_dir, limit) => (answers.files !== undefined && answers.files >= limit ? { files: limit, done: false } : { files: answers.files ?? 10, done: true })),
+    free: answers.free ?? (() => 10 * 1024 * 1024 * 1024),
+  }
+}
+
+describe("the folder doctor: the start folder", () => {
   const base: Workspace.Input = {
     command: "run",
     cwd: "/home/ana",
     home: "/home/ana",
     env: {},
     platform: "linux",
-    repository: () => false,
+    probe: fake(),
   }
+  const moved = async (input: Partial<Workspace.Input>) => (await Workspace.decide({ ...base, ...input }))?.directory
 
-  test("the home folder and a filesystem root move to <home>/RafikiCode, with one line that says so", () => {
-    expect(Workspace.decide(base)).toEqual({
+  test("the home folder and a filesystem root move to <home>/RafikiCode, with one line that says so", async () => {
+    expect(await Workspace.decide(base)).toEqual({
       directory: "/home/ana/RafikiCode",
+      finding: "the start folder is your home folder",
       message: "Working in /home/ana/RafikiCode (started from your home folder). Run rafikicode inside a project folder to work on it.",
     })
-    expect(Workspace.decide({ ...base, cwd: "/home/ana/" })?.directory).toBe("/home/ana/RafikiCode")
-    expect(Workspace.decide({ ...base, cwd: "/" })?.message).toBe(
+    expect(await moved({ cwd: "/home/ana/" })).toBe("/home/ana/RafikiCode")
+    expect((await Workspace.decide({ ...base, cwd: "/" }))?.message).toBe(
       "Working in /home/ana/RafikiCode (started from /, the root of the file system). Run rafikicode inside a project folder to work on it.",
     )
     // The interface as well as run.
-    expect(Workspace.decide({ ...base, command: undefined })?.directory).toBe("/home/ana/RafikiCode")
+    expect(await moved({ command: undefined })).toBe("/home/ana/RafikiCode")
+    // Already in the workspace: nothing to do.
+    expect(await moved({ cwd: "/home/ana/RafikiCode" })).toBeUndefined()
   })
 
-  test("on Windows: the profile folder in any case, and a drive root", () => {
-    const win: Workspace.Input = {
-      ...base,
+  test("system folders, Desktop, Downloads and OneDrive roots are not projects", async () => {
+    for (const cwd of ["/usr", "/usr/lib/x86_64-linux-gnu", "/etc", "/root", "/var", "/home/ana/Desktop", "/home/ana/Downloads"])
+      expect({ cwd, to: await moved({ cwd }) }).toEqual({ cwd, to: "/home/ana/RafikiCode" })
+    // A project below them is a project.
+    for (const cwd of ["/home/ana/Downloads/app", "/var/www/site", "/root/project", "/opt/tool"])
+      expect({ cwd, to: await moved({ cwd }) }).toEqual({ cwd, to: undefined })
+    expect((await Workspace.decide({ ...base, cwd: "/home/ana/Downloads" }))?.message).toContain("your Downloads folder")
+    expect(await moved({ cwd: "/Library/Caches", platform: "darwin" })).toBe("/home/ana/RafikiCode")
+  })
+
+  test("on Windows: the profile folder in any case, a drive root, Windows, Program Files and OneDrive", async () => {
+    const win: Partial<Workspace.Input> = {
       platform: "win32",
-      cwd: "C:\\Users\\Ana",
       home: "C:\\Users\\Ana",
+      env: {
+        SystemRoot: "C:\\Windows",
+        ProgramFiles: "C:\\Program Files",
+        "ProgramFiles(x86)": "C:\\Program Files (x86)",
+        OneDrive: "C:\\Users\\Ana\\OneDrive - Paneo",
+      },
     }
-    expect(Workspace.decide(win)?.directory).toBe("C:\\Users\\Ana\\RafikiCode")
-    expect(Workspace.decide({ ...win, cwd: "c:\\users\\ana\\" })?.directory).toBe("C:\\Users\\Ana\\RafikiCode")
-    expect(Workspace.decide({ ...win, cwd: "D:\\" })?.message).toBe(
-      "Working in C:\\Users\\Ana\\RafikiCode (started from D:\\, the root of a drive). Run rafikicode inside a project folder to work on it.",
+    const to = "C:\\Users\\Ana\\RafikiCode"
+    for (const cwd of [
+      "C:\\Users\\Ana",
+      "c:\\users\\ana\\",
+      "D:\\",
+      "C:\\",
+      "C:\\Windows\\System32",
+      "C:\\Program Files\\Git",
+      "C:\\Users\\Ana\\OneDrive - Paneo",
+      "C:\\Users\\Ana\\OneDrive",
+      "C:\\Users\\Ana\\OneDrive - Paneo\\Desktop",
+      "C:\\Users\\Ana\\Desktop",
+      "\\\\server\\share\\",
+    ])
+      expect({ cwd, to: await moved({ ...win, cwd }) }).toEqual({ cwd, to })
+    for (const cwd of ["C:\\Users\\Ana\\code\\app", "C:\\Users\\Ana\\OneDrive - Paneo\\Projets\\site", "D:\\work"])
+      expect({ cwd, to: await moved({ ...win, cwd }) }).toEqual({ cwd, to: undefined })
+    expect((await Workspace.decide({ ...base, ...win, cwd: "D:\\" }))?.message).toBe(
+      `Working in ${to} (started from D:\\, the root of a drive). Run rafikicode inside a project folder to work on it.`,
     )
-    expect(Workspace.decide({ ...win, cwd: "C:\\" })?.directory).toBe("C:\\Users\\Ana\\RafikiCode")
-    expect(Workspace.where("\\\\server\\share\\", win.home, "win32")).toBe("root")
-    expect(Workspace.decide({ ...win, cwd: "C:\\Users\\Ana\\code\\app" })).toBeUndefined()
-    expect(Workspace.decide({ ...win, cwd: "C:\\Users" })).toBeUndefined()
   })
 
-  test("a directory the user named always wins, and the opt out is honoured", () => {
-    expect(Workspace.decide({ ...base, explicit: "." })).toBeUndefined()
-    expect(Workspace.decide({ ...base, command: undefined, explicit: "." })).toBeUndefined()
-    expect(Workspace.decide({ ...base, env: { RAFIKICODE_NO_DEFAULT_WORKSPACE: "1" } })).toBeUndefined()
-    expect(Workspace.decide({ ...base, attach: true })).toBeUndefined()
+  test("a folder that was deleted, cannot be written, or does not answer moves too", async () => {
+    const cwd = "/home/ana/project"
+    expect((await Workspace.decide({ ...base, cwd, probe: fake({ access: async () => "missing" }) }))?.message).toContain(
+      "the folder you started in no longer exists",
+    )
+    expect((await Workspace.decide({ ...base, cwd, probe: fake({ access: async () => "unwritable" }) }))?.message).toContain(
+      "which this account cannot write to",
+    )
+    expect((await Workspace.decide({ ...base, cwd, probe: fake({ access: async () => "unreachable" }) }))?.message).toContain(
+      "perhaps a disconnected network drive",
+    )
   })
 
-  test("a home folder that is itself a git repository, a project folder, and every other command are left alone", () => {
-    expect(Workspace.decide({ ...base, repository: () => true })).toBeUndefined()
-    expect(Workspace.decide({ ...base, cwd: "/home/ana/project" })).toBeUndefined()
+  test("a folder too big to be a project moves, unless it is in a git repository", async () => {
+    const cwd = "/data/everything"
+    const big = fake({ files: Workspace.TOO_MANY_FILES })
+    expect((await Workspace.decide({ ...base, cwd, probe: big }))?.message).toContain("which holds more than 50,000 files and is not a git repository")
+    expect(await moved({ cwd, probe: fake({ files: Workspace.TOO_MANY_FILES, inRepository: () => true }) })).toBeUndefined()
+    expect(await moved({ cwd, probe: fake({ files: 400 }) })).toBeUndefined()
+  })
+
+  test("the real probe: the count stops at its limit, skips node_modules, and a missing folder is missing", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "rafikicode-count-"))
+    try {
+      fs.mkdirSync(path.join(dir, "node_modules", "pkg"), { recursive: true })
+      for (let i = 0; i < 30; i++) fs.writeFileSync(path.join(dir, "node_modules", "pkg", `f${i}`), "")
+      for (let i = 0; i < 5; i++) fs.writeFileSync(path.join(dir, `f${i}`), "")
+      expect(await Workspace.realProbe.count(dir, 100, 2000)).toEqual({ files: 5, done: true })
+      expect(await Workspace.realProbe.count(dir, 3, 2000)).toEqual({ files: 3, done: false })
+      expect(await Workspace.realProbe.access(dir)).toBe("ok")
+      expect(await Workspace.realProbe.access(path.join(dir, "gone"))).toBe("missing")
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test("paths with spaces, accents and long Windows paths are handled like any other", async () => {
+    const home = "/home/Zoë Müller"
+    expect(await moved({ home, cwd: home })).toBe("/home/Zoë Müller/RafikiCode")
+    expect(await moved({ home, cwd: "/home/Zoë Müller/projets/été 2026" })).toBeUndefined()
+    const long = "C:\\Users\\Ana\\" + Array.from({ length: 30 }, (_, i) => `dossier numéro ${i}`).join("\\")
+    expect(long.length).toBeGreaterThan(260)
+    expect(await moved({ platform: "win32", home: "C:\\Users\\Ana", cwd: long, env: {} })).toBeUndefined()
+  })
+
+  test("a disk nearly full where the workspace lives gets one clear warning", () => {
+    expect(Workspace.diskWarning("/home/ana/RafikiCode", fake({ free: () => 120 * 1024 * 1024 }))).toBe(
+      "Only 120 MB free on the disk holding /home/ana/RafikiCode. rafikicode saves sessions and checkpoints there; free some space so they do not fail.",
+    )
+    expect(Workspace.diskWarning("/home/ana/RafikiCode", fake())).toBeUndefined()
+  })
+
+  test("a directory the user named always wins, and the opt out is honoured", async () => {
+    expect(await Workspace.decide({ ...base, explicit: "." })).toBeUndefined()
+    expect(await Workspace.decide({ ...base, command: undefined, explicit: "." })).toBeUndefined()
+    expect(await Workspace.decide({ ...base, env: { RAFIKICODE_NO_DEFAULT_WORKSPACE: "1" } })).toBeUndefined()
+    expect(await Workspace.decide({ ...base, attach: true })).toBeUndefined()
+  })
+
+  test("a home folder that is itself a git repository, a project folder, and every other command are left alone", async () => {
+    expect(await moved({ probe: fake({ repository: () => true }) })).toBeUndefined()
+    expect(await moved({ cwd: "/home/ana/project" })).toBeUndefined()
     for (const command of ["doctor", "login", "models", "serve", "attach", "usage"])
-      expect(Workspace.decide({ ...base, command })).toBeUndefined()
+      expect(await Workspace.decide({ ...base, command })).toBeUndefined()
   })
 })
 
