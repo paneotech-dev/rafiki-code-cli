@@ -11,6 +11,9 @@ import * as Trust from "@opencode-ai/core/brand/trust"
 import { which } from "@opencode-ai/core/util/which"
 import { InstallationChannel, InstallationVersion } from "@opencode-ai/core/installation/version"
 import * as Contract from "./contract"
+import * as WindowsConsole from "./windows-console"
+import * as Folders from "./folders"
+import * as Workspace from "./workspace"
 
 // warn: worth knowing, but it does not stop runs and does not fail doctor.
 export type Status = "ok" | "warn" | "fail" | "skip"
@@ -51,6 +54,42 @@ export interface Options {
   // Schema validation for config files, loaded from the config decoder by
   // default (loadValidate). Injected by the tests.
   validate?: Validate
+  // Can this Windows console draw the full screen interface? The real check by
+  // default, which answers only on Windows. Injected by the tests.
+  windowsConsole?: () => WindowsConsole.Verdict | undefined
+  // The folder doctor's lines: what was checked and fixed at this start, and
+  // what would happen to a start in cwd. The real checks by default.
+  folders?: (cwd: string) => Promise<Line[]>
+  // Only the folder lines: no network, for the installers' closing check.
+  foldersOnly?: boolean
+}
+
+// The folder doctor, as doctor lines: every folder rafikicode needs, what it
+// found and what it did about it at this start (rafiki/folders.ts), then the
+// start folder (rafiki/workspace.ts) and the room left on its disk.
+export async function folderLines(
+  cwd: string,
+  checks: readonly Folders.Check[] = Folders.report(),
+  probe: Workspace.Probe = Workspace.realProbe,
+  home: string = Folders.homeDir(),
+): Promise<Line[]> {
+  const lines: Line[] = checks.map((item) => {
+    const name = item.name === "home" ? "home" : item.name === "temp" ? "temp" : `${item.name} dir`
+    if (item.status === "ok") return ok(name, item.detail)
+    if (item.status === "fixed") return ok(name, `fixed: ${item.detail}`)
+    if (item.status === "warn")
+      return warn(name, item.detail, item.line ?? "see the line printed when it starts", `${Brand.name} carries on; this limits what it can save there.`)
+    return fail(name, item.detail, item.line ?? "set HOME to a folder you own")
+  })
+  const found = await Workspace.inspect({ cwd, home, env: process.env, platform: process.platform, probe })
+  if (found.directory)
+    lines.push(ok("folder", `${cwd}: ${found.finding}; the interface and run work in ${found.directory} instead when started here`))
+  else lines.push(ok("folder", `${cwd}: ${found.finding === "ok" ? "usable as a project folder" : found.finding}`))
+  const low = Workspace.diskWarning(found.directory ?? cwd, probe)
+  const free = probe.free(found.directory ?? cwd)
+  if (low) lines.push(warn("disk", low, "free some space on that disk", "Sessions and checkpoints can fail when the disk is full."))
+  else if (free !== undefined) lines.push(ok("disk", `${Math.floor(free / (1024 * 1024))} MB free where ${Brand.name} works`))
+  return lines
 }
 
 export const NAMES = ["config", "project", "trust", "credential", "gateway", "key", "tiers", "console", "path", "version"] as const
@@ -788,6 +827,18 @@ export function installMethod(execPath: string, channel: string) {
   return "installed elsewhere, update through the channel you installed with"
 }
 
+// On Windows only: whether this console can draw the full screen interface.
+// A warning, not a failure: the run command works in any console.
+export function checkTerminal(verdict: WindowsConsole.Verdict): Line {
+  if (verdict.ok) return ok("terminal", `this console can draw the full screen interface (${verdict.host})`)
+  return warn(
+    "terminal",
+    `this console cannot draw the full screen interface (${verdict.host})`,
+    `Open Windows Terminal (from the Microsoft Store, or winget install --id Microsoft.WindowsTerminal) and run ${Brand.name} there`,
+    `${Brand.name} run "your task" works in this console.`,
+  )
+}
+
 export function checkVersion(version: string, channel: string, execPath: string): Line {
   return ok("version", `${Brand.name} ${version}, ${channel} channel, ${installMethod(execPath, channel)}`)
 }
@@ -816,6 +867,12 @@ export async function run(options: Options = {}): Promise<Report> {
   const cwd = options.cwd ?? process.cwd()
   const execPath = options.execPath ?? process.execPath
   const channel = options.channel ?? InstallationChannel
+  const folders = await (options.folders ?? ((dir: string) => folderLines(dir)))(cwd)
+  if (options.foldersOnly) {
+    const failed = folders.filter((l) => l.status === "fail").length
+    const warned = folders.filter((l) => l.status === "warn").length
+    return { lines: folders, ok: failed === 0, failed, warned, exitCode: failed ? Contract.EXIT.failed : Contract.EXIT.ok }
+  }
   const validate = options.validate ?? (await loadValidate())
   const lines: Line[] = []
 
@@ -852,6 +909,10 @@ export async function run(options: Options = {}): Promise<Report> {
   const resolve = options.which ?? ((command: string) => which(command, env as NodeJS.ProcessEnv))
   lines.push(checkPath(resolve(Brand.name), execPath, channel))
   lines.push(checkVersion(options.version ?? InstallationVersion, channel, execPath))
+  // Only where the question arises, so the report elsewhere is unchanged.
+  const verdict = (options.windowsConsole ?? (() => WindowsConsole.check(env)))()
+  if (verdict) lines.push(checkTerminal(verdict))
+  lines.push(...folders)
 
   const failed = lines.filter((l) => l.status === "fail").length
   const warned = lines.filter((l) => l.status === "warn").length

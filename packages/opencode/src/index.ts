@@ -1,5 +1,8 @@
-// First import, and it must stay first: it installs the crash handlers that
-// report a failure during module evaluation (rafiki/startup-guard.ts).
+// The folder checks come first, before anything that reads the home,
+// temporary, config or data folders (rafiki/folders-early.ts). They catch their
+// own failures. Then the crash handlers that report a failure during module
+// evaluation (rafiki/startup-guard.ts), which must stay ahead of everything else.
+import "./rafiki/folders-early"
 import "./rafiki/startup-guard"
 import yargs from "yargs"
 import { hideBin } from "yargs/helpers"
@@ -35,6 +38,7 @@ import * as Startup from "./rafiki/startup"
 import { DoctorCommand, LicensesCommand, LoginCommand, LogoutCommand, ProvidersCommand, TrustCommand, UsageCommand, WhoamiCommand, markHeadless, refuseMissingKey, refuseUnsafeCredential } from "./rafiki/cmd"
 import * as ExecTmp from "./rafiki/exec-tmp"
 import * as Autoupdate from "./rafiki/autoupdate"
+import * as Workspace from "./rafiki/workspace"
 
 // An update downloaded and verified by an earlier session is put in place here,
 // before anything is parsed, and the new binary takes over with the same
@@ -97,6 +101,9 @@ const cli = yargs(args)
     refuseUnsafeCredential(opts._[0])
     markHeadless(opts._[0])
     refuseMissingKey(opts)
+    // The folder doctor for the start folder: an unsafe, too big or unusable
+    // folder is replaced by ~/RafikiCode (rafiki/workspace.ts).
+    await Workspace.apply(opts)
   })
   .usage("")
   .completion("completion", "generate shell completion script")

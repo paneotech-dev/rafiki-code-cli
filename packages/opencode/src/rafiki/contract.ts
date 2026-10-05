@@ -48,6 +48,9 @@ export const DEFAULT_EXPIRES_IN = 600
 // Rotate when the key expires within this window, and never more than once an hour.
 export const REFRESH_WINDOW_SECONDS = 7 * 24 * 3600
 export const REFRESH_MIN_GAP_SECONDS = 3600
+// After this long without an answer from the browser, login says once that a
+// new account may still be waiting for verification or approval.
+export const LONG_WAIT_SECONDS = 120
 // Device label length cap on the wire.
 export const DEVICE_LABEL_MAX = 120
 
@@ -56,6 +59,11 @@ export const ERROR = {
   slowDown: "slow_down",
   accessDenied: "access_denied",
   expiredToken: "expired_token",
+  // The person who opened the approval page has an account that cannot
+  // approve yet: email not verified, or not approved by Rafiki AI. Answered
+  // by the token endpoint so the CLI can stop at once instead of polling for
+  // the code's ten minutes. See docs/contracts/device-account-pending.md.
+  accountPending: "account_pending",
   invalidGrant: "invalid_grant",
   unsupportedGrantType: "unsupported_grant_type",
   unknownClient: "unknown_client",
@@ -82,7 +90,10 @@ export const GATEWAY_ERROR_TYPE = {
 // sends its own text too; the local copy covers old servers and offline paths.
 export const MESSAGE: Record<string, string> = {
   [ERROR.accessDenied]: "Sign-in was denied in the browser.",
-  [ERROR.expiredToken]: "That sign-in code expired. Run rafikicode login again.",
+  [ERROR.expiredToken]:
+    "That sign-in code expired. Run rafikicode login again. If your Rafiki AI account is new, it may still be waiting for email verification or approval: check your email first.",
+  [ERROR.accountPending]:
+    "Your Rafiki AI account cannot sign in yet: it is waiting for email verification or for approval. Check your email (the verification link, then the approval message), then run rafikicode login again.",
   [ERROR.invalidGrant]: "That sign-in code is not valid.",
   [ERROR.unknownClient]: "Unknown client.",
   [ERROR.unauthenticated]: "Missing API key. Run rafikicode login, or set RAFIKICODE_API_KEY.",

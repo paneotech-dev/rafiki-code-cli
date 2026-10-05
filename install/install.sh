@@ -117,6 +117,7 @@ set -euo pipefail
 
 MUTED='\033[0;2m'
 RED='\033[0;31m'
+GREEN='\033[0;32m'
 NC='\033[0m'
 
 # Release overrides must be https URLs with a plain host name, no user info.
@@ -152,8 +153,14 @@ check_override() {
 # archive between the checksum check and the install. Removed on every exit
 # path; HUP, INT and TERM exit through the same cleanup.
 TMP_DIR=""
+TMPDIR_ORIG="${TMPDIR:-}"
+LAST_ERROR=""
 cleanup() {
+    local status=$?
     if [ -n "$TMP_DIR" ]; then rm -rf "$TMP_DIR"; fi
+    if [ "$status" != "0" ] && declare -f write_install_log >/dev/null 2>&1; then
+        write_install_log "exit status $status" || true
+    fi
 }
 trap cleanup EXIT
 trap 'exit 129' HUP
@@ -269,7 +276,22 @@ check_override RAFIKICODE_RELEASE_API "${RAFIKICODE_RELEASE_API:-}"
 check_override RAFIKICODE_RELEASE_BASE "${RAFIKICODE_RELEASE_BASE:-}"
 
 # Only now is it known whether a home directory is needed at all: --prefix and
-# --binary both name their own destination.
+# --binary both name their own destination. HOME unset (cron, some CI images,
+# a few jailshells) is not the end: the account's home folder is in the
+# password database, and is used when it exists and can be written.
+if [ -z "$HOME_DIR" ]; then
+    passwd_home=""
+    if command -v getent >/dev/null 2>&1; then
+        passwd_home=$(getent passwd "$(id -un 2>/dev/null)" 2>/dev/null | cut -d: -f6 || true)
+    fi
+    if [ -z "$passwd_home" ]; then passwd_home=$(eval "printf '%s' ~$(id -un 2>/dev/null)" 2>/dev/null || true); fi
+    if [ -n "$passwd_home" ] && [ -d "$passwd_home" ] && [ -w "$passwd_home" ]; then
+        HOME_DIR=$passwd_home
+        export HOME="$passwd_home"
+        if [ "$INSTALL_DIR" = "/.${APP}/bin" ]; then INSTALL_DIR="${HOME_DIR}/.${APP}/bin"; fi
+        printf 'HOME was not set; using this account'"'"'s home folder, %s.\n' "$HOME_DIR"
+    fi
+fi
 if [ -z "$HOME_DIR" ] && [ "$INSTALL_DIR" = "/.${APP}/bin" ]; then
     printf 'Error: HOME is not set, so there is nowhere to install %s.\n' "$APP" >&2
     {
@@ -279,6 +301,24 @@ if [ -z "$HOME_DIR" ] && [ "$INSTALL_DIR" = "/.${APP}/bin" ]; then
         printf '    curl -fsSL %s | bash -s -- --prefix /opt/%s/bin\n' "$INSTALLER_URL" "$APP"
     } >&2
     exit 1
+fi
+
+# Root, through sudo, with the home folder of the person who typed it: every
+# file would be written into their home and owned by root, and their next
+# `rafikicode update` would fail on it. The installer never needs root.
+if [ "$(id -u 2>/dev/null)" = "0" ] && [ -n "${SUDO_USER:-}" ] && [ "${SUDO_USER}" != "root" ]; then
+    sudo_home=""
+    if command -v getent >/dev/null 2>&1; then sudo_home=$(getent passwd "$SUDO_USER" 2>/dev/null | cut -d: -f6 || true); fi
+    case "$INSTALL_DIR" in
+        "${sudo_home:-/nonexistent}"/*|"${HOME_DIR:-/nonexistent}"/*)
+            if { [ -z "$sudo_home" ] && [ "$HOME_DIR" != "/root" ]; } || [ "$HOME_DIR" = "$sudo_home" ] || { [ -n "$sudo_home" ] && [[ "$INSTALL_DIR" == "$sudo_home"/* ]]; }; then
+                printf 'Error: this installer is running as root through sudo, and would write %s into %s as root.\n' "$APP" "${sudo_home:-$HOME_DIR}" >&2
+                printf '  It never needs root. Run it as yourself, without sudo:\n' >&2
+                printf '    curl -fsSL %s | bash\n' "$INSTALLER_URL" >&2
+                exit 1
+            fi
+            ;;
+    esac
 fi
 
 print_message() {
@@ -295,7 +335,352 @@ print_message() {
 
 fail() {
     print_message error "Error: $1" >&2
+    LAST_ERROR="$1"
     exit 1
+}
+
+# --- Downloads, whatever this machine has to make them ----------------------
+#
+# curl is the first choice and the one every message below is written for. A
+# minimal image may have none of it, and failing there with "curl is missing"
+# is a refusal the installer can avoid: wget, then python3, then perl with
+# HTTP::Tiny can each fetch over https. Every one of them is held to the same
+# rules as curl: https only, redirects included, unless the loopback test
+# switch is on; the same status numbers as curl for the same failures, so
+# net_fail explains a refused connection the same way whichever tool met it.
+#
+# Proxies: curl reads https_proxy and HTTPS_PROXY, wget only the lower case
+# names, python3 and perl both. So the upper case names are copied to the lower
+# case ones when only they are set, and http_proxy stands in for https_proxy
+# when it is the only proxy given, which is how most proxy setups are written.
+if [ -z "${https_proxy:-}" ] && [ -n "${HTTPS_PROXY:-}" ]; then export https_proxy="$HTTPS_PROXY"; fi
+if [ -z "${http_proxy:-}" ] && [ -n "${HTTP_PROXY:-}" ]; then export http_proxy="$HTTP_PROXY"; fi
+if [ -z "${https_proxy:-}" ] && [ -n "${http_proxy:-}" ]; then export https_proxy="$http_proxy"; fi
+if [ -z "${no_proxy:-}" ] && [ -n "${NO_PROXY:-}" ]; then export no_proxy="$NO_PROXY"; fi
+
+DOWNLOADER=""
+pick_downloader() {
+    [ -n "$DOWNLOADER" ] && return 0
+    local tool
+    for tool in ${RAFIKICODE_INSTALL_DOWNLOADERS:-curl wget python3 perl}; do
+        command -v "$tool" >/dev/null 2>&1 || continue
+        if [ "$tool" = "perl" ]; then
+            perl -MHTTP::Tiny -e 'exit(HTTP::Tiny->can_ssl ? 0 : 1)' >/dev/null 2>&1 || continue
+        fi
+        if [ "$tool" = "python3" ]; then
+            python3 -c 'import urllib.request, ssl' >/dev/null 2>&1 || continue
+        fi
+        # BusyBox's wget (Alpine, minimal images) takes fewer options than GNU
+        # wget: no --max-redirect, so it follows redirects itself.
+        if [ "$tool" = "wget" ]; then
+            WGET_BUSYBOX=""
+            if wget --help 2>&1 | grep -qi busybox || readlink -f "$(command -v wget)" 2>/dev/null | grep -q busybox; then
+                WGET_BUSYBOX=1
+            fi
+        fi
+        DOWNLOADER=$tool
+        if [ "$tool" != "curl" ]; then
+            print_message info "${MUTED}curl is not installed, so downloads use ${NC}${tool}${MUTED}.${NC}" >&2
+        fi
+        return 0
+    done
+    return 1
+}
+
+pinned() { [ "${#CURL_PROTO[@]}" -gt 0 ]; }
+
+# python3 and perl: one small program each, reading mode, url, output file,
+# Accept header and the https pin from their arguments. Mode "get" follows
+# redirects and writes the body; mode "location" follows none and prints where
+# the first redirect points.
+PY_FETCH='
+import socket, ssl, sys, urllib.error, urllib.request
+mode, url, out, accept, pin = sys.argv[1:6]
+if pin == "1" and not url.startswith("https://"):
+    sys.stderr.write("refusing a plain http address: " + url + "\n"); sys.exit(1)
+class Redirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if mode == "location":
+            return None
+        if pin == "1" and not newurl.startswith("https://"):
+            raise urllib.error.URLError("redirect to a plain http address refused")
+        return urllib.request.HTTPRedirectHandler.redirect_request(self, req, fp, code, msg, headers, newurl)
+headers = {"User-Agent": "rafikicode-installer"}
+if accept:
+    headers["Accept"] = accept
+try:
+    response = urllib.request.build_opener(Redirect).open(urllib.request.Request(url, headers=headers), timeout=60)
+    if mode == "location":
+        sys.exit(0)
+    data = response.read()
+    length = response.headers.get("Content-Length")
+    if length and int(length) != len(data):
+        sys.stderr.write("the download was cut short\n"); sys.exit(18)
+    if out == "-":
+        sys.stdout.buffer.write(data)
+    else:
+        open(out, "wb").write(data)
+except urllib.error.HTTPError as error:
+    if mode == "location" and error.code in (301, 302, 303, 307, 308):
+        print(error.headers.get("Location", "")); sys.exit(0)
+    sys.stderr.write("HTTP %d from %s\n" % (error.code, url)); sys.exit(22)
+except urllib.error.URLError as error:
+    reason = error.reason
+    text = str(reason)
+    sys.stderr.write(text + "\n")
+    if isinstance(reason, ssl.SSLError) or "CERTIFICATE" in text.upper() or "SSL" in text.upper():
+        sys.exit(60)
+    if isinstance(reason, socket.gaierror):
+        sys.exit(6)
+    if isinstance(reason, (socket.timeout, TimeoutError)) or "timed out" in text:
+        sys.exit(28)
+    sys.exit(7)
+except (socket.timeout, TimeoutError):
+    sys.exit(28)
+except Exception as error:
+    sys.stderr.write(str(error) + "\n"); sys.exit(18)
+'
+
+PL_FETCH='
+use strict; use HTTP::Tiny;
+my ($mode, $url, $out, $accept, $pin) = @ARGV;
+if ($pin eq "1" && $url !~ m{^https://}) { print STDERR "refusing a plain http address: $url\n"; exit 1; }
+my %h = ("User-Agent" => "rafikicode-installer"); $h{Accept} = $accept if $accept;
+my $http = HTTP::Tiny->new(max_redirect => ($mode eq "location" ? 0 : 10), timeout => 60, verify_SSL => 1);
+my $r = $http->get($url, { headers => \%h });
+if ($mode eq "location") {
+  if ($r->{status} =~ /^30[12378]$/) { print(($r->{headers}{location} // "") . "\n"); exit 0; }
+  exit 0 if $r->{success};
+}
+if ($pin eq "1") { for my $hop (@{ $r->{redirects} || [] }, $r) { if (($hop->{url} // "") !~ m{^https://}) { print STDERR "redirect to a plain http address refused\n"; exit 7; } } }
+if ($r->{status} == 599) {
+  my $why = $r->{content} // ""; print STDERR $why;
+  exit 60 if $why =~ /SSL|certificate/i; exit 6 if $why =~ /resolve|getaddrinfo|Name or service/i;
+  exit 28 if $why =~ /timed out|timeout/i; exit 7;
+}
+if (!$r->{success}) { print STDERR "HTTP $r->{status} from $url\n"; exit 22; }
+if ($out eq "-") { binmode STDOUT; print $r->{content}; } else { open(my $fh, ">:raw", $out) or exit 23; print $fh $r->{content}; close $fh; }
+'
+
+# wget follows redirects by itself with no way to hold them to https, so each
+# hop is taken one at a time and checked. Its exit status is mapped to curl's.
+busybox_wget_fetch() {
+    local mode=$1 url=$2 out=$3 accept=$4 errors status=0
+    # Redirects are followed by BusyBox itself, so there is no location to read.
+    [ "$mode" = "location" ] && return 0
+    if pinned && [[ "$url" != https://* ]]; then return 1; fi
+    errors=$(mktemp "${TMPDIR:-/tmp}/${APP}-wget.XXXXXX") || return 23
+    wget -q -T 60 ${accept:+--header "Accept: $accept"} -O "$out" "$url" 2>"$errors" || status=$?
+    if [ "$status" != "0" ]; then
+        cat "$errors" >&2
+        if grep -qiE 'server returned error|HTTP/[0-9.]+ [45][0-9][0-9]' "$errors"; then status=22
+        elif grep -qiE 'bad address|resolve|unknown host' "$errors"; then status=6
+        elif grep -qiE 'ssl|tls|certificate' "$errors"; then status=60
+        elif grep -qiE 'timed out|timeout' "$errors"; then status=28
+        else status=7; fi
+    fi
+    rm -f "$errors"
+    return "$status"
+}
+
+wget_fetch() {
+    local mode=$1 url=$2 out=$3 accept=$4 hop=0 headers status code location
+    if [ -n "${WGET_BUSYBOX:-}" ]; then busybox_wget_fetch "$mode" "$url" "$out" "$accept"; return; fi
+    headers=$(mktemp "${TMPDIR:-/tmp}/${APP}-wget.XXXXXX") || return 23
+    while [ "$hop" -lt 10 ]; do
+        if pinned && [[ "$url" != https://* ]]; then rm -f "$headers"; return 1; fi
+        status=0
+        wget -q -S --max-redirect=0 --timeout=60 ${accept:+--header="Accept: $accept"} -O "$out" "$url" 2>"$headers" || status=$?
+        code=$(sed -n 's/^ *HTTP\/[0-9.]* \([0-9][0-9][0-9]\).*/\1/p' "$headers" | sed '$!d')
+        location=$(sed -n 's/^ *[Ll]ocation: *//p' "$headers" | sed '$!d' | tr -d '\r')
+        case "$code" in
+            301|302|303|307|308)
+                if [ "$mode" = "location" ]; then printf '%s\n' "$location"; rm -f "$headers"; return 0; fi
+                case "$location" in
+                    http://*|https://*) url=$location ;;
+                    /*) url="$(printf '%s' "$url" | sed 's|^\(https\{0,1\}://[^/]*\).*|\1|')${location}" ;;
+                    *) rm -f "$headers"; return 7 ;;
+                esac
+                hop=$((hop + 1))
+                continue
+                ;;
+        esac
+        rm -f "$headers"
+        if [ "$mode" = "location" ]; then return 0; fi
+        case "$status" in
+            0) return 0 ;;
+            4) return 7 ;;
+            5) return 60 ;;
+            8) return 22 ;;
+            *) return 7 ;;
+        esac
+    done
+    rm -f "$headers"
+    return 47
+}
+
+# fetch URL FILE [ACCEPT]: the body into FILE ("-" for standard output). The
+# exit status is curl's, or the nearest curl status for the other tools.
+fetch() {
+    local url=$1 out=$2 accept=${3:-} pin=0
+    pick_downloader || return 2
+    pinned && pin=1
+    case "$DOWNLOADER" in
+        curl)
+            if [ "$out" = "-" ]; then
+                curl -fsSL --stderr - ${CURL_PROTO[@]+"${CURL_PROTO[@]}"} ${accept:+-H "Accept: $accept"} "$url"
+            elif [ -t 2 ] && [ "${FETCH_PROGRESS:-}" = "1" ]; then
+                curl -fL -# ${CURL_PROTO[@]+"${CURL_PROTO[@]}"} ${accept:+-H "Accept: $accept"} -o "$out" "$url"
+            else
+                curl -fsSL ${CURL_PROTO[@]+"${CURL_PROTO[@]}"} ${accept:+-H "Accept: $accept"} -o "$out" "$url"
+            fi
+            ;;
+        wget)
+            if [ "$out" = "-" ]; then
+                local body status=0
+                body=$(mktemp "${TMPDIR:-/tmp}/${APP}-body.XXXXXX") || return 23
+                wget_fetch get "$url" "$body" "$accept" || status=$?
+                cat "$body"
+                rm -f "$body"
+                return "$status"
+            fi
+            wget_fetch get "$url" "$out" "$accept"
+            ;;
+        python3) python3 -c "$PY_FETCH" get "$url" "$out" "$accept" "$pin" ;;
+        perl) perl -e "$PL_FETCH" get "$url" "$out" "$accept" "$pin" ;;
+    esac
+}
+
+# Where URL redirects to, without following it; empty when it does not.
+fetch_location() {
+    local url=$1 pin=0
+    pick_downloader || return 2
+    pinned && pin=1
+    case "$DOWNLOADER" in
+        curl) curl -sS ${CURL_PROTO[@]+"${CURL_PROTO[@]}"} -o /dev/null -w '%{redirect_url}' "$url" 2>/dev/null ;;
+        wget) wget_fetch location "$url" /dev/null "" ;;
+        python3) python3 -c "$PY_FETCH" location "$url" - "" "$pin" ;;
+        perl) perl -e "$PL_FETCH" location "$url" - "" "$pin" ;;
+    esac
+}
+
+# Statuses worth another try: a refused or dropped connection, a download cut
+# short, a timeout. Not an HTTP error (a 404 stays a 404) and not TLS.
+retryable() {
+    case "$1" in 7|18|28|52|55|56|92) return 0 ;; esac
+    return 1
+}
+
+RETRY_DELAY=${RAFIKICODE_INSTALL_RETRY_DELAY:-2}
+# fetch, up to three times, waiting RETRY_DELAY, then twice that, between tries.
+# When the tool in use still cannot get it (anything but an HTTP error, which
+# every tool would get alike), the next tool on this machine tries once.
+fetch_retry() {
+    local status=0 tool previous
+    fetch_retry_one "$1" "$2" || status=$?
+    [ "$status" = "0" ] || [ "$status" = "22" ] && return "$status"
+    previous=$DOWNLOADER
+    for tool in ${RAFIKICODE_INSTALL_DOWNLOADERS:-curl wget python3 perl}; do
+        [ "$tool" != "$previous" ] || continue
+        command -v "$tool" >/dev/null 2>&1 || continue
+        case "$tool" in
+            perl) perl -MHTTP::Tiny -e 'exit(HTTP::Tiny->can_ssl ? 0 : 1)' >/dev/null 2>&1 || continue ;;
+            python3) python3 -c 'import urllib.request, ssl' >/dev/null 2>&1 || continue ;;
+        esac
+        print_message info "${MUTED}${DOWNLOADER} could not download it (status ${status}); trying ${tool}.${NC}" >&2
+        DOWNLOADER=$tool
+        [ "$tool" = "wget" ] && { WGET_BUSYBOX=""; wget --help 2>&1 | grep -qi busybox && WGET_BUSYBOX=1; }
+        status=0
+        fetch "$1" "$2" || status=$?
+        [ "$status" = "0" ] && return 0
+    done
+    DOWNLOADER=$previous
+    return "$status"
+}
+
+fetch_retry_one() {
+    local url=$1 out=$2 attempt=1 status=0 wait=$RETRY_DELAY
+    while :; do
+        status=0
+        fetch "$url" "$out" || status=$?
+        if [ "$status" = "0" ] || ! retryable "$status" || [ "$attempt" -ge 3 ]; then return "$status"; fi
+        print_message info "${MUTED}The download failed (status ${status}); trying again in ${wait} s (attempt $((attempt + 1)) of 3).${NC}"
+        sleep "$wait"
+        wait=$((wait * 2))
+        attempt=$((attempt + 1))
+    done
+}
+
+# --- Unpacking, whatever this machine has to do it ---------------------------
+#
+# tar for the Linux archives and unzip for the others, and when the one needed
+# is missing, or cannot finish (a tar with no gzip beside it): bsdtar, busybox,
+# then python3, which reads both formats with its standard library alone.
+UNPACKER=""
+unpackers() {
+    if [ "$1" = "tar" ]; then
+        printf '%s\n' ${RAFIKICODE_INSTALL_UNPACKERS:-tar bsdtar busybox python3}
+    else
+        printf '%s\n' ${RAFIKICODE_INSTALL_UNPACKERS:-unzip bsdtar busybox python3} | grep -vx tar
+    fi
+}
+
+# Is there anything at all that could unpack this kind of archive?
+pick_unpacker() {
+    local kind=$1 tool
+    for tool in $(unpackers "$kind"); do
+        if [ "$tool" = "busybox" ]; then
+            busybox "$kind" --help >/dev/null 2>&1 && return 0
+        elif command -v "$tool" >/dev/null 2>&1; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+unpack_with() {
+    local tool=$1 archive=$2 dir=$3
+    case "$archive" in
+        *.zip)
+            case "$tool" in
+                unzip) unzip -q "$archive" -d "$dir" ;;
+                bsdtar) bsdtar -xf "$archive" -C "$dir" ;;
+                busybox) busybox unzip -q "$archive" -d "$dir" ;;
+                python3) python3 -c 'import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])' "$archive" "$dir" ;;
+                *) return 1 ;;
+            esac
+            ;;
+        *)
+            case "$tool" in
+                tar) tar -xzf "$archive" -C "$dir" ;;
+                bsdtar) bsdtar -xzf "$archive" -C "$dir" ;;
+                busybox) busybox tar -xzf "$archive" -C "$dir" ;;
+                python3) python3 -c 'import sys, tarfile; tarfile.open(sys.argv[1]).extractall(sys.argv[2])' "$archive" "$dir" ;;
+                *) return 1 ;;
+            esac
+            ;;
+    esac
+}
+
+unpack() {
+    local archive=$1 dir=$2 kind=tar tool
+    case "$archive" in *.zip) kind=unzip ;; esac
+    for tool in $(unpackers "$kind"); do
+        if [ "$tool" = "busybox" ]; then
+            busybox "$kind" --help >/dev/null 2>&1 || continue
+        else
+            command -v "$tool" >/dev/null 2>&1 || continue
+        fi
+        if unpack_with "$tool" "$archive" "$dir" 2>/dev/null; then
+            UNPACKER=$tool
+            if [ "$tool" != "$kind" ]; then
+                print_message info "${MUTED}No working ${kind} here, so the archive was unpacked with ${NC}${tool}${MUTED}.${NC}"
+            fi
+            return 0
+        fi
+        UNPACKER=$tool
+    done
+    return 1
 }
 
 # A missing tool is reported with the command that installs it, never as a bare
@@ -632,7 +1017,8 @@ install_licences() {
 
 # Version resolution. Produces specific_version and url.
 resolve_version() {
-    need curl
+    pick_downloader || need curl
+    latest_direct=""
     if [ -z "$requested_version" ]; then
         # The first thing this installer does over the network, so it is where a
         # machine with no network, no DNS or an expired CA bundle shows up. Keep
@@ -644,7 +1030,7 @@ resolve_version() {
         # $latest is that complaint and nothing else, and it is printed below
         # only if the fallback fails too. Printed here it would sit above an
         # install that then succeeded.
-        latest=$(curl -fsSL --stderr - ${CURL_PROTO[@]+"${CURL_PROTO[@]}"} -H "Accept: application/vnd.github+json" "${RELEASE_API}/releases/latest") || status=$?
+        latest=$(fetch "${RELEASE_API}/releases/latest" - "application/vnd.github+json" 2>&1) || status=$?
         specific_version=""
         if [ "$status" = "0" ]; then
             specific_version=$(printf '%s' "$latest" \
@@ -660,10 +1046,17 @@ resolve_version() {
             # correct all along. The release page is not rate limited and
             # redirects to the newest tag, so ask it before giving up.
             local redirect=""
-            redirect=$(curl -sS ${CURL_PROTO[@]+"${CURL_PROTO[@]}"} -o /dev/null \
-                -w '%{redirect_url}' "${RELEASE_BASE}/latest" 2>/dev/null) || redirect=""
+            redirect=$(fetch_location "${RELEASE_BASE}/latest" 2>/dev/null) || redirect=""
             specific_version=$(printf '%s' "$redirect" \
                 | sed -n 's|.*/tag/v\{0,1\}\([^/]*\)$|\1|p' | head -n 1)
+        fi
+        # Last, the address every release answers at without naming its
+        # version, which needs neither the API nor the release page. The
+        # version is learned from the binary once it is installed.
+        if [ -z "$specific_version" ] && fetch "${RELEASE_BASE}/latest/download/${CHECKSUMS}" - >/dev/null 2>&1; then
+            specific_version="latest"
+            latest_direct=1
+            print_message info "${MUTED}The release server would not name the latest version, so the latest release is downloaded directly.${NC}"
         fi
         if [ -z "$specific_version" ]; then
             if [ "$status" != "0" ]; then
@@ -676,8 +1069,13 @@ resolve_version() {
     else
         specific_version="${requested_version#v}"
     fi
-    url="${RELEASE_BASE}/download/v${specific_version}/${filename}"
-    sums_url="${RELEASE_BASE}/download/v${specific_version}/${CHECKSUMS}"
+    if [ -n "$latest_direct" ]; then
+        url="${RELEASE_BASE}/latest/download/${filename}"
+        sums_url="${RELEASE_BASE}/latest/download/${CHECKSUMS}"
+    else
+        url="${RELEASE_BASE}/download/v${specific_version}/${filename}"
+        sums_url="${RELEASE_BASE}/download/v${specific_version}/${CHECKSUMS}"
+    fi
 }
 
 check_installed() {
@@ -720,7 +1118,11 @@ ensure_install_dir() {
 }
 
 download_and_install() {
-    if [ "$os" = "linux" ]; then need tar; else need unzip; fi
+    if [ "$os" = "linux" ]; then
+        pick_unpacker tar || need tar
+    else
+        pick_unpacker unzip || need unzip
+    fi
     ensure_install_dir
     print_message info "\n${MUTED}Installing ${NC}${APP} ${MUTED}version ${NC}${specific_version}"
     TMP_DIR=$(umask 077 && mktemp -d "${TMPDIR:-/tmp}/${APP}_install.XXXXXXXXXX") \
@@ -732,7 +1134,7 @@ download_and_install() {
     local tmp_dir="$TMP_DIR"
 
     local sums_status=0
-    curl -fsSL ${CURL_PROTO[@]+"${CURL_PROTO[@]}"} -o "$tmp_dir/$CHECKSUMS" "$sums_url" || sums_status=$?
+    fetch_retry "$sums_url" "$tmp_dir/$CHECKSUMS" || sums_status=$?
     if [ "$sums_status" != "0" ]; then
         net_fail "$sums_status" "$sums_url" \
             "could not download ${CHECKSUMS} for ${APP} v${specific_version}"
@@ -768,34 +1170,43 @@ download_and_install() {
         exit 1
     fi
 
-    local dl_status=0
-    if [ -t 2 ]; then
-        curl -fL -# ${CURL_PROTO[@]+"${CURL_PROTO[@]}"} -o "$tmp_dir/$filename" "$url" || dl_status=$?
-    else
-        curl -fsSL ${CURL_PROTO[@]+"${CURL_PROTO[@]}"} -o "$tmp_dir/$filename" "$url" || dl_status=$?
-    fi
-    if [ "$dl_status" != "0" ]; then
-        net_fail "$dl_status" "$url" "could not download ${filename} for ${APP} v${specific_version}"
-    fi
-
-    local actual
-    actual=$(sha256_of "$tmp_dir/$filename")
+    # Downloaded up to three times: a connection that drops is retried inside
+    # fetch_retry, and an archive that arrives whole but wrong (cut short by a
+    # proxy, or replaced by a captive portal page) is fetched again here before
+    # anything is said about tampering.
+    local actual="" round=1 wait=$RETRY_DELAY
+    while :; do
+        local dl_status=0
+        FETCH_PROGRESS=1 fetch_retry "$url" "$tmp_dir/$filename" || dl_status=$?
+        if [ "$dl_status" != "0" ]; then
+            net_fail "$dl_status" "$url" "could not download ${filename} for ${APP} v${specific_version}"
+        fi
+        actual=$(sha256_of "$tmp_dir/$filename")
+        if [[ "$actual" == "$expected" ]] || [ "$round" -ge 3 ]; then break; fi
+        print_message info "${MUTED}The archive that arrived does not match its checksum; downloading it again in ${wait} s (attempt $((round + 1)) of 3).${NC}"
+        rm -f "${tmp_dir:?}/${filename:?}"
+        sleep "$wait"
+        wait=$((wait * 2))
+        round=$((round + 1))
+    done
     if [[ "$actual" != "$expected" ]]; then
         # Say what this means, because "checksum mismatch" is jargon and the one
         # thing a person must not do here is shrug and run the binary anyway.
+        LAST_ERROR="checksum mismatch for ${filename} after three downloads"
         print_message error "Error: the ${APP} archive that arrived is not the file the release says it is." >&2
         {
             printf '  file:     %s\n' "$filename"
             printf '  expected: %s\n' "$expected"
             printf '  received: %s\n' "$actual"
-            printf '  Nothing was installed and the download has been deleted.\n'
+            printf '  It was downloaded three times and was wrong each time. Nothing was installed\n'
+            printf '  and the download has been deleted.\n'
             printf '\n  This means the bytes that arrived are not the bytes that were published.\n'
-            printf '  Almost always that is a download cut short, or a proxy, captive portal or\n'
-            printf '  company filter that replaced the file with something of its own. Rarely, it\n'
-            printf '  means the file was tampered with on the way here.\n'
+            printf '  Almost always that is a proxy, captive portal or company filter that\n'
+            printf '  replaces the file with something of its own. Rarely, it means the file was\n'
+            printf '  tampered with on the way here.\n'
             printf '  Do not run a %s binary that failed this check, and do not install one from\n' "$APP"
             printf '  anywhere but %s\n' "$RELEASE_BASE"
-            printf '\n  Try again, on a different network if you can:\n'
+            printf '\n  Try again on a different network:\n'
             printf '    curl -fsSL %s | bash\n' "$INSTALLER_URL"
             printf '  If it fails the same way on a network you trust, that is worth reporting.\n'
             printf '  Open an issue at https://github.com/%s/%s/issues and paste both hashes above.\n' "$OWNER" "$REPO"
@@ -804,20 +1215,23 @@ download_and_install() {
     fi
     print_message info "${MUTED}Checksum verified${NC}"
 
-    if [ "$os" = "linux" ]; then
-        tar -xzf "$tmp_dir/$filename" -C "$tmp_dir"
-    else
-        unzip -q "$tmp_dir/$filename" -d "$tmp_dir"
+    if ! unpack "$tmp_dir/$filename" "$tmp_dir"; then
+        if [ "$UNPACKER" = "tar" ] && ! command -v gzip >/dev/null 2>&1; then
+            fail "${filename} was downloaded and verified, but tar cannot unpack it without gzip, and nothing else here can. Install gzip (or python3), then run the installer again."
+        fi
+        fail "${filename} was downloaded and verified, but ${UNPACKER:-nothing here} could not unpack it into ${tmp_dir}. That folder is usually full: check with df -h ${tmp_dir}, then run the installer again."
     fi
     if [ ! -f "$tmp_dir/$BIN_NAME" ]; then
         fail "${filename} unpacked, but it does not contain ${BIN_NAME}. That is a packaging mistake in release v${specific_version}, not something you can fix here: please report it at https://github.com/${OWNER}/${REPO}/issues and name the version."
     fi
 
-    mkdir -p "$INSTALL_DIR"
-    chmod 755 "$tmp_dir/$BIN_NAME"
+    mkdir -p "$INSTALL_DIR" || fail "${INSTALL_DIR} could not be created. Install somewhere you own: curl -fsSL ${INSTALLER_URL} | bash -s -- --prefix \$HOME/.${APP}/bin"
+    chmod 755 "$tmp_dir/$BIN_NAME" || fail "could not mark ${tmp_dir}/${BIN_NAME} as a program. The temporary folder may be on a file system that does not allow it: run the installer again with TMPDIR=\$HOME/.${APP}/tmp."
     # Stage next to the target and rename over it so the path never disappears.
-    mv "$tmp_dir/$BIN_NAME" "${INSTALL_DIR}/${BIN_NAME}.new"
-    mv -f "${INSTALL_DIR}/${BIN_NAME}.new" "${INSTALL_DIR}/${BIN_NAME}"
+    mv "$tmp_dir/$BIN_NAME" "${INSTALL_DIR}/${BIN_NAME}.new" \
+        || fail "could not copy ${BIN_NAME} into ${INSTALL_DIR}: the disk holding it is probably full. Check with df -h ${INSTALL_DIR}, then run the installer again."
+    mv -f "${INSTALL_DIR}/${BIN_NAME}.new" "${INSTALL_DIR}/${BIN_NAME}" \
+        || fail "could not replace ${INSTALL_DIR}/${BIN_NAME}. If ${APP} is running, close it and run the installer again."
     install_licences "$tmp_dir"
 }
 
@@ -834,10 +1248,12 @@ install_from_binary() {
       MINGW*|MSYS*|CYGWIN*) BIN_NAME="$APP.exe" ;;
     esac
     print_message info "\n${MUTED}Installing ${NC}${APP} ${MUTED}from ${NC}${binary_path}"
-    mkdir -p "$INSTALL_DIR"
-    cp "$binary_path" "${INSTALL_DIR}/${BIN_NAME}.new"
-    chmod 755 "${INSTALL_DIR}/${BIN_NAME}.new"
-    mv -f "${INSTALL_DIR}/${BIN_NAME}.new" "${INSTALL_DIR}/${BIN_NAME}"
+    mkdir -p "$INSTALL_DIR" || fail "${INSTALL_DIR} could not be created. Name a folder you own with --prefix."
+    cp "$binary_path" "${INSTALL_DIR}/${BIN_NAME}.new" \
+        || fail "could not copy ${binary_path} into ${INSTALL_DIR}: check that the disk has room with df -h ${INSTALL_DIR}."
+    chmod 755 "${INSTALL_DIR}/${BIN_NAME}.new" || fail "could not mark ${INSTALL_DIR}/${BIN_NAME}.new as a program."
+    mv -f "${INSTALL_DIR}/${BIN_NAME}.new" "${INSTALL_DIR}/${BIN_NAME}" \
+        || fail "could not replace ${INSTALL_DIR}/${BIN_NAME}. If ${APP} is running, close it and run the installer again."
 }
 
 # macOS marks files downloaded by a browser with com.apple.quarantine, and
@@ -866,15 +1282,22 @@ clear_quarantine() {
 # steps promise new terminals find the command on their own, and that promise is
 # true only when a file on disk says so.
 path_written=""
+startup_files=""
 add_to_path() {
     local config_file=$1
     local command=$2
+    case " $startup_files " in *" $config_file "*) ;; *) startup_files="${startup_files}${startup_files:+ }$config_file" ;; esac
     if grep -Fxq "$command" "$config_file" 2>/dev/null; then
-        print_message info "${MUTED}PATH entry already present in ${NC}$config_file"
+        case " ${announced:-} " in
+            *" $config_file "*) ;;
+            *) print_message info "${MUTED}PATH entry already present in ${NC}$config_file" ;;
+        esac
+        announced="${announced:-} $config_file"
         path_written="$config_file"
     elif [[ -w $config_file ]]; then
         echo -e "\n# ${APP}" >> "$config_file"
         echo "$command" >> "$config_file"
+        announced="${announced:-} $config_file"
         print_message info "${MUTED}Added ${NC}${INSTALL_DIR}${MUTED} to PATH in ${NC}$config_file"
         path_written="$config_file"
     else
@@ -904,7 +1327,9 @@ path_note() {
             command="export PATH=$INSTALL_DIR:\$PATH"
             ;;
         ash|sh)
-            config_files="$HOME_DIR/.ashrc $HOME_DIR/.profile /etc/profile"
+            # Only this user's own files: /etc/profile belongs to every user of
+            # the machine, and a user who cannot write it would get nothing.
+            config_files="$HOME_DIR/.profile $HOME_DIR/.ashrc"
             primary_config="$HOME_DIR/.profile"
             command="export PATH=$INSTALL_DIR:\$PATH"
             ;;
@@ -915,12 +1340,13 @@ path_note() {
             ;;
     esac
 
-    if [[ ":$PATH:" == *":$INSTALL_DIR:"* ]]; then
+    if [[ ":$PATH:" == *":$INSTALL_DIR:"* ]] && [ -z "$shadowed" ]; then
         print_message info "${MUTED}${INSTALL_DIR} is already on your PATH${NC}"
         return
     fi
     # Shown again in the next steps: this terminal does not read the startup file.
     path_hint="$command"
+    if [ -n "$shadowed" ]; then path_hint="export PATH=$INSTALL_DIR:\$PATH && hash -r"; fi
 
     if [ "$no_modify_path" = "true" ]; then
         print_message info "\nAdd ${INSTALL_DIR} to your PATH for ${current_shell}:"
@@ -975,6 +1401,13 @@ path_note() {
                 esac
                 if [[ -f $file ]]; then login_file=$file; break; fi
             done
+            # No login file at all (a user made without the skeleton files):
+            # a login shell, `su - user` or ssh, would never see the PATH line,
+            # so make the one it reads.
+            if [ -z "$login_file" ]; then
+                if [ "$current_shell" = "zsh" ]; then login_file="${ZDOTDIR:-$HOME_DIR}/.zprofile"; else login_file="$HOME_DIR/.profile"; fi
+                touch "$login_file" 2>/dev/null && print_message info "${MUTED}Created ${NC}$login_file" || login_file=""
+            fi
             if [ -n "$login_file" ] && [ "$login_file" != "$config_file" ]; then
                 add_to_path "$login_file" "$command"
             fi
@@ -1028,10 +1461,40 @@ verify_runs() {
     if [ "$status" = "0" ] && [ -n "$out" ]; then
         return 0
     fi
+    LAST_ERROR="${bin} --version exited with status ${status}: $(printf '%s' "$out" | sed -n '1p')"
+    case "$out" in
+        *"libstdc++"*|*"libgcc_s"*|*"Error relocating"*)
+            LAST_ERROR="the C++ runtime (libstdc++, libgcc) is missing; ${LAST_ERROR}"
+            print_message error "Error: ${APP} is installed, but this system lacks the C++ runtime it needs (libstdc++ and libgcc)." >&2
+            {
+                if [ -f /etc/alpine-release ] || command -v apk >/dev/null 2>&1; then pkgcmd="apk add libstdc++ libgcc"
+                elif command -v apt-get >/dev/null 2>&1; then pkgcmd="apt-get install -y libstdc++6"
+                elif command -v dnf >/dev/null 2>&1; then pkgcmd="dnf install -y libstdc++"
+                else pkgcmd=""; fi
+                if [ -n "$pkgcmd" ]; then
+                    if [ "$(id -u 2>/dev/null)" = "0" ]; then
+                        printf '  Install it:\n    %s\n' "$pkgcmd"
+                    elif command -v sudo >/dev/null 2>&1; then
+                        printf '  Install it (this needs administrator rights):\n    sudo %s\n' "$pkgcmd"
+                        printf '  If you cannot use sudo, ask whoever runs this machine to run that line.\n'
+                    else
+                        printf '  This needs administrator rights, which this account does not have. Ask whoever runs this machine to run:\n    %s\n' "$pkgcmd"
+                    fi
+                else
+                    printf '  Install your distribution'"'"'s libstdc++ and libgcc packages.\n'
+                fi
+                printf '  Then check it with: %s --version\n' "$bin"
+                printf '  The binary is already in place, so there is nothing to install again.\n'
+                printf '  What the loader said (first lines):\n'
+                printf '%s\n' "$out" | sed -n '1,3p' | sed 's/^/    /'
+            } >&2
+            exit 1
+            ;;
+    esac
     print_message error "Error: ${APP} was installed to ${bin} but does not run." >&2
     {
         printf '  %s --version exited with status %s\n' "$bin" "$status"
-        if [ -n "$out" ]; then printf '  it said: %s\n' "$out"; fi
+        if [ -n "$out" ]; then printf '  it said: %s\n' "$(printf '%s' "$out" | sed -n '1,5p')"; fi
 
         # A missing shared library is not a guess, it is in the loader's own
         # words, so name it and the package that carries it instead of listing
@@ -1154,30 +1617,49 @@ kb_to_mb() {
     printf '%s' "$(( ${1:-0} / 1024 ))"
 }
 
-# A writable install directory, checked before the download rather than at the
-# mkdir inside download_and_install, which used to fail after the archive had
-# been fetched and verified, with nothing but whatever mkdir says.
+# A folder the binary can be written to and then run from, checked before the
+# download rather than at the mkdir inside download_and_install, which used to
+# fail after the archive had been fetched and verified. Writable is not enough:
+# a home folder mounted noexec, usual on shared hosts, takes the file and then
+# will not run it, so a small script is written there and run (can_execute_in).
+#
+# When the folder asked for cannot be used, the installer does not stop: it
+# tries ~/.rafikicode/bin, the folder `rafikicode update` recognises as this
+# installer's own, then ~/.local/bin, and says in one line which it used. Only
+# when none of them can hold and run a program does it stop.
+install_dir_usable() {
+    local dir=$1
+    mkdir -p "$dir" 2>/dev/null && [ -w "$dir" ] && can_execute_in "$dir"
+}
+
 check_install_dir() {
-    local parent
-    if [ -d "$INSTALL_DIR" ] && [ -w "$INSTALL_DIR" ]; then return 0; fi
+    local parent why candidate
+    if install_dir_usable "$INSTALL_DIR"; then return 0; fi
+    if [ -d "$INSTALL_DIR" ] && [ -w "$INSTALL_DIR" ]; then
+        why="does not allow running a program (noexec)"
+    else
+        why="is not writable by you"
+    fi
+    for candidate in "$HOME_DIR/.${APP}/bin" "$HOME_DIR/.local/bin"; do
+        [ -n "$HOME_DIR" ] || break
+        [ "$candidate" != "$INSTALL_DIR" ] || continue
+        if install_dir_usable "$candidate"; then
+            print_message info "${MUTED}${INSTALL_DIR} ${why}, so ${NC}${APP}${MUTED} is installed into ${NC}${candidate}${MUTED} instead.${NC}"
+            INSTALL_DIR=$candidate
+            return 0
+        fi
+    done
     parent=$(nearest_existing "$INSTALL_DIR")
-    if [ ! -d "$INSTALL_DIR" ] && [ -w "$parent" ]; then return 0; fi
-    print_message error "Error: ${APP} cannot be installed into ${INSTALL_DIR}: that directory is not writable by you." >&2
+    LAST_ERROR="no folder can hold and run ${APP}: ${INSTALL_DIR} ${why}"
+    print_message error "Error: ${APP} cannot be installed: ${INSTALL_DIR} ${why}, and neither ${HOME_DIR:-~}/.${APP}/bin nor ${HOME_DIR:-~}/.local/bin can hold and run a program." >&2
     {
         printf '  You are %s and the nearest existing directory, %s, is owned by %s.\n' \
             "$(id -un 2>/dev/null || echo "this user")" "$parent" \
             "$(ls -ld "$parent" 2>/dev/null | awk '{print $3}' || echo "someone else")"
-        printf '  Install somewhere you own instead. This needs no administrator access:\n'
-        printf '    ./install.sh --prefix "$HOME/.%s/bin"\n' "$APP"
-        printf '  or, if you are running the one line installer:\n'
-        printf '    curl -fsSL %s | RAFIKICODE_INSTALL_DIR="$HOME/.%s/bin" bash\n' "$INSTALLER_URL" "$APP"
-        case "$INSTALL_DIR" in
-            /usr/local/*|/usr/*|/opt/*)
-                printf '  %s is a system directory. Writing there needs root, and this installer\n' "$INSTALL_DIR"
-                printf '  will not ask for it: a per user install under your home directory works the\n'
-                printf '  same and is easier to remove.\n'
-                ;;
-        esac
+        printf '  Name a folder you own that programs may run from:\n'
+        printf '    curl -fsSL %s | bash -s -- --prefix /path/you/own/bin\n' "$INSTALLER_URL"
+        printf '  On a shared host where every folder of yours is mounted noexec, ask whoever\n'
+        printf '  runs it for one: "%s needs a folder I can write a program to and run it from."\n' "$APP"
     } >&2
     exit 1
 }
@@ -1185,23 +1667,60 @@ check_install_dir() {
 # Disk space, before the download. Checked in both places it is spent: the
 # temporary directory that holds the archive and the unpacked binary, and the
 # install directory the binary ends up in.
+# The temporary directory the download is unpacked in. TMPDIR (or /tmp) first;
+# when it lacks the room or will not run a file (a noexec mount, usual on shared
+# hosts), ~/.rafikicode/tmp instead, created here, with one line saying so. A
+# piped install (curl ... | bash) has no command line on which the user could
+# have set TMPDIR beforehand, so advising "TMPDIR=... ./install.sh" there was
+# advice nobody could follow. Only when no candidate has room does it stop, with
+# the piped form spelled out.
+tmp_fallback=""
+tmp_has_room() {
+    local free
+    free=$(free_kb "$(nearest_existing "$1")")
+    [ -z "$free" ] || [ "$free" -ge "$NEED_KB_TMP" ] 2>/dev/null
+}
+
 check_disk_space_tmp() {
-    local tmp="${TMPDIR:-/tmp}" tmp_dir_existing free
-    tmp_dir_existing=$(nearest_existing "$tmp")
-    free=$(free_kb "$tmp_dir_existing")
-    if [ -n "$free" ] && [ "$free" -lt "$NEED_KB_TMP" ] 2>/dev/null; then
-        print_message error "Error: not enough free disk space to unpack ${APP}." >&2
-        {
-            printf '  %s has %s MB free; unpacking the release needs about %s MB there.\n' \
-                "$tmp_dir_existing" "$(kb_to_mb "$free")" "$(kb_to_mb "$NEED_KB_TMP")"
-            printf '  %s is about 58 MB once extracted, and the archive is downloaded beside it.\n' "$APP"
-            printf '  Either free some space, or send the download somewhere that has room:\n'
-            printf '    TMPDIR=/path/with/space ./install.sh\n'
-            printf '  See what is using the space with: df -h %s\n' "$tmp_dir_existing"
-        } >&2
-        exit 1
+    local tmp="${TMPDIR:-/tmp}" fallback="" why="" free
+    if [ -n "$HOME_DIR" ]; then fallback="$HOME_DIR/.${APP}/tmp"; fi
+    if ! tmp_has_room "$tmp"; then
+        why="has $(kb_to_mb "$(free_kb "$(nearest_existing "$tmp")")") MB free"
+    elif [ -d "$tmp" ] && [ ! -w "$tmp" ]; then
+        why="cannot be written"
+    elif [ ! -d "$tmp" ] && ! mkdir -p "$tmp" 2>/dev/null; then
+        why="does not exist and cannot be created"
+    elif [ -d "$tmp" ] && ! can_execute_in "$tmp"; then
+        why="does not allow running a file (noexec)"
     fi
-    return 0
+    if [ -z "$why" ]; then return 0; fi
+    if [ -n "$fallback" ] && [ "$fallback" != "$tmp" ] && mkdir -p "$fallback" 2>/dev/null && chmod 700 "$fallback" 2>/dev/null \
+        && tmp_has_room "$fallback"; then
+        print_message info "${MUTED}${tmp} ${why}, so the download goes to ${NC}${fallback}${MUTED} instead.${NC}"
+        TMPDIR="$fallback"
+        export TMPDIR
+        # The program writes to TMPDIR at every start as well, so whatever
+        # the reason, the next shells get the same folder: the line goes into
+        # the startup files with the PATH line (persist_tmpdir), and the next
+        # steps print it for this window.
+        tmp_fallback="$fallback"
+        tmp_fallback_why="$why"
+        return 0
+    fi
+    print_message error "Error: not enough free disk space to unpack ${APP}." >&2
+    {
+        free=$(free_kb "$(nearest_existing "$tmp")")
+        printf '  %s has %s MB free; unpacking the release needs about %s MB there.\n' \
+            "$(nearest_existing "$tmp")" "$(kb_to_mb "$free")" "$(kb_to_mb "$NEED_KB_TMP")"
+        if [ -n "$fallback" ]; then
+            printf '  %s was tried as well and has no room either.\n' "$fallback"
+        fi
+        printf '  %s is about 58 MB once extracted, and the archive is downloaded beside it.\n' "$APP"
+        printf '  Free some space, or send the download to a directory with room:\n'
+        printf '    curl -fsSL %s | TMPDIR=$HOME/.%s/tmp bash\n' "$INSTALLER_URL" "$APP"
+        printf '  See what is using the space with: df -h ~ ; df -h %s\n' "$(nearest_existing "$tmp")"
+    } >&2
+    exit 1
 }
 
 check_disk_space_install() {
@@ -1231,11 +1750,11 @@ check_disk_space_install() {
 # together and say all of it at once.
 preflight() {
     missing_tools=""
-    command -v curl >/dev/null 2>&1 || note_missing curl
+    pick_downloader || note_missing curl
     if [ "${os:-}" = "linux" ]; then
-        command -v tar >/dev/null 2>&1 || note_missing tar
+        pick_unpacker tar || note_missing tar
     else
-        command -v unzip >/dev/null 2>&1 || note_missing unzip
+        pick_unpacker unzip || note_missing unzip
     fi
     if ! command -v sha256sum >/dev/null 2>&1 && ! command -v shasum >/dev/null 2>&1; then
         note_missing sha256sum
@@ -1264,11 +1783,40 @@ preflight_local() {
 # server, a proxy the user has not told curl about, and a version that was never
 # published. Those have five different answers and only one of them is "try
 # again". curl's status distinguishes them, so use it.
+# A clock far off makes every certificate look not yet valid, or expired, and
+# the TLS failure that follows says nothing about time. Compare this machine's
+# clock with the Date header of the release server, read without checking the
+# certificate (only the time is used, never the body), and with the year alone
+# when that is not possible.
+clock_skew_note() {
+    local now server="" server_epoch="" diff
+    now=$(date -u +%s 2>/dev/null) || return 1
+    if command -v curl >/dev/null 2>&1; then
+        server=$(curl -skI --max-time 8 "${CLOCK_URL:-https://github.com}" 2>/dev/null | sed -n 's/^[Dd]ate: *//p' | tr -d '\r' | head -n 1)
+    fi
+    if [ -n "$server" ]; then server_epoch=$(date -u -d "$server" +%s 2>/dev/null || true); fi
+    if [ -n "$server_epoch" ]; then
+        diff=$((now - server_epoch))
+        [ "$diff" -lt 0 ] && diff=$((0 - diff))
+        [ "$diff" -gt 86400 ] || return 1
+    elif [ "$(date -u +%Y)" -ge 2025 ] 2>/dev/null; then
+        return 1
+    fi
+    printf "  This machine's clock says %s" "$(date -u '+%Y-%m-%d %H:%M UTC')"
+    if [ -n "$server" ]; then printf ', and the release server says %s' "$server"; fi
+    printf '.\n  Secure downloads check certificates against the clock, so a wrong clock fails\n'
+    printf '  every one of them. Set the clock, then run the installer again:\n'
+    printf '    sudo timedatectl set-ntp true     (or set it by hand: sudo date -s "YYYY-MM-DD HH:MM")\n'
+    LAST_ERROR="TLS failure: this machine's clock is wrong"
+    return 0
+}
+
 net_fail() {
     local status=$1 url=$2 summary=$3
+    LAST_ERROR="${summary} (status ${status}, ${url})"
     print_message error "Error: ${summary}." >&2
     {
-        printf '  curl %s exited with status %s.\n' "$url" "$status"
+        printf '  %s %s exited with status %s.\n' "${DOWNLOADER:-curl}" "$url" "$status"
         case "$status" in
             6)
                 printf '  That status means the host name did not resolve: DNS is not answering.\n'
@@ -1288,9 +1836,9 @@ net_fail() {
             7)
                 printf '  That status means the address resolved but refused the connection: there is\n'
                 printf '  no route out, or a firewall is blocking port 443.\n'
-                printf '  If this network needs a proxy, tell curl about it and run the installer again:\n'
+                printf '  If this network needs a proxy, set it and run the installer again:\n'
                 printf '    export https_proxy=http://proxy.example.com:8080\n'
-                printf '  Check with: curl -sSI https://github.com\n'
+                if command -v curl >/dev/null 2>&1; then printf '  Check with: curl -sSI https://github.com\n'; fi
                 ;;
             28)
                 printf '  That status means the connection timed out. The network may be very slow, or\n'
@@ -1312,6 +1860,7 @@ net_fail() {
                 printf '    curl -fsSL %s | bash -s -- --version <version from the list above>\n' "$INSTALLER_URL"
                 ;;
             35|51|58|59|60|77|83)
+                if clock_skew_note; then printf '  Nothing was installed.\n'; exit 1; fi
                 printf '  That status is a TLS failure. The usual cause is a certificate store too old\n'
                 printf '  to verify the release server, which is what happens on an image that has\n'
                 printf '  never been updated.\n'
@@ -1333,6 +1882,177 @@ net_fail() {
         print_offline_route
     } >&2
     exit 1
+}
+
+# An older copy that comes first on PATH: npm's, Homebrew's, or one put there
+# by hand. Every command typed would run it instead of the one just installed,
+# and nothing would say so. Found here, named with the command that removes it,
+# and outranked: the PATH line for new terminals puts this install first, and
+# the next steps give the line that does it in this terminal.
+shadowed=""
+check_shadow() {
+    hash -r 2>/dev/null || true
+    local found real ours how remove
+    found=$(command -v "$APP" 2>/dev/null) || return 0
+    real=$(readlink -f "$found" 2>/dev/null || printf '%s' "$found")
+    ours=$(readlink -f "${INSTALL_DIR}/${BIN_NAME}" 2>/dev/null || printf '%s' "${INSTALL_DIR}/${BIN_NAME}")
+    [ "$real" = "$ours" ] && return 0
+    how="an older copy"
+    remove="rm ${found}"
+    case "$real" in
+        *node_modules*) how="installed with npm"; remove="npm uninstall -g ${APP}" ;;
+        */Cellar/*|*homebrew*|*linuxbrew*) how="installed with Homebrew"; remove="brew uninstall ${APP}" ;;
+    esac
+    shadowed="$found"
+    print_message warning "Another ${APP} at ${found} (${how}) comes first on your PATH and would run instead of this one."
+    print_message info "${MUTED}  New terminals use this install first. To remove the other copy: ${NC}${remove}"
+}
+
+# The same PATH line for the other shells this account uses, so a switch from
+# bash to zsh, or to fish, finds the command too. Only for shells whose startup
+# file or folder already exists; add_to_path never adds a line twice.
+add_other_shells() {
+    [ "$no_modify_path" = "true" ] && return 0
+    local current file
+    current=$(basename "${SHELL:-sh}")
+    if [ "$current" != "bash" ] && [ -f "$HOME_DIR/.bashrc" ]; then
+        add_to_path "$HOME_DIR/.bashrc" "export PATH=$INSTALL_DIR:\$PATH"
+    fi
+    file="${ZDOTDIR:-$HOME_DIR}/.zshrc"
+    if [ "$current" != "zsh" ] && [ -f "$file" ]; then
+        add_to_path "$file" "export PATH=$INSTALL_DIR:\$PATH"
+    fi
+    if [ "$current" != "fish" ] && [ -d "$HOME_DIR/.config/fish" ]; then
+        file="$HOME_DIR/.config/fish/config.fish"
+        [ -f "$file" ] || touch "$file" 2>/dev/null || return 0
+        add_to_path "$file" "fish_add_path $INSTALL_DIR"
+    fi
+    if [ "$current" != "bash" ] && [ "$current" != "zsh" ] && [ -f "$HOME_DIR/.profile" ]; then
+        add_to_path "$HOME_DIR/.profile" "export PATH=$INSTALL_DIR:\$PATH"
+    fi
+    return 0
+}
+
+# What went wrong, kept for whoever is asked for help: the error, the machine,
+# the choices this installer made. Proxy addresses are written without any
+# user name or password in them.
+install_log_path() {
+    if [ -n "$HOME_DIR" ] && mkdir -p "$HOME_DIR/.${APP}" 2>/dev/null; then
+        printf '%s\n' "$HOME_DIR/.${APP}/install.log"
+    else
+        printf '%s\n' "${TMPDIR:-/tmp}/${APP}-install.log"
+    fi
+}
+
+redact() { printf '%s' "${1:-unset}" | sed 's|//[^/@]*@|//***@|'; }
+
+write_install_log() {
+    local why=$1 log
+    log=$(install_log_path)
+    {
+        printf '%s install log, %s\n' "$APP" "$(date -u '+%Y-%m-%d %H:%M:%S UTC' 2>/dev/null)"
+        printf 'result: %s\n' "$why"
+        printf 'error: %s\n' "${LAST_ERROR:-none recorded}"
+        printf 'system: %s\n' "$(uname -a 2>/dev/null)"
+        printf 'target: %s, version asked: %s, version found: %s\n' "${target:-unknown}" "${requested_version:-latest}" "${specific_version:-unknown}"
+        printf 'install folder: %s\n' "$INSTALL_DIR"
+        printf 'temporary folder: %s (was %s)\n' "${TMPDIR:-/tmp}" "${TMPDIR_ORIG:-unset}"
+        printf 'downloader: %s, unpacker: %s\n' "${DOWNLOADER:-none}" "${UNPACKER:-none}"
+        printf 'https_proxy: %s, no_proxy: %s\n' "$(redact "${https_proxy:-}")" "${no_proxy:-unset}"
+        printf 'shell: %s, PATH: %s\n' "${SHELL:-unset}" "$PATH"
+        df -h "${TMPDIR:-/tmp}" "$(nearest_existing "$INSTALL_DIR" 2>/dev/null || printf /)" 2>/dev/null || true
+    } > "$log" 2>/dev/null || return 0
+    printf '\nA report of this install was saved to %s.\n' "$log" >&2
+    printf 'If you need help, send that file to info@paneo.tech.\n' >&2
+}
+
+# The temporary folder fallback, kept for the shells to come: the same line in
+# every startup file that carries the PATH line, once.
+persist_tmpdir() {
+    [ -n "$tmp_fallback" ] || return 0
+    [ "$no_modify_path" = "true" ] && return 0
+    local line="export TMPDIR=\$HOME/.${APP}/tmp" file
+    for file in $startup_files; do
+        case "$file" in *config.fish) continue ;; esac
+        if ! grep -Fxq "$line" "$file" 2>/dev/null; then
+            printf '%s\n' "$line" >> "$file" 2>/dev/null && print_message info "${MUTED}Added TMPDIR=\$HOME/.${APP}/tmp to ${NC}$file"
+        fi
+    done
+    for file in $startup_files; do
+        case "$file" in *config.fish)
+            grep -Fxq "set -gx TMPDIR \$HOME/.${APP}/tmp" "$file" 2>/dev/null \
+                || printf 'set -gx TMPDIR $HOME/.%s/tmp\n' "$APP" >> "$file" 2>/dev/null || true ;;
+        esac
+    done
+}
+
+# The check at the end: does the program run, does the gateway answer, and does
+# the folder doctor find every folder it needs. A short summary, green when all
+# of it holds; red, with the report written, when something does not.
+self_check() {
+    local bin="${INSTALL_DIR}/${BIN_NAME}" version gateway root folders status=0 bad="" fresh shell_bin login=""
+    # As the next terminal will: a login shell with nothing inherited from this
+    # one (no TMPDIR from a fallback, no PATH), reading the startup files. When
+    # the startup files were left alone, the program is called by its path.
+    shell_bin=$(command -v "$(basename "${SHELL:-sh}")" 2>/dev/null || command -v sh 2>/dev/null || printf '%s' "$BASH")
+    fresh() {
+        env -i HOME="$HOME_DIR" USER="${USER:-$(id -un 2>/dev/null)}" LOGNAME="${LOGNAME:-$(id -un 2>/dev/null)}" \
+            TERM="${TERM:-dumb}" PATH="/usr/local/bin:/usr/bin:/bin" ${RAFIKICODE_GATEWAY_URL:+RAFIKICODE_GATEWAY_URL="$RAFIKICODE_GATEWAY_URL"} \
+            "$shell_bin" -l -c "$1" 2>&1
+    }
+    if [ "$no_modify_path" != "true" ] && [ -n "$startup_files$linked_path" ]; then
+        login=$(fresh "command -v ${APP}" | sed '$!d' || true)
+        if [ "$login" = "$bin" ] || [ "$(readlink -f "$login" 2>/dev/null)" = "$(readlink -f "$bin" 2>/dev/null)" ]; then
+            bin_cmd="$APP"
+        else
+            bin_cmd="$bin"
+            bad="a new login shell does not find this ${APP} (it finds ${login:-nothing})"
+        fi
+    else
+        bin_cmd="$bin"
+    fi
+    version=$(fresh "$bin_cmd --version" | sed '$!d') || version=""
+    case "$version" in *[0-9]*) ;; *) version="" ;; esac
+    root=$(printf '%s' "${RAFIKICODE_GATEWAY_URL:-https://gateway.rafikiai.io/v1}" | sed 's|/v1/*$||')
+    if fetch "${root}/health/liveliness" - >/dev/null 2>&1; then gateway=ok; else gateway=fail; fi
+    local st='$?'
+    case "$shell_bin" in *fish) st='$status' ;; esac
+    folders=$(fresh "$bin_cmd doctor --folders; echo exit=$st" || true)
+    status=$(printf '%s\n' "$folders" | sed -n 's/^exit=//p' | sed '$!d')
+    folders=$(printf '%s\n' "$folders" | grep -v '^exit=' || true)
+    [ -n "$status" ] || status=1
+    print_message info "\nCheck:"
+    case "$bad" in *"login shell does not find"*) print_message info "  ${RED}FAIL${NC}  ${bad}" ;; esac
+    if [ -n "$version" ]; then
+        print_message info "  ${GREEN}ok${NC}    ${APP} ${version} runs in a new login shell"
+    else
+        print_message info "  ${RED}FAIL${NC}  ${APP} does not run in a new login shell"; bad="${bad:+$bad, }the program does not run in a new login shell"
+    fi
+    if [ "$gateway" = ok ]; then
+        print_message info "  ${GREEN}ok${NC}    the model gateway answers (${root})"
+    else
+        print_message info "  ${RED}FAIL${NC}  the model gateway did not answer (${root}); check the network or proxy"
+        bad="${bad:+$bad, }the gateway did not answer"
+    fi
+    case "$folders" in
+        *"Unknown argument"*|*"nknown option"*) print_message info "  ${MUTED}skip  folders (this version has no folder check)${NC}" ;;
+        *)
+            if [ "$status" = "0" ]; then
+                print_message info "  ${GREEN}ok${NC}    folders: home, temporary, config, data and workspace are usable"
+            else
+                print_message info "  ${RED}FAIL${NC}  folders: ${bin} doctor --folders found a problem:"
+                printf '%s\n' "$folders" | sed 's/^/        /'
+                bad="${bad:+$bad, }a folder check failed"
+            fi
+            ;;
+    esac
+    if [ -z "$bad" ]; then
+        print_message info "${GREEN}Ready.${NC}"
+    else
+        print_message info "${RED}Installed, but not ready: ${bad}.${NC}"
+        LAST_ERROR="self check: ${bad}"
+        write_install_log "installed, self check failed"
+    fi
 }
 
 if [ -n "$binary_path" ]; then
@@ -1363,7 +2083,10 @@ verify_runs
 print_message info "${MUTED}Installed ${NC}${APP}${MUTED} at ${NC}${INSTALL_DIR}/${BIN_NAME}"
 check_exec_tmp
 link_into_path
+check_shadow
 path_note
+add_other_shells
+persist_tmpdir
 
 # What to tell the user to type. Whatever happened above, this is a command that
 # works in the terminal they already have open: the bare name once it resolves,
@@ -1373,6 +2096,22 @@ run_cmd="$APP"
 if [ -z "$linked_path" ] && [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
     run_cmd="${INSTALL_DIR}/${BIN_NAME}"
 fi
+
+# A folder to start in. Started from the home folder, rafikicode works in
+# ~/RafikiCode instead (a home folder is not a project, and walking all of it
+# before the first request is what made a first run hang), so the folder is
+# made here, private, and the next steps start there. Nothing fails if it
+# cannot be made: rafikicode makes it on first use as well.
+workspace_dir=""
+if [ -n "$HOME_DIR" ]; then
+    if [ -d "$HOME_DIR/RafikiCode" ] || { mkdir -p "$HOME_DIR/RafikiCode" 2>/dev/null && chmod 700 "$HOME_DIR/RafikiCode" 2>/dev/null; }; then
+        workspace_dir="$HOME_DIR/RafikiCode"
+    fi
+fi
+start_line="${run_cmd}"
+if [ -n "$workspace_dir" ]; then start_line="cd ~/RafikiCode && ${run_cmd}"; fi
+
+self_check
 
 # Finish by signing in, instead of printing a command for someone to type.
 #
@@ -1400,7 +2139,12 @@ if can_sign_in; then
     # The install has already succeeded, so a sign in that is declined or fails
     # must not fail the installer. Fall through to the written instructions.
     if "$run_cmd" login </dev/tty; then
-        print_message info "\n${MUTED}Signed in. Run ${NC}${run_cmd}${MUTED} to start, or ${NC}${run_cmd} doctor${MUTED} to check the setup.${NC}"
+        print_message info "\n${MUTED}Signed in. To start, in your workspace folder or in any project folder:${NC}"
+        print_message info "       ${start_line}"
+        print_message info "${MUTED}To check the setup: ${NC}${run_cmd} doctor"
+        if [ -n "$tmp_fallback" ]; then
+            print_message info "${MUTED}${TMPDIR_ORIG:-/tmp} ${tmp_fallback_why:-cannot be used}; new terminals use ~/.${APP}/tmp. In this one, run:${NC} export TMPDIR=\$HOME/.${APP}/tmp"
+        fi
         exit 0
     fi
     print_message warning "Sign in did not finish. You can do it whenever you like:"
@@ -1413,7 +2157,7 @@ step=1
 # carries the entry: new terminals are set, this one needs the export. Not linked
 # and nothing written (--no-modify-path, no startup file found, or one we cannot
 # write): no terminal finds it until the user puts the line somewhere themselves.
-if [ -n "${path_hint:-}" ] && [ -z "$linked_path" ]; then
+if [ -n "${path_hint:-}" ] && { [ -z "$linked_path" ] || [ -n "$shadowed" ]; }; then
     if [ -n "${path_written:-}" ]; then
         print_message info "  ${step}. New terminals find ${APP} on their own. To use this one:"
         print_message info "       $path_hint"
@@ -1434,3 +2178,16 @@ step=$((step + 1))
 # wrong, whether the name resolves to the binary that was just written.
 print_message info "  ${step}. Check the whole setup, once signed in:"
 print_message info "       ${run_cmd} doctor"
+if [ -n "$tmp_fallback" ]; then
+    step=$((step + 1))
+    print_message info "  ${step}. ${TMPDIR_ORIG:-/tmp} ${tmp_fallback_why:-cannot be used}, and ${APP} writes to TMPDIR each time it starts."
+    if [ "$no_modify_path" != "true" ] && [ -n "$startup_files" ]; then
+        print_message info "     New terminals use ~/.${APP}/tmp on their own. In this one, run:"
+    else
+        print_message info "     Add this line to your shell startup file, and run it in this terminal:"
+    fi
+    print_message info "       export TMPDIR=\$HOME/.${APP}/tmp"
+fi
+step=$((step + 1))
+print_message info "  ${step}. Start ${APP} in your workspace folder, or in any project folder:"
+print_message info "       ${start_line}"

@@ -34,7 +34,17 @@ Run the installer without `--version` to get the latest release.
 
 **`rafikicode` updated itself and I did not ask it to.** A copy installed by the installer script looks for a new release once a day, downloads it in the background, verifies it against the published `SHA256SUMS`, and uses it from the next start, printing `rafikicode updated from <old> to <new>.` when it does. Set `"autoupdate": false` in `~/.rafikicode/config.json` to turn that off, or `RAFIKICODE_DISABLE_AUTOUPDATE=1` for one process. See [Install and update](./install.md#updates).
 
-**Checksum mismatch during install.** The downloaded archive did not match the published `SHA256SUMS`. Nothing was installed. Run the installer again; if it repeats, a proxy or mirror is altering downloads, and you should fetch from the release page directly.
+**Checksum mismatch during install.** The downloaded archive did not match the published `SHA256SUMS`. The installer downloads it again, three times in all, before it says so, so a single download cut short is not the cause. Nothing was installed. A proxy or company filter is replacing the file: try another network, or fetch from the release page directly.
+
+**The installer says the clock is wrong.** A TLS failure on a machine whose clock is off by more than a day is reported as that, because every certificate looks expired or not yet valid. Set the clock (`sudo timedatectl set-ntp true`, or `sudo date -s "YYYY-MM-DD HH:MM"`) and run the installer again.
+
+**The installer used another tool, folder or address than usual.** It said so in one line: `curl is not installed, so downloads use wget`, `No working tar here, so the archive was unpacked with python3`, `/tmp has 0 MB free, so the download goes to ~/.rafikicode/tmp instead`, `... is not writable by you, so rafikicode is installed into ~/.rafikicode/bin instead`, or `the latest release is downloaded directly`. Each of these is a fallback, not an error, and the install carries on.
+
+**The installer ends with `Installed, but not ready`.** The program is installed, and the closing check found a problem: the program does not run, the model gateway did not answer (check the network or the proxy), or `rafikicode doctor --folders` found a folder it cannot use. A report is in `~/.rafikicode/install.log`; send it to info@paneo.tech if the line above it does not say enough.
+
+**`this installer is running as root through sudo`.** Run it as yourself: `curl -fsSL https://get.rafikiai.io | bash`. It never needs root, and as root it would write files into your home folder that you could not update later.
+
+**`Another rafikicode at ... comes first on your PATH`.** An older copy, from npm, Homebrew or an earlier install, would run instead of the one just installed. New terminals use the new one first; in the current one run the line the installer printed (`export PATH=... && hash -r`), and remove the old copy with the command it named.
 
 **macOS refuses to open the binary, or says the developer cannot be verified.** The macOS builds carry an ad-hoc signature, which is what lets them run on Apple Silicon at all, but they are not notarised with an Apple Developer ID. Gatekeeper only blocks a file that is *quarantined*, and macOS sets that attribute on files a browser downloaded. The installer fetches with `curl`, which does not set it, so an install from `https://get.rafikiai.io` is not affected. If you took the `.zip` from the release page in a browser instead, clear the attribute:
 
@@ -54,7 +64,11 @@ Or right click the file in the Finder and choose Open once. `xattr -p com.apple.
 echo 'export PATH=$HOME/.rafikicode/bin:$PATH' >> ~/.zshrc
 ```
 
-**The installer says `unzip` is missing.** The macOS builds and the Windows builds installed from Git Bash are `.zip` archives, so the shell installer needs `unzip` there; Linux uses `tar`. Install `unzip` with your package manager. In Git Bash, `command -v unzip` says whether it is there; when it is not, use `install.ps1` in PowerShell instead, which needs no extra tool.
+**The installer says `unzip` is missing.** The macOS builds and the Windows builds installed from Git Bash are `.zip` archives. Without `unzip` the installer uses `bsdtar`, `busybox` or `python3`, and says this only when none of them is there either. Install `unzip` with your package manager. In Git Bash, use `install.ps1` in PowerShell instead, which needs no extra tool.
+
+**Windows: the installer says the binary `was written and then removed`.** Antivirus software took it away as it was written. Open Windows Security, Protection history, restore `rafikicode.exe`, and run the installer again.
+
+**Windows: PowerShell refuses to run `install.ps1`.** The execution policy blocks downloaded script files. Use `irm https://github.com/paneotech-dev/rafiki-code-cli/releases/latest/download/install.ps1 | iex`, which it does not block, or `powershell -ExecutionPolicy Bypass -File .\install.ps1`.
 
 **Alpine: the installed binary does not start and the installer prints `apk add libstdc++ libgcc`.** The musl build needs the C++ runtime, which a minimal Alpine system does not have. Run `apk add libstdc++ libgcc`, then the installer again.
 
@@ -74,7 +88,11 @@ irm https://github.com/paneotech-dev/rafiki-code-cli/releases/latest/download/in
 
 **Windows: SmartScreen warns that the publisher is unknown.** The `.exe` is not Authenticode signed. The archive is verified against the published `SHA256SUMS` before it is installed, which is the check that matters; `Get-FileHash -Algorithm SHA256` on the downloaded archive reproduces it. Choose **More info**, then **Run anyway**, or unblock the file with `Unblock-File`.
 
-**Windows: the interactive interface draws garbage, or boxes and colours are wrong.** The old console window (`conhost.exe`, what you get from `cmd.exe` started from the Run box) cannot draw the full screen interface. Use Windows Terminal, which is the default on Windows 11 and installable from the Microsoft Store on Windows 10. `rafikicode run "your task"` prints plain lines and works in either.
+**Windows: `Rafiki Code cannot draw its full screen interface in this window.`** You started `rafikicode` in the old Windows console (`conhost.exe`), which is what Windows PowerShell and `cmd` open on Windows 10 unless Windows Terminal is installed and set as the default. That console cannot draw the full screen interface, so `rafikicode` says so and exits with code 7 instead of showing nothing. Open Windows Terminal (from the Microsoft Store, or `winget install --id Microsoft.WindowsTerminal`) and run `rafikicode` there, or give the task directly with `rafikicode run "your task"`, which works in any console. The same message, with another cause, appears when the console refuses virtual terminal processing (Windows older than Windows 10 version 1511, or the console's "Use legacy console" option is on). `rafikicode doctor` has a `terminal` line on Windows that says whether the current window can draw the interface. Windows Terminal, the VS Code terminal, WezTerm, Git Bash and SSH sessions are not refused. If your console draws the interface well anyway, `RAFIKICODE_FORCE_TUI=1` skips the check.
+
+**Windows: the interactive interface draws garbage, or boxes and colours are wrong.** Use Windows Terminal, which is the default on Windows 11 and installable from the Microsoft Store on Windows 10. `rafikicode run "your task"` prints plain lines and works in any console.
+
+**PowerShell: the installer printed an error and the window stayed open.** That is intended. Run as `irm ... | iex`, `install.ps1` returns to your prompt after an error, with `$LASTEXITCODE` set to 1, instead of closing the window before the error can be read. Run as a file (`.\install.ps1`), it exits with code 1.
 
 **Windows: the installed program does not start, or exits immediately with no message.** `install.ps1` checks this itself: it runs `rafikicode --version` after installing and exits with code 1 and the message `was installed but did not run` when that fails. This is not an old processor, and the baseline build will not fix it. The published builds need no recent instruction set: the ordinary binary has been run on an emulated 2008 processor with neither AVX nor AVX2. The four archives labelled `baseline` are byte identical to the siblings they exist to replace, so `-Baseline` fetches the same bytes and changes nothing. Please report it, with the processor named:
 
@@ -92,6 +110,8 @@ $env:Path = "$env:USERPROFILE\.rafikicode\bin;$env:Path"
 ```
 
 ## When it will not start
+
+**A line about a folder when `rafikicode` starts.** Before anything else, `rafikicode` checks the folders it needs and fixes what it can, with one line for each fix: a home folder that is not set or cannot be written (`Your home folder ... so rafikicode keeps its files in ...`), a temporary folder that is full, missing or cannot be written (`The temporary folder ... so rafikicode uses ~/.rafikicode/tmp instead`), and a configuration, data, cache or state folder that is a file or cannot be written (moved aside and recreated, or replaced by a folder under `~/.rafikicode/fallback`). A configuration folder that is only read only is kept, because your sign in is read from it, and the line says changes are not saved there. `rafikicode doctor` lists every one of these checks and what was done; `rafikicode doctor --folders` lists only them, with no network. Send its output when asking for help.
 
 When `rafikicode` cannot start, it says what it thinks the cause is, gives one command to try, and prints the original error under `Original error:` so you can paste it to us. Add `--print-logs` to the same command for the full error and its stack. Two exit codes carry the result for scripts: 6 means this machine or this build cannot run `rafikicode` at all, 7 means it runs but this terminal cannot host the full screen interface.
 
@@ -119,7 +139,9 @@ If you do not have one, the message carries a line you can send to whoever runs 
 
 **`RAFIKICODE_API_KEY is set, so this session is already authenticated with a server key.`** Signing in is unnecessary while the variable is set, and the variable takes precedence over a stored sign in. Unset it (`unset RAFIKICODE_API_KEY`) if you want to use `login`. Exit code 2.
 
-**The code expired before you approved it.** A code is valid for the time `login` prints (10 minutes). Run `rafikicode login` again for a new code.
+**`Your Rafiki AI account cannot sign in yet: it is waiting for email verification or for approval.`** A new account has to verify its email address and then be approved before it can sign in. `login` stops as soon as the Rafiki AI console says so. Open the verification link in your email if you have not, wait for the approval message, then run `rafikicode login` again. Exit code 2.
+
+**`login` says `Still waiting`, or the code expired before you approved it.** A code is valid for the time `login` prints (10 minutes). After two minutes with no answer from the browser, `login` says once that a new account may still be waiting for email verification or approval: if the browser showed a page about approval, that is the cause, and the sign in cannot finish until the account is approved. Otherwise run `rafikicode login` again for a new code.
 
 **The approval page shows a different code.** Do not approve it. Approve only the code your own terminal printed, then run `rafikicode login` again if in doubt.
 
@@ -200,7 +222,9 @@ git config --global user.email "you@example.com"
 
 **Project plugins, custom tools, a local MCP server, a formatter or a language server declared in the repository do not load.** The workspace is not trusted. `rafikicode doctor` says so on its `trust` line, as a `WARN` rather than a failure, with the list of what was dropped on the line below and the command that fixes it: `rafikicode trust` in the repository, or `RAFIKICODE_TRUST_WORKSPACE=1` for one run. Trust only repositories whose contents you would run as a script; see [workspace trust](./security/workspace-trust.md).
 
-**Slow first request.** The first run in a repository indexes the project and starts language servers. Later requests are faster.
+**`Working in ~/RafikiCode (started from ...)`.** You started `rafikicode` (the interface or `run`) in a folder that is not a project: your home folder, the root of a drive or of the file system, a system folder (`C:\Windows`, `Program Files`, `/usr`, `/etc` and the like), your Desktop or Downloads folder, the root of your OneDrive, or a folder with more than 50,000 files that is not a git repository. Treating one of these as the project meant reading the whole tree before the first request, which on Windows could hang `run` after its first line. The same line appears when the folder was deleted, cannot be written, or did not answer within 2 seconds (a disconnected network drive). In every case `rafikicode` works in the `RafikiCode` folder of your home folder instead, creating it on first use, and prints that line on standard error. When the disk holding the folder it works in has less than 500 MB free, one more line says so. To work on a project, `cd` into it first. To work in the home folder anyway: `rafikicode run --dir . "your task"`, `rafikicode .` for the interface, or `RAFIKICODE_NO_DEFAULT_WORKSPACE=1`. A home folder that is itself a git repository is used as it is.
+
+**Slow first request.** The first run in a repository indexes the project and starts language servers. Later requests are faster. The file checkpoints that undo uses are skipped for a directory with more than 10,000 changed or untracked files, or when listing them takes longer than 10 seconds, so a huge directory never holds back the first request; the log says `snapshots off for this directory` when that happens, and undo cannot restore files changed there.
 
 ## When the connection drops
 

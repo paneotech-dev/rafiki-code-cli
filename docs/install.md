@@ -35,7 +35,27 @@ irm https://github.com/paneotech-dev/rafiki-code-cli/releases/latest/download/in
 
 `install.ps1` is fetched from the GitHub release address above. `https://get.rafikiai.io` serves only `install.sh`, whatever the path: `irm https://get.rafikiai.io/install.ps1 | iex` gives PowerShell the shell script, which it cannot parse.
 
-The script detects the platform, downloads the archive, verifies it against `SHA256SUMS`, installs the binary into `~/.rafikicode/bin` (`%USERPROFILE%\.rafikicode\bin` on Windows) and puts that directory on your PATH. It needs `curl` and `tar` on Linux, and `curl` and `unzip` on macOS and in Git Bash on Windows. On Alpine and other musl systems the binary also needs the C++ runtime: `apk add libstdc++ libgcc` (the installer prints this line when the installed binary cannot start without it).
+The script detects the platform, downloads the archive, verifies it against `SHA256SUMS`, installs the binary into `~/.rafikicode/bin` (`%USERPROFILE%\.rafikicode\bin` on Windows) and puts that directory on your PATH. On Alpine and other musl systems the binary also needs the C++ runtime: `apk add libstdc++ libgcc` (the installer prints this line when the installed binary cannot start without it).
+
+The installers work around what a machine lacks, by themselves, and say in one line what they did. They stop only when nothing can work, with one sentence naming the cause and the command that fixes it:
+
+| What is missing or wrong | What the installer does |
+| --- | --- |
+| no `curl` | downloads with `wget`, then `python3`, then `perl` |
+| no `tar` or `unzip`, or `tar` without `gzip` | unpacks with `bsdtar`, `busybox` or `python3`; on Windows the .NET zip reader, then `Expand-Archive` |
+| the GitHub API rate limited | reads the version from the release page, then downloads from the release's direct latest address |
+| a proxy | `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY` in either case; on Windows also the system proxy, with your sign in |
+| a download cut short, or an archive that fails its checksum | tries again, three times in all, then explains |
+| a TLS failure because the clock is wrong | says so, with the command that sets the clock |
+| a temporary folder that is full, read only or noexec | uses `~/.rafikicode/tmp` |
+| an install folder that cannot be written, or runs no programs | uses `~/.rafikicode/bin`, then `~/.local/bin` (on Windows `%LOCALAPPDATA%\Programs\rafikicode\bin`) |
+| `HOME` not set | reads the home folder from the password database |
+| run as root through `sudo` with your home folder | stops: it never needs root |
+| an older copy from npm, Homebrew or elsewhere first on PATH | names it and the command that removes it, and puts this install first |
+| a shell other than the one you are in | the PATH line goes to every one you use (`~/.bashrc`, `~/.zshrc`, fish's `config.fish`), once |
+| antivirus removes the binary on Windows | says so, and where to restore it |
+
+At the end both installers check the result: that `rafikicode --version` runs, that the model gateway answers, and that `rafikicode doctor --folders` finds every folder it needs. The summary ends in `Ready.` in green, or in red with what is wrong. When anything fails, a report is saved to `~/.rafikicode/install.log` (`%USERPROFILE%\.rafikicode\install.log`) with the line to send it to info@paneo.tech.
 
 The macOS builds need macOS 13 (Ventura) or newer, on Apple Silicon and on Intel. A Mac on macOS 12 or older cannot run them.
 
@@ -52,6 +72,14 @@ Options of `install.sh`, passed after `bash -s --`:
 | `--dry-run` | show what would happen, download nothing |
 
 Options of `install.ps1`: `-Version 0.1.9`, `-Prefix DIR`, `-Baseline`, `-NoModifyPath`, `-DryRun`.
+
+If PowerShell refuses to run a downloaded `install.ps1` because of the execution policy, use the `irm ... | iex` line above, which the policy does not block, or run the file once with `powershell -ExecutionPolicy Bypass -File .\install.ps1`.
+
+Both installers also create a `RafikiCode` folder in your home folder (`~/RafikiCode`, `%USERPROFILE%\RafikiCode` on Windows), private to you on macOS and Linux, and end with the next steps: sign in with `rafikicode login`, check the setup with `rafikicode doctor`, then start in that folder or in any project folder (`cd ~/RafikiCode`, or `cd $HOME\RafikiCode` in PowerShell). `rafikicode` started from the home folder itself, a drive root, a system folder, Desktop, Downloads or a OneDrive root works in that folder and says so; see [Troubleshooting](./troubleshooting.md#running-tasks).
+
+`install.ps1` can be run through `irm ... | iex` safely: an error is printed and the script returns to your prompt with `$LASTEXITCODE` set to 1, so the window stays open. Run as a file, it exits with code 1.
+
+On Windows, run `rafikicode` in Windows Terminal, the default terminal on Windows 11. On Windows 10, Windows PowerShell and `cmd` open in the old console window (`conhost.exe`), which cannot draw the full screen interface; `rafikicode` says so there and exits with code 7. Install Windows Terminal from the Microsoft Store, or with `winget install --id Microsoft.WindowsTerminal`. `rafikicode run "your task"` works in any console, and `rafikicode doctor` says on its `terminal` line whether the current window can draw the interface.
 
 A copy installed this way updates itself, see [Updates](#updates).
 
@@ -141,7 +169,7 @@ What was run while these channels were written, and what was not:
 | Piece | Run | Not run |
 | --- | --- | --- |
 | `install.sh` | its test suites; the release gate in a Debian container with a real build; the twenty cell install matrix (Debian, Ubuntu, Alpine, arm64 under emulation) against the published 0.1.9 archives | on macOS, including the `--target` option |
-| `install.ps1` | under PowerShell 7 on Linux: dry runs, a full install against a local mirror and of the 0.1.9 archive, its exit code 1 when the installed program does not run, its message when `USERPROFILE` is not set | on Windows, ever; the licence file copy |
+| `install.ps1` | under PowerShell 7 on Linux: dry runs, a full install against a local mirror and of the 0.1.9 archive, its exit code 1 when the installed program does not run, its message when `USERPROFILE` is not set, and `install/test-install-ps1.sh`: run as a file and through `iex`, a failure and a success, and that nothing is left in the caller's session | on Windows, ever; the licence file copy |
 | npm package | its tests against a mock release, and an install of the packed package in a Node container with a real build | a publish to the registry; Windows; macOS |
 | Homebrew formula | rendering, checked by tests | `brew install` and `brew test`: Homebrew has not read this formula |
 | winget manifests | rendering, checked by tests | `winget validate`, a submission, an install: winget has not read these manifests |

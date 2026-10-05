@@ -171,6 +171,10 @@ export const LoginCommand = effectCmd({
       DeviceFlow.pollToken(c, code, {
         onSlowDown: ({ interval }) => UI.println(`${UI.Style.TEXT_DIM}The Rafiki AI console asked to slow down; polling every ${interval} s.${UI.Style.TEXT_NORMAL}`),
         onRateLimited: ({ retryAfter }) => UI.println(`${UI.Style.TEXT_DIM}Rate limited; retrying in ${retryAfter} s.${UI.Style.TEXT_NORMAL}`),
+        onLongWait: () =>
+          UI.println(
+            `${UI.Style.TEXT_WARNING}Still waiting. If your Rafiki AI account is new and the browser shows a page about approval, your account is still waiting for email verification or approval, and this sign-in cannot finish until it is. Press Ctrl+C, check your email, and run ${Brand.name} login again once it is approved.${UI.Style.TEXT_NORMAL}`,
+          ),
       }),
     )
     const credential = store(token)
@@ -392,13 +396,18 @@ export const DoctorCommand = effectCmd({
   describe: `check this terminal's ${Brand.product} setup: config, project config, workspace trust, key, gateway, tiers, Rafiki AI console, PATH, version`,
   instance: false,
   builder: (yargs: Argv) =>
-    yargs.option("timeout", {
-      type: "number",
-      default: Doctor.DEFAULT_TIMEOUT_MS / 1000,
-      describe: "seconds to wait for each network check",
-    }),
+    yargs
+      .option("timeout", {
+        type: "number",
+        default: Doctor.DEFAULT_TIMEOUT_MS / 1000,
+        describe: "seconds to wait for each network check",
+      })
+      .option("folders", {
+        type: "boolean",
+        describe: "check only the folders (home, temporary, config, data, start folder, disk), with no network",
+      }),
   handler: Effect.fn("Cli.rafiki.doctor")(function* (args) {
-    const report = yield* Effect.promise(() => Doctor.run({ timeoutMs: Math.max(1, Number(args.timeout) || 1) * 1000 }))
+    const report = yield* Effect.promise(() => Doctor.run({ timeoutMs: Math.max(1, Number(args.timeout) || 1) * 1000, foldersOnly: Boolean(args.folders) }))
     for (const line of report.lines) {
       const color =
         line.status === "ok"

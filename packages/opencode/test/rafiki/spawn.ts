@@ -20,6 +20,10 @@ export async function spawnCli(home: string, args: string[], extra: Record<strin
     OPENCODE_DISABLE_AUTOUPDATE: "1",
     OPENCODE_DISABLE_MODELS_FETCH: "1",
     RAFIKICODE_TEST_TTY: "1",
+    // The run starts in the throwaway home, which the default workspace would
+    // replace with <home>/RafikiCode (rafiki/workspace.ts, tested on its own in
+    // workspace.test.ts). These tests are about the wire, not the folder.
+    RAFIKICODE_NO_DEFAULT_WORKSPACE: "1",
   }
   delete env["XDG_CONFIG_HOME"]
   delete env["CI"]

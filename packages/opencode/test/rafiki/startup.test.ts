@@ -17,6 +17,7 @@ import os from "os"
 import path from "path"
 import * as Startup from "../../src/rafiki/startup"
 import * as ExecTmp from "../../src/rafiki/exec-tmp"
+import * as WindowsConsole from "../../src/rafiki/windows-console"
 
 const root = path.resolve(import.meta.dir, "../..")
 
@@ -81,12 +82,17 @@ const ALTERNATE_SCREEN = "\x1b[?1049h"
 // terminal. The run ends when the interface takes the screen over, when the
 // process exits, or after `wait` milliseconds. Nothing is listening on the
 // gateway and console addresses, so no request leaves the machine.
-async function runOnTerminal(size: { rows: number; columns: number }, wait = 60_000) {
+async function runOnTerminal(
+  size: { rows: number; columns: number },
+  wait = 60_000,
+  args: string[] = [],
+  extra: Record<string, string | undefined> = {},
+) {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "rafikicode-startup-"))
   const chunks: string[] = []
   const entry = path.join(root, "src/index.ts")
   const proc = Bun.spawn(
-    ["sh", "-c", `stty rows ${size.rows} cols ${size.columns} && exec bun run "$0"`, entry],
+    ["sh", "-c", `stty rows ${size.rows} cols ${size.columns} && exec bun run "$0" "$@"`, entry, ...args],
     {
       cwd: root,
       env: environment(home, {
@@ -96,6 +102,7 @@ async function runOnTerminal(size: { rows: number; columns: number }, wait = 60_
         RAFIKICODE_DISABLE_AUTOUPDATE: "1",
         RAFIKICODE_GATEWAY_URL: "http://127.0.0.1:9",
         RAFIKICODE_CONSOLE_URL: "http://127.0.0.1:9",
+        ...extra,
       }),
       terminal: {
         cols: 80,
@@ -200,9 +207,7 @@ describe("startup diagnosis in the terminal", () => {
     expect(result.exitCode).toBe(6)
   }, 30_000)
 
-  test("a home directory it cannot write to is reported without any injected error", async () => {
-    // No RAFIKICODE_TEST_STARTUP_ERROR: this crash happens for real, while
-    // the module graph is still loading, and used to print a raw runtime dump.
+  test("a home directory it cannot write to is replaced by the folder doctor, and the command runs", async () => {
     const broken = "/dev/null/no-home"
     const result = await run(["models"], {
       HOME: broken,
@@ -210,6 +215,27 @@ describe("startup diagnosis in the terminal", () => {
       XDG_DATA_HOME: undefined,
       XDG_STATE_HOME: undefined,
       XDG_CACHE_HOME: undefined,
+    })
+    expect(result.stderr).toContain(`Your home folder (${broken}) does not exist, so rafikicode keeps its files in`)
+    expect(result.all).toContain("rafiki/rafiki-fast")
+    expect(result.exitCode).toBe(0)
+    const fallback = result.stderr.match(/keeps its files in (\S+)\./)?.[1]
+    if (fallback?.includes("rafikicode-home-")) fs.rmSync(fallback, { recursive: true, force: true })
+  }, 30_000)
+
+  test("with the folder doctor off, a home directory it cannot write to is still reported without any injected error", async () => {
+    // No RAFIKICODE_TEST_STARTUP_ERROR: this crash happens for real, while
+    // the module graph is still loading, and used to print a raw runtime dump.
+    // The folder doctor fixes it first (above); this is what is left when no
+    // folder at all can be written, which RAFIKICODE_SKIP_FOLDER_CHECKS stands in for.
+    const broken = "/dev/null/no-home"
+    const result = await run(["models"], {
+      HOME: broken,
+      OPENCODE_TEST_HOME: broken,
+      XDG_DATA_HOME: undefined,
+      XDG_STATE_HOME: undefined,
+      XDG_CACHE_HOME: undefined,
+      RAFIKICODE_SKIP_FOLDER_CHECKS: "1",
     })
 
     expect(result.all).not.toContain("Unexpected error")
@@ -271,6 +297,70 @@ describe("startup diagnosis in the terminal", () => {
     },
     90_000,
   )
+
+  // The Windows console checks cannot run here, so the console is replaced by
+  // a fixed answer (RAFIKICODE_TEST_CONSOLE) and everything around it is the
+  // real entry point on a real pseudo terminal: the message, the exit code,
+  // and the commands that must never be refused.
+  test.skipIf(process.platform === "win32")(
+    "the old Windows console is told so, pointed at Windows Terminal and the run command, and exits 7",
+    async () => {
+      const result = await runOnTerminal({ rows: 24, columns: 100 }, 60_000, [], { RAFIKICODE_TEST_CONSOLE: "conhost" })
+
+      expect(result.output).toContain("Rafiki Code cannot draw its full screen interface in this window.")
+      expect(result.output).toContain("old Windows console (conhost.exe)")
+      expect(result.output).toContain(
+        "Open Windows Terminal (install it from the Microsoft Store, or run: winget install --id Microsoft.WindowsTerminal) and run rafikicode there.",
+      )
+      expect(result.output).toContain('rafikicode run "your task"')
+      expect(result.output).not.toContain("Unexpected error")
+      expect(result.drawn).toBe(false)
+      expect(result.exitCode).toBe(7)
+    },
+    90_000,
+  )
+
+  test.skipIf(process.platform === "win32")(
+    "a console that refuses virtual terminal processing gets the same way out",
+    async () => {
+      const result = await runOnTerminal({ rows: 24, columns: 100 }, 60_000, [], { RAFIKICODE_TEST_CONSOLE: "legacy" })
+
+      expect(result.output).toContain("refused virtual terminal processing")
+      expect(result.output).toContain("winget install --id Microsoft.WindowsTerminal")
+      expect(result.exitCode).toBe(7)
+    },
+    90_000,
+  )
+
+  test.skipIf(process.platform === "win32")(
+    "RAFIKICODE_FORCE_TUI=1 starts the interface in that console anyway",
+    async () => {
+      const result = await runOnTerminal({ rows: 24, columns: 100 }, 60_000, [], {
+        RAFIKICODE_TEST_CONSOLE: "conhost",
+        RAFIKICODE_FORCE_TUI: "1",
+      })
+
+      expect(result.output).not.toContain("cannot draw its full screen interface")
+      expect(result.exitCode).toBeUndefined()
+      expect(result.drawn).toBe(true)
+    },
+    90_000,
+  )
+
+  // Only the full screen interface is refused. Each of these runs on the same
+  // pseudo terminal with the same console answer and must not see the message.
+  for (const args of [["--version"], ["--help"], ["doctor"], ["run", "say hi"], ["login"], ["usage"], ["models"]]) {
+    test.skipIf(process.platform === "win32")(
+      `rafikicode ${args.join(" ")} is never refused in the old Windows console`,
+      async () => {
+        const result = await runOnTerminal({ rows: 24, columns: 100 }, 20_000, args, { RAFIKICODE_TEST_CONSOLE: "conhost" })
+
+        expect(result.output).not.toContain("cannot draw its full screen interface")
+        expect(result.exitCode).not.toBe(7)
+      },
+      90_000,
+    )
+  }
 
   test("a failure with no diagnosis still gets a way out and keeps its text", async () => {
     const message = "Cannot find package 'react' imported from /opt/rafikicode/tui/config/index.tsx"
@@ -348,6 +438,43 @@ describe("startup diagnosis", () => {
     expect(Startup.terminal(env, { isTTY: false, columns: 0, rows: 0 })?.exitCode).toBe(7)
     // The switch the test suites use to drive the full screen interface.
     expect(Startup.terminal({ ...env, RAFIKICODE_TEST_TTY: "1" }, { isTTY: false })).toBeUndefined()
+  })
+
+  test("the Windows console check is part of the terminal checks, and only refuses what it names", () => {
+    const env = { TERM: "xterm-256color" }
+    const tty = { isTTY: true, columns: 120, rows: 40 }
+    const conhost = Startup.terminal(env, tty, () => ({ ok: false, reason: "classic_console", host: "conhost" }))
+    expect(conhost?.headline).toBe("Rafiki Code cannot draw its full screen interface in this window.")
+    expect(conhost?.exitCode).toBe(7)
+    expect(conhost?.step).toContain(Startup.WINDOWS_TERMINAL_STEP)
+    expect(Startup.terminal(env, tty, () => ({ ok: false, reason: "no_virtual_terminal", host: "x" }))?.cause).toContain(
+      "Use legacy console",
+    )
+    expect(Startup.terminal(env, tty, () => ({ ok: true, host: "pseudo console" }))).toBeUndefined()
+    expect(Startup.terminal(env, tty, () => undefined)).toBeUndefined()
+    // Not a terminal is still named as that, before any console question.
+    expect(Startup.terminal(env, { isTTY: false }, () => ({ ok: false, reason: "classic_console", host: "x" }))?.headline).toContain(
+      "standard output is not a terminal",
+    )
+    // The default answer on this platform is no question at all.
+    if (process.platform !== "win32") expect(WindowsConsole.check({}, process.platform)).toBeUndefined()
+  })
+
+  test("the old Windows console report, as the user reads it", () => {
+    const text = Startup.render(Startup.windowsConsole("classic_console"), undefined, { argv: [], env: {} })
+    expect(text.split(os.EOL)).toEqual([
+      "Rafiki Code cannot draw its full screen interface in this window.",
+      "",
+      "Probable cause: this window is the old Windows console (conhost.exe), which Windows PowerShell and cmd open on Windows 10 outside Windows Terminal. It cannot draw the full screen interface.",
+      "",
+      "Open Windows Terminal (install it from the Microsoft Store, or run: winget install --id Microsoft.WindowsTerminal) and run rafikicode there.",
+      "Or give rafikicode the task directly, which works in this window:",
+      '  rafikicode run "your task"',
+      "",
+      "Also:",
+      "  rafikicode doctor             checks the configuration, the key and the gateway",
+      "",
+    ])
   })
 
   // The two halves of a render library failure, each driven without needing a

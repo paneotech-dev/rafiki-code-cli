@@ -146,6 +146,8 @@ export interface PollEvents {
   onPending?: (state: { interval: number }) => void
   onSlowDown?: (state: { interval: number }) => void
   onRateLimited?: (state: { retryAfter: number }) => void
+  // Once, when the browser has not answered for Contract.LONG_WAIT_SECONDS.
+  onLongWait?: () => void
 }
 
 // Poll the token endpoint until the Console delivers a key or the code dies.
@@ -157,7 +159,9 @@ export async function pollToken(
   events: PollEvents = {},
 ): Promise<Contract.TokenResponse> {
   let interval = code.interval
-  const deadline = c.now() + code.expires_in * 1000
+  const started = c.now()
+  const deadline = started + code.expires_in * 1000
+  let warned = false
   while (true) {
     await c.sleep(interval * 1000)
     if (c.now() > deadline) {
@@ -193,7 +197,16 @@ export async function pollToken(
     }
     if (errorCode === Contract.ERROR.authorizationPending) {
       events.onPending?.({ interval })
+      if (!warned && c.now() - started >= Contract.LONG_WAIT_SECONDS * 1000) {
+        warned = true
+        events.onLongWait?.()
+      }
       continue
+    }
+    // Nothing the person can do in this sign-in will change it, so it stops
+    // now rather than at the end of the code's ten minutes.
+    if (errorCode === Contract.ERROR.accountPending) {
+      throw new DeviceFlowError(Contract.MESSAGE[errorCode]!, errorCode, Contract.EXIT.usage, ref)
     }
     if (errorCode === Contract.ERROR.slowDown) {
       interval += Contract.SLOW_DOWN_INCREMENT
