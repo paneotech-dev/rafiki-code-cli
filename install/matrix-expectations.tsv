@@ -132,18 +132,26 @@ no-tar	loginpath	fail	nothing was installed
 no-tar	version	untested	no binary to run
 no-tar	doctor	untested	no binary to run
 no-tar	tui	untested	no binary to run
-tmp-tiny	installer	fail	correct refusal: "not enough free disk space to unpack rafikicode"
-tmp-tiny	onpath	fail	nothing was installed
-tmp-tiny	loginpath	fail	nothing was installed
-tmp-tiny	version	untested	no binary to run
-tmp-tiny	doctor	untested	no binary to run
-tmp-tiny	tui	untested	no binary to run
-home-unset	installer	fail	correct refusal: "HOME is not set, so there is nowhere to install"
-home-unset	onpath	fail	nothing was installed
-home-unset	loginpath	fail	nothing was installed
-home-unset	version	untested	no binary to run
-home-unset	doctor	untested	no binary to run
-home-unset	tui	untested	no binary to run
+# Since 0.1.10 the installer does not stop on a temporary folder that is too
+# small: it unpacks in ~/.rafikicode/tmp and says so, and the binary replaces
+# the same folder for itself at every start. --version prints the version and
+# nothing else on standard output there; the line about the folder is kept for
+# commands a person reads.
+tmp-tiny	installer	pass	falls back to ~/.rafikicode/tmp for the download
+tmp-tiny	onpath	pass
+tmp-tiny	loginpath	pass
+tmp-tiny	version	pass	the version alone on standard output
+tmp-tiny	doctor	pass
+tmp-tiny	tui	pass
+# Since 0.1.10 an unset HOME is not a refusal: the installer uses the account's
+# home folder from the password database, and the binary started without HOME
+# keeps its files in a private folder under the temporary folder.
+home-unset	installer	pass	uses the account's home folder from the password database
+home-unset	onpath	pass
+home-unset	loginpath	pass
+home-unset	version	pass	the version alone on standard output
+home-unset	doctor	pass
+home-unset	tui	pass
 home-readonly	installer	fail	correct refusal: the install directory is not writable by you
 home-readonly	onpath	fail	nothing was installed
 home-readonly	loginpath	fail	nothing was installed

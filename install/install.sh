@@ -528,7 +528,11 @@ fetch() {
     case "$DOWNLOADER" in
         curl)
             if [ "$out" = "-" ]; then
-                curl -fsSL --stderr - ${CURL_PROTO[@]+"${CURL_PROTO[@]}"} ${accept:+-H "Accept: $accept"} "$url"
+                # FETCH_MAX_TIME bounds a request whose answer is a courtesy
+                # (the closing check of the gateway): curl alone has no time
+                # limit of its own, and a server that accepts the connection
+                # and then says nothing would hold the installer for good.
+                curl -fsSL --stderr - ${FETCH_MAX_TIME:+--max-time "$FETCH_MAX_TIME"} ${CURL_PROTO[@]+"${CURL_PROTO[@]}"} ${accept:+-H "Accept: $accept"} "$url"
             elif [ -t 2 ] && [ "${FETCH_PROGRESS:-}" = "1" ]; then
                 curl -fL -# ${CURL_PROTO[@]+"${CURL_PROTO[@]}"} ${accept:+-H "Accept: $accept"} -o "$out" "$url"
             else
@@ -2014,7 +2018,9 @@ self_check() {
     version=$(fresh "$bin_cmd --version" | sed '$!d') || version=""
     case "$version" in *[0-9]*) ;; *) version="" ;; esac
     root=$(printf '%s' "${RAFIKICODE_GATEWAY_URL:-https://gateway.rafikiai.io/v1}" | sed 's|/v1/*$||')
-    if fetch "${root}/health/liveliness" - >/dev/null 2>&1; then gateway=ok; else gateway=fail; fi
+    # At most CHECK_TIMEOUT seconds: this check reports, it must never hold the
+    # install. The install is finished either way.
+    if FETCH_MAX_TIME="${RAFIKICODE_INSTALL_CHECK_TIMEOUT:-20}" fetch "${root}/health/liveliness" - >/dev/null 2>&1; then gateway=ok; else gateway=fail; fi
     local st='$?'
     case "$shell_bin" in *fish) st='$status' ;; esac
     folders=$(fresh "$bin_cmd doctor --folders; echo exit=$st" || true)
