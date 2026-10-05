@@ -117,3 +117,22 @@ room at all at 128,000) now stops at 64,000.
 
 Upstream files touched are recorded in `script/upstream.json` and the table
 in `docs/upstream.md` is regenerated.
+
+## Results
+
+Run at `c0bfd78c5e` on 5 October 2026.
+
+- `bun turbo typecheck --concurrency=3`: 30 of 30 tasks.
+- `node docs/check.mjs`: passed, 34 files; upstream record check passed.
+- `packages/opencode` `test/brand`, `test/installation`, `test/rafiki`,
+  `test/cli/run`, `test/session/system.test.ts`, `test/session/llm.test.ts`:
+  846 pass, 5 skip, 0 fail across 74 files.
+- `packages/tui`: 204 pass, 0 fail. `packages/core/test/brand`: 58 pass.
+- Full `packages/opencode` suite, once: 4302 pass, 22 skip, 1 todo, 2 fail
+  across 310 files: the two known root only failures and nothing else.
+- From source against the stand-in gateway on a pseudo terminal: the prompt
+  row reads `Build · Rafiki Fast`, the sidebar `24,942 tokens`,
+  `20,480 cached`, `2% of 1M used`, the footer `24.9K (2%)`; after a fallback
+  the message footer reads `Build · Rafiki Pro (asked for Rafiki Fast)`, and
+  the system prompt the stand-in received starts with
+  `You are Rafiki Code, a coding agent for the terminal made by PANEOTECH.`
