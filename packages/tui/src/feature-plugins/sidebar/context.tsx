@@ -2,6 +2,7 @@ import type { AssistantMessage } from "@opencode-ai/sdk/v2"
 import type { TuiPlugin, TuiPluginApi } from "@opencode-ai/plugin/tui"
 import type { BuiltinTuiPlugin } from "../builtins"
 import { createMemo, Show } from "solid-js"
+import * as ContextUsage from "@opencode-ai/core/brand/context"
 
 const id = "internal:sidebar-context"
 
@@ -18,20 +19,15 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
 
   const state = createMemo(() => {
     const last = msg().findLast((item): item is AssistantMessage => item.role === "assistant" && item.tokens.output > 0)
-    if (!last) {
-      return {
-        tokens: 0,
-        percent: null,
-      }
-    }
-
-    const tokens =
-      last.tokens.input + last.tokens.output + last.tokens.reasoning + last.tokens.cache.read + last.tokens.cache.write
+    if (!last) return ContextUsage.usage(undefined, undefined)
     const model = props.api.state.provider.find((item) => item.id === last.providerID)?.models[last.modelID]
-    return {
-      tokens,
-      percent: model?.limit.context ? Math.round((tokens / model.limit.context) * 100) : null,
-    }
+    return ContextUsage.usage(last.tokens, model?.limit.context)
+  })
+
+  // "2% of 1M used": the window is named, so the share can be checked.
+  const used = createMemo(() => {
+    const value = state()
+    return `${value.percent ?? "0%"}${value.window ? ` of ${ContextUsage.windowText(value.window)}` : ""} used`
   })
 
   return (
@@ -40,7 +36,10 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
         <b>Context</b>
       </text>
       <text fg={theme().textMuted}>{state().tokens.toLocaleString()} tokens</text>
-      <text fg={theme().textMuted}>{state().percent ?? 0}% used</text>
+      <Show when={state().cached > 0}>
+        <text fg={theme().textMuted}>{state().cached.toLocaleString()} cached</text>
+      </Show>
+      <text fg={theme().textMuted}>{used()}</text>
       {/* The Rafiki tiers carry no price here, so this would always read $0.00; the cost block below it has the estimate. */}
       <Show when={cost() > 0}>
         <text fg={theme().textMuted}>{money.format(cost())} spent</text>

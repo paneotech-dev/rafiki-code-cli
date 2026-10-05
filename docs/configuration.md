@@ -77,7 +77,7 @@ The structure of the nested keys (`permission`, `agent`, `mcp`, and so on) is un
 | `RAFIKICODE_RELEASE_API`, `RAFIKICODE_RELEASE_BASE` | point the installer and `rafikicode update` at another release server (mirrors, tests). Must be https. The installer accepts plain http only for `127.0.0.1` or `[::1]` together with `--allow-http-loopback` or `RAFIKICODE_INSTALL_ALLOW_HTTP_LOOPBACK=1` (local tests); `rafikicode update` follows the same rule with `RAFIKICODE_INSTALL_ALLOW_HTTP_LOOPBACK=1`, and follows a redirect only to a URL that passes it |
 | `RAFIKICODE_TRUST_WORKSPACE` | `1` or `true` trusts the workspace of this run, or a list of directories separated by `:`: its project plugins, custom tools, provider packages and settings load. `rafikicode trust` stores the same decision. See [workspace trust](security/workspace-trust.md) |
 | `RAFIKICODE_REASONING_EFFORT` | reasoning effort sent on every tier: `none`, `low`, `medium`, `high`, or `default` for no parameter. See [Reasoning and output limits](#reasoning-and-output-limits) |
-| `RAFIKICODE_MAX_OUTPUT_TOKENS` | output token limit for every tier, 1024 to 128000 |
+| `RAFIKICODE_MAX_OUTPUT_TOKENS` | output token limit for every tier, from 1024 to the most the model behind the tier can write (384000 on `rafiki-fast`, 128000 on `rafiki-pro`). A value above a tier's maximum is ignored for that tier |
 | `RAFIKICODE_RETRY_WINDOW` | how long, in seconds, a task keeps retrying when the connection to the gateway is lost after the gateway has answered at least once. Default `120`. Retries back off from 2 seconds to 30 seconds with a random part added to each wait. `0` goes back to a single retry. See [When the connection drops](troubleshooting.md#when-the-connection-drops) |
 | `RAFIKICODE_DISABLE_PROJECT_CONFIG` | set to `1` or `true` to load nothing from the working tree: no project config files, plugins, tools, skills, MCP servers, formatters or language servers. Alias of `OPENCODE_DISABLE_PROJECT_CONFIG`. See [workspace trust](security/workspace-trust.md) |
 | `OPENCODE_CONFIG_DIR` | add another configuration directory, read as `config.json`, `rafikicode.json`, or `rafikicode.jsonc` there |
@@ -112,6 +112,24 @@ rafikicode run --variant none "your request"
 ```
 
 In the terminal interface, press `ctrl+t` to cycle the model's variants until `none` is selected. To turn reasoning off for every run, set `RAFIKICODE_REASONING_EFFORT=none`. `rafiki-fast` offers the variants `none`, `low`, `medium` and `high`; `rafiki-pro` offers none.
+
+## Context and tokens in the terminal interface
+
+The sidebar's `Context` block and the prompt row show how much of the model's context window the conversation takes after the last answer:
+
+```text
+Context
+24,942 tokens
+20,480 cached
+2% of 1M used
+```
+
+- The token figure is everything sent with the last request plus the answer: input, cached input, cache writes, output and reasoning, each counted once.
+- `cached` is the part of that input the provider read from its cache, which costs less. It is inside the token figure, not added to it.
+- The percentage is of the window of the tier that answered. `rafiki-fast` and `rafiki-pro` each have a window of 1,000,000 tokens (the documented windows of the models behind them, checked on 4 October 2026). A share under one per cent reads `<1%`.
+- A long session is compacted (summarised, so the next requests send less) only near the end of the window of its tier: at the window less the output a request may ask for, about 936,000 tokens on `rafiki-fast` and 968,000 on `rafiki-pro` and `rafiki-max`. Each turn sends the whole conversation, so the cost of a turn grows with the session; start a new session (or run `/compact`) to keep long work cheaper.
+
+When asked who it is, the agent answers that it is Rafiki Code by PANEOTECH, and names the tier it runs on rather than guessing the model behind it.
 
 ## Choosing a tier per project
 

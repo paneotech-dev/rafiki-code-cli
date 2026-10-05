@@ -5,7 +5,7 @@ Rafiki Code shows what a task is costing while it runs, what it cost when it end
 Two kinds of figure appear, and the wording keeps them apart:
 
 - **Measured**: token counts (the gateway reports them with every answer), the credits read from your account when the task started, and everything `rafikicode usage` prints (the amounts your account was charged).
-- **Estimates**: every amount shown during and right after a task. The terminal multiplies the token counts by the gateway's price list. Your account is charged by the gateway from its own figures, a little later, and the two can differ: when a request is answered by another tier after a failure, when the provider writes to its cache, and by rounding. These amounts always read `about ... (estimate)`.
+- **Estimates**: every amount shown during and right after a task. The terminal multiplies the token counts by the gateway's price list. Your account is charged by the gateway from its own figures, a little later, and the two can differ: when the provider writes to its cache and the price list gives no price for cache writes, and by rounding. These amounts always read `about ... (estimate)`.
 
 ## While a task runs
 
@@ -30,6 +30,16 @@ next turn on pro: about 0.0450 USD (estimate) · fast · about 0.0312 USD spent 
 ```
 
 When the row has less room, the tier change and its estimate are what stays (`next turn on pro: about 0.0450 USD (estimate)`). The terminal never moves a task to another tier by itself.
+
+## When the gateway answers on another tier
+
+When the tier you asked for cannot answer, the gateway answers on the next tier up (`rafiki-fast` on `rafiki-pro`). Rafiki Code reads the tier named in the answer and counts the call on that tier: the tier path, the estimate and the context figure follow the tier that answered. The message footer in the terminal interface says so (`Build · Rafiki Pro (asked for Rafiki Fast)`), and `rafikicode run` prints a second header line:
+
+```text
+> build · rafiki-pro (rafiki-fast was asked for, the gateway answered on rafiki-pro)
+```
+
+Your next request is still made on the tier you chose.
 
 ## After a task
 

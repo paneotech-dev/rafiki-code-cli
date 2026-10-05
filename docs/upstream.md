@@ -73,20 +73,20 @@ counted with `git diff --numstat -M` against the upstream base.
 
 <!-- upstream-files:start -->
 
-Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 178. Changed lines: 6404 (3658 added, 2746 removed).
+Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 182. Changed lines: 6503 (3726 added, 2777 removed).
 
 | Class | Files | Added | Removed |
 | --- | ---: | ---: | ---: |
-| Source: a call into this fork's modules | 35 | 377 | 137 |
-| Source: product name, file names and wording | 43 | 185 | 175 |
-| Source: behaviour changed in place | 13 | 532 | 197 |
+| Source: a call into this fork's modules | 38 | 415 | 145 |
+| Source: product name, file names and wording | 43 | 194 | 183 |
+| Source: behaviour changed in place | 14 | 553 | 212 |
 | Tests of upstream, adapted | 33 | 554 | 177 |
 | Generated files | 3 | 366 | 181 |
 | Package identity and packaging | 9 | 20 | 479 |
 | Documentation | 23 | 196 | 1182 |
 | Repository tooling and workflows | 6 | 23 | 8 |
 | Editor extension | 13 | 1405 | 210 |
-| Total | 178 | 3658 | 2746 |
+| Total | 182 | 3726 | 2777 |
 
 ### Source: a call into this fork's modules
 
@@ -104,7 +104,8 @@ On a conflict: Take upstream's side of the conflict, then put the call back at t
 | `packages/opencode/src/cli/cmd/acp.ts` | 5 | 1 | The internal server gets a generated password (`rafiki/acp.ts`). |
 | `packages/opencode/src/cli/cmd/attach.ts` | 16 | 4 | Terminal check before the interface loads (`rafiki/startup.ts`), credentials from the server file (`rafiki/server-file.ts`), and option text. |
 | `packages/opencode/src/cli/cmd/models.ts` | 6 | 1 | A sign in hint when no provider is connected, and tiers that are not listed are hidden (`Brand.provider.listed`). |
-| `packages/opencode/src/cli/cmd/run.ts` | 40 | 13 | Exit codes and messages for gateway errors, a missing key and rejected permissions, the attach check, the cost line, the `--resume` alias and server file credentials, each a call into `src/rafiki/`. |
+| `packages/opencode/src/cli/cmd/run.ts` | 60 | 13 | Exit codes and messages for gateway errors, a missing key and rejected permissions, the attach check, the cost line, the `--resume` alias and server file credentials, each a call into `src/rafiki/`; an answer on another tier is announced through `rafiki/served.ts`. |
+| `packages/opencode/src/cli/cmd/run/variant.shared.ts` | 3 | 1 | The provider name is not repeated after a model name that starts with it (`Brand.provider.label`). |
 | `packages/opencode/src/cli/cmd/serve.ts` | 7 | 6 | The server password is made and stored by `rafiki/server-file.ts`; text names this product. |
 | `packages/opencode/src/cli/cmd/upgrade.ts` | 22 | 5 | The `update` alias, the method choices this product supports, and the refusals and clean up from `rafiki/update.ts` and `rafiki/autoupdate.ts`. |
 | `packages/opencode/src/cli/cmd/web.ts` | 6 | 5 | The server password is made and stored by `rafiki/server-file.ts`; text names this product. |
@@ -119,16 +120,18 @@ On a conflict: Take upstream's side of the conflict, then put the call back at t
 | `packages/opencode/src/server/routes/instance/httpapi/public.ts` | 2 | 1 | The published OpenAPI document passes through `Brand.document`. |
 | `packages/opencode/src/server/routes/instance/httpapi/server.ts` | 8 | 4 | `BrandServe.listenerGuard` refuses requests from other origins. |
 | `packages/opencode/src/session/instruction.ts` | 2 | 0 | The house style is appended to the instructions. |
+| `packages/opencode/src/session/llm/ai-sdk.ts` | 5 | 2 | The tier named by the gateway's answer and the cache writes in its raw usage block are read through `rafiki/served.ts`. |
 | `packages/opencode/src/session/llm/native-runtime.ts` | 3 | 0 | The native runtime is refused when it would send the key anywhere but the gateway (`BrandGuard.allowed`). |
 | `packages/opencode/src/session/llm/request.ts` | 7 | 2 | The system text is split into a stable and a changing part (`rafiki/cache-prefix.ts`); the user agent is this product's. |
-| `packages/opencode/src/session/processor.ts` | 6 | 2 | Retries, error wording and resuming a cut stream go through `rafiki/resilience.ts` and `rafiki/resume.ts`. |
+| `packages/opencode/src/session/processor.ts` | 12 | 2 | Retries, error wording and resuming a cut stream go through `rafiki/resilience.ts` and `rafiki/resume.ts`; the tier that answered is recorded on the message through `rafiki/served.ts`. |
 | `packages/opencode/src/session/prompt.ts` | 11 | 7 | The order of the system text (`rafiki/cache-prefix.ts`), continuation messages (`rafiki/resume.ts`) and the error for an empty answer cut by the length limit (`rafiki/reasoning.ts`). |
 | `packages/opencode/src/session/retry.ts` | 6 | 2 | Which gateway errors are never retried and how long to wait (`rafiki/gateway-errors.ts`, `rafiki/resilience.ts`). |
 | `packages/opencode/src/session/revert.ts` | 2 | 0 | A cut turn is recovered before a revert (`rafiki/resume.ts`). |
-| `packages/opencode/src/session/system.ts` | 5 | 1 | System prompts pass through `Brand.prompt`; the date line leaves the environment block because `rafiki/cache-prefix.ts` places it after the stable part. |
+| `packages/opencode/src/session/system.ts` | 6 | 1 | System prompts pass through `Brand.prompt`; the date line leaves the environment block because `rafiki/cache-prefix.ts` places it after the stable part; the gateway provider's prompt starts with `Brand.identity`. |
 | `packages/opencode/src/tool/registry.ts` | 2 | 1 | Tool directories pass through `BrandTrust.codeDirs` (workspace trust). |
 | `packages/tui/src/component/dialog-model.tsx` | 6 | 1 | Tiers that are not listed are hidden (`Brand.provider.listed`). |
 | `packages/tui/src/feature-plugins/builtins.ts` | 2 | 0 | Registers the cost plugin (`feature-plugins/rafiki-cost.tsx`). |
+| `packages/tui/src/routes/session/subagent-footer.tsx` | 3 | 5 | The context figure comes from `core/brand/context.ts`. |
 
 ### Source: product name, file names and wording
 
@@ -169,8 +172,8 @@ On a conflict: Take upstream's side, then replace the literal with the value fro
 | `packages/tui/src/component/dialog-provider.tsx` | 3 | 2 | Messages name this product's configuration file. |
 | `packages/tui/src/component/dialog-status.tsx` | 2 | 1 | A message names this product's command. |
 | `packages/tui/src/component/error-component.tsx` | 7 | 6 | The crash screen names this product and links to its issue tracker. |
-| `packages/tui/src/component/prompt/index.tsx` | 2 | 1 | The message shown without a provider names the sign in command. |
-| `packages/tui/src/context/local.tsx` | 3 | 2 | The labels shown without a provider name the sign in command. |
+| `packages/tui/src/component/prompt/index.tsx` | 8 | 7 | The message shown without a provider names the sign in command; the context figure comes from `core/brand/context.ts`, and an empty provider label (`Brand.provider.label`) is not drawn. |
+| `packages/tui/src/context/local.tsx` | 6 | 4 | The labels shown without a provider name the sign in command; the provider name is not repeated after a model name that starts with it (`Brand.provider.label`). |
 | `packages/tui/src/context/theme.tsx` | 8 | 7 | The default theme name and the project directory names come from the brand module. |
 | `packages/tui/src/feature-plugins/home/tips-view.tsx` | 19 | 25 | Tips name this product's commands and paths; tips about upstream services are removed. |
 | `packages/tui/src/feature-plugins/sidebar/footer.tsx` | 4 | 3 | The footer names this product and its sign in command. |
@@ -198,7 +201,8 @@ On a conflict: Merge by hand and read both sides. These are the files to thin ne
 | `packages/opencode/src/installation/index.ts` | 59 | 111 | The update source, the install method detection and the upgrade commands are this product's (`rafiki/update.ts`); upstream's installer and package addresses are removed. |
 | `packages/opencode/src/skill/index.ts` | 29 | 16 | The built in configuration skill is this product's, hidden skills are removed, and skill discovery honours the switch that disables project configuration. |
 | `packages/opencode/src/snapshot/index.ts` | 33 | 4 | A snapshot is bounded (10,000 files, 10 seconds) and skipped in the home folder or a filesystem root (`rafiki/workspace.ts`), so the first model request never waits on a scan of an unbounded tree. Upstream stages one pathspec per file, which grows with the square of the count. |
-| `packages/tui/src/feature-plugins/sidebar/context.tsx` | 5 | 2 | The amount spent is hidden when it is zero, because the cost plugin shows the estimate. |
+| `packages/tui/src/feature-plugins/sidebar/context.tsx` | 18 | 16 | The amount spent is hidden when it is zero, because the cost plugin shows the estimate; the context figure comes from `core/brand/context.ts`, which shows the cached part and the window. |
+| `packages/tui/src/routes/session/index.tsx` | 8 | 1 | The message footer names the tier asked for when the gateway answered on another one. |
 
 ### Tests of upstream, adapted
 

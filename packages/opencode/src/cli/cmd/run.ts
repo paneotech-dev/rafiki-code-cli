@@ -30,6 +30,7 @@ import * as RafikiPermission from "@/rafiki/permission-hint"
 import * as RafikiMissingKey from "@/rafiki/missing-key"
 import * as RafikiAttach from "@/rafiki/attach"
 import * as RafikiCost from "@/rafiki/cost"
+import * as RafikiServed from "@/rafiki/served"
 import * as ServerFile from "@/rafiki/server-file"
 import { INTERACTIVE_INPUT_ERROR, resolveInteractiveStdin } from "./run/runtime.stdin"
 
@@ -706,6 +707,10 @@ export const RunCommand = effectCmd({
           const sessions = new Set([sessionID])
           let error: string | undefined
           const permissions = RafikiPermission.tracker()
+          // The model the header line named, and the one shown last: an answer
+          // on another tier (a gateway fallback) is announced with its own line.
+          let asked: string | undefined
+          let announced: string | undefined
 
           for await (const event of events.stream) {
             if (event.type === "session.created" && event.properties.info.parentID) {
@@ -723,6 +728,21 @@ export const RunCommand = effectCmd({
               UI.println(`> ${event.properties.info.agent} · ${event.properties.info.modelID}`)
               UI.empty()
               toggles.set("start", true)
+              asked = event.properties.info.modelID
+              announced = asked
+            }
+
+            if (
+              event.type === "message.updated" &&
+              event.properties.sessionID === sessionID &&
+              event.properties.info.role === "assistant" &&
+              args.format !== "json" &&
+              asked !== undefined &&
+              event.properties.info.modelID !== announced
+            ) {
+              UI.println(RafikiServed.runLine(event.properties.info.agent, asked, event.properties.info.modelID))
+              UI.empty()
+              announced = event.properties.info.modelID
             }
 
             if (event.type === "message.part.updated") {

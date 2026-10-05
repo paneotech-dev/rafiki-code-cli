@@ -26,7 +26,8 @@
 // token prices under litellm_params), for the models the key may use; the
 // prices option replaces the list, and prices: false makes the route a 404.
 // The usage option replaces the usage block of every chat answer, so a test
-// can report cached tokens.
+// can report cached tokens. The answeredBy option answers a tier on another
+// one, like the gateway after a fallback.
 import http from "node:http"
 import fs from "node:fs"
 import crypto from "node:crypto"
@@ -63,6 +64,9 @@ export function createMockGateway(options = {}) {
     bodies: options.bodies ?? false,
     prices: options.prices ?? MOCK_PRICES,
     usage: options.usage ?? USAGE,
+    // { "rafiki-fast": "rafiki-pro" }: answer a request for the first on the
+    // second, the way the gateway does after a fallback (every chunk names it).
+    answeredBy: options.answeredBy,
   }
   // token -> { alias, models, max_budget, budget_duration, rpm_limit, tpm_limit, spend, metadata, deleted }
   const keys = new Map()
@@ -288,8 +292,10 @@ export function createMockGateway(options = {}) {
         res.write("data: [DONE]\n\n")
         return res.end()
       }
-      if (body.stream === true) return stream(res, model, opts.reply, headers)
-      return json(res, 200, completion(model, opts.reply), headers)
+      // A fallback: the gateway answers on another tier and names it in the body.
+      const answered = opts.answeredBy?.[model] ?? model
+      if (body.stream === true) return stream(res, answered, opts.reply, headers)
+      return json(res, 200, completion(answered, opts.reply), headers)
     }
 
     // Admin half. The real gateway wants the master key; the mock only wants a bearer.

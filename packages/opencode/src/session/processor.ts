@@ -27,6 +27,7 @@ import { Database } from "@opencode-ai/core/database/database"
 import { Usage, type LLMEvent } from "@opencode-ai/llm"
 import * as RafikiResilience from "@/rafiki/resilience"
 import * as RafikiResume from "@/rafiki/resume"
+import * as RafikiServed from "@/rafiki/served"
 
 const DOOM_LOOP_THRESHOLD = 3
 export type Result = "compact" | "stop" | "continue"
@@ -460,6 +461,11 @@ const layer = Layer.effect(
             ctx.assistantMessage.finish = value.reason
             ctx.assistantMessage.cost += usage.cost
             ctx.assistantMessage.tokens = usage.tokens
+            ctx.assistantMessage.modelID = RafikiServed.model({
+              providerID: ctx.assistantMessage.providerID,
+              requested: ctx.assistantMessage.modelID,
+              metadata: value.providerMetadata,
+            })
             yield* session.updatePart({
               id: PartID.ascending(),
               reason: value.reason,
