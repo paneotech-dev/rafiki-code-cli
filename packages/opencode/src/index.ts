@@ -40,6 +40,7 @@ import { DoctorCommand, LicensesCommand, LoginCommand, LogoutCommand, ProvidersC
 import * as ExecTmp from "./rafiki/exec-tmp"
 import * as Autoupdate from "./rafiki/autoupdate"
 import * as Workspace from "./rafiki/workspace"
+import * as Drain from "./rafiki/drain"
 
 // An update downloaded and verified by an earlier session is put in place here,
 // before anything is parsed, and the new binary takes over with the same
@@ -53,6 +54,9 @@ Autoupdate.applyStaged()
 // cannot run a file this starts the binary again with TMPDIR pointing at one
 // that can. No-op everywhere else (rafiki/exec-tmp.ts).
 ExecTmp.ensure()
+
+// Output still waiting for a slow pipe reader is written before the exit below (rafiki/drain.ts).
+Drain.install()
 
 const args = hideBin(process.argv)
 
@@ -191,5 +195,6 @@ try {
   // Most notably, some docker-container-based MCP servers don't handle such signals unless
   // run using `docker run --init`.
   // Explicitly exit to avoid any hanging subprocesses.
+  await Drain.flush()
   process.exit()
 }
