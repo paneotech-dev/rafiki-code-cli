@@ -522,9 +522,9 @@ export function make(input: {
       // Every turn starts uncancelled, and finishTurn below reads the flag back
       // once the turn resolves.
       yield* session.beginTurn(params.sessionId)
-      const finishTurn = Effect.fnUntraced(function* (info: AssistantInfo) {
+      const finishTurn = Effect.fnUntraced(function* (info: AssistantInfo, parts?: readonly unknown[]) {
         yield* ACPWarning.flush(input.connection, params.sessionId)
-        return yield* promptResponse(info, params.messageId, yield* session.cancelled(params.sessionId))
+        return yield* promptResponse(info, params.messageId, yield* session.cancelled(params.sessionId), parts)
       })
       // Anything brand/trust refused while this session was opened, said before
       // the turn's own output rather than after it.
@@ -561,7 +561,7 @@ export function make(input: {
           "session",
         )
         yield* sendUsageUpdate(input.usage, input.sdk, input.connection, current.id, current.cwd)
-        return yield* finishTurn(response.info)
+        return yield* finishTurn(response.info, response.parts)
       }
 
       const known = snapshot.availableCommands.find((item) => item.name === command.name)
@@ -585,7 +585,7 @@ export function make(input: {
           "session",
         )
         yield* sendUsageUpdate(input.usage, input.sdk, input.connection, current.id, current.cwd)
-        return yield* finishTurn(response.info)
+        return yield* finishTurn(response.info, response.parts)
       }
 
       if (command.name === "compact") {
@@ -861,6 +861,8 @@ const promptResponse = Effect.fn("ACP.promptResponse")(function* (
   info: AssistantInfo,
   messageId: string | null | undefined,
   cancelled: boolean,
+  // The parts of the answer, when the backing session returned them.
+  parts?: readonly unknown[],
 ) {
   const base = {
     // Omitted, not zeroed, when the message carries no token accounting: see
@@ -879,7 +881,7 @@ const promptResponse = Effect.fn("ACP.promptResponse")(function* (
   if (cancelled) {
     return {
       stopReason: "cancelled" as const,
-      ...base,
+      ...cancelledBase(base, info, parts),
     }
   }
 
@@ -893,7 +895,7 @@ const promptResponse = Effect.fn("ACP.promptResponse")(function* (
   if (info.error.name === "MessageAbortedError") {
     return {
       stopReason: "cancelled" as const,
-      ...base,
+      ...cancelledBase(base, info, parts),
     }
   }
 
@@ -921,6 +923,26 @@ const promptResponse = Effect.fn("ACP.promptResponse")(function* (
     errorName: info.error.name,
   })
 })
+
+// A turn cancelled after the backing session created its assistant message
+// but before the model sent anything: the message has no parts and still has
+// the zeroed counters it was created with. That is no accounting, so `usage`
+// is left out, exactly as when the cancel came before the message existed.
+// Which of the two a cancel meets is a race with the start of the turn, and
+// the answer must not depend on it. A turn the model had started answering
+// (it has parts) keeps its usage, zero or not.
+export function hasAccounting(info: AssistantInfo) {
+  const tokens = info?.tokens
+  if ((info?.cost ?? 0) > 0) return true
+  if (!tokens) return false
+  return tokens.input + tokens.output + tokens.reasoning + tokens.cache.read + tokens.cache.write > 0
+}
+
+function cancelledBase<B extends { usage?: unknown }>(base: B, info: AssistantInfo, parts?: readonly unknown[]) {
+  if (parts === undefined || parts.length > 0 || hasAccounting(info)) return base
+  const { usage: _, ...rest } = base
+  return rest
+}
 
 // `usage` is left out of the response entirely when there is no accounting to
 // report, which is what PromptResponse's optional `usage` is for.
