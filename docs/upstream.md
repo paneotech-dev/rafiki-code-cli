@@ -73,20 +73,20 @@ counted with `git diff --numstat -M` against the upstream base.
 
 <!-- upstream-files:start -->
 
-Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 196. Changed lines: 7013 (4143 added, 2870 removed).
+Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 196. Changed lines: 7119 (4248 added, 2871 removed).
 
 | Class | Files | Added | Removed |
 | --- | ---: | ---: | ---: |
-| Source: a call into this fork's modules | 48 | 694 | 209 |
+| Source: a call into this fork's modules | 48 | 699 | 209 |
 | Source: product name, file names and wording | 42 | 227 | 191 |
-| Source: behaviour changed in place | 17 | 616 | 231 |
-| Tests of upstream, adapted | 35 | 592 | 178 |
+| Source: behaviour changed in place | 17 | 639 | 232 |
+| Tests of upstream, adapted | 35 | 669 | 178 |
 | Generated files | 3 | 369 | 182 |
 | Package identity and packaging | 9 | 20 | 479 |
 | Documentation | 23 | 197 | 1182 |
 | Repository tooling and workflows | 6 | 23 | 8 |
 | Editor extension | 13 | 1405 | 210 |
-| Total | 196 | 4143 | 2870 |
+| Total | 196 | 4248 | 2871 |
 
 ### Source: a call into this fork's modules
 
@@ -115,7 +115,7 @@ On a conflict: Take upstream's side of the conflict, then put the call back at t
 | `packages/opencode/src/config/config.ts` | 46 | 40 | File names and the schema address come from the brand module; substitution limits, workspace trust, the provider scope and redacted secrets are calls into `brand/guard.ts`, `brand/trust.ts` and `brand/serve.ts`. |
 | `packages/opencode/src/config/tui.ts` | 9 | 5 | Substitution limits and plugin trust for the interface configuration (`brand/guard.ts`, `brand/trust.ts`). |
 | `packages/opencode/src/config/variable.ts` | 9 | 1 | The `restrict` option that `brand/guard.ts` uses to limit substitution in a project file. |
-| `packages/opencode/src/index.ts` | 63 | 10 | Registers this product's commands, installs the startup guard, applies a staged update, restarts from a usable temporary directory, reports an unexpected error through `rafiki/startup.ts`, runs the folder checks before anything else is loaded (`rafiki/folders-early.ts`), and moves a start in a folder that is not a project to the default workspace (`rafiki/workspace.ts`). It also registers `rafikicode github` (`rafiki/github-setup.ts`). |
+| `packages/opencode/src/index.ts` | 68 | 10 | Registers this product's commands, installs the startup guard, applies a staged update, restarts from a usable temporary directory, reports an unexpected error through `rafiki/startup.ts`, runs the folder checks before anything else is loaded (`rafiki/folders-early.ts`), and moves a start in a folder that is not a project to the default workspace (`rafiki/workspace.ts`). It also registers `rafikicode github` (`rafiki/github-setup.ts`), and waits for output a pipe has not taken yet before the final exit (`rafiki/drain.ts`). |
 | `packages/opencode/src/permission/index.ts` | 19 | 3 | A request for the "publish" permission (`core/brand/publish.ts`) is asked every time: wildcard and shell allows and earlier "always" answers do not apply to it, and only a rule named "publish" can deny it. |
 | `packages/opencode/src/provider/error.ts` | 15 | 2 | Gateway errors are classified by `rafiki/gateway-errors.ts`; a message names this product's sign in step. |
 | `packages/opencode/src/provider/provider.ts` | 4 | 1 | `BrandGuard.request` in front of every provider request keeps the key on the gateway (`test/rafiki/key-guard.test.ts`); the model priority list is extended from the brand module. |
@@ -202,7 +202,7 @@ On a conflict: Merge by hand and read both sides. These are the files to thin ne
 | `packages/core/src/ripgrep/binary.ts` | 3 | 0 | The ripgrep download gives up after 60 seconds, so a network that drops connections hands over to the built-in search instead of holding a search up. |
 | `packages/opencode/script/build.ts` | 112 | 15 | Output and user agent use the package name; every target the build host can execute is started once, each binary is hashed, and a coverage report is written (`script/platform-coverage.ts`). Every darwin binary is signed ad hoc once it is final, with rcodesign when the host is not a Mac, and its signature checked page by page (`script/macos-signature.ts`). The order of the `abi` filter is a fix that is not specific to this product. The compiled entry is `src/main.ts`, which runs the folder checks and the crash handlers before anything else is loaded. |
 | `packages/opencode/src/acp/error.ts` | 24 | 1 | A defect that escapes an ACP handler is written to stderr instead of being dropped. Not specific to this product. |
-| `packages/opencode/src/acp/service.ts` | 66 | 23 | Names and the sign in method of this product, trust warnings sent to the client, and the cancellation fix: a cancelled turn answers `cancelled`, and `usage` is omitted when there is no token accounting. The fix is not specific to this product. |
+| `packages/opencode/src/acp/service.ts` | 89 | 24 | Names and the sign in method of this product, trust warnings sent to the client, and the cancellation fix: a cancelled turn answers `cancelled`, and `usage` is omitted when there is no token accounting, including a cancelled turn whose message has only the zeroed counters it was created with. The fix is not specific to this product. |
 | `packages/opencode/src/acp/session.ts` | 29 | 0 | The per turn cancellation flag used by the fix in `acp/service.ts`. |
 | `packages/opencode/src/acp/usage.ts` | 29 | 11 | Token accounting may be absent on a message; part of the fix in `acp/service.ts`. |
 | `packages/opencode/src/cli/cmd/run/permission.shared.ts` | 20 | 6 | Product name in the permission text. The "publish" question has its own text and no "Allow always" option. |
@@ -227,7 +227,7 @@ On a conflict: Take upstream's side, then apply the expectation of this product 
 | `packages/core/test/plugin/skill.test.ts` | 21 | 9 | The built in configuration skill is this product's. |
 | `packages/core/test/preload.ts` | 3 | 0 | Temporary workspaces are trusted so that upstream suites keep testing plugin loading. |
 | `packages/opencode/test/acp/error.test.ts` | 24 | 3 | Expects the defect on stderr. |
-| `packages/opencode/test/acp/service-session.test.ts` | 69 | 0 | Adds the cases of the cancellation fix. |
+| `packages/opencode/test/acp/service-session.test.ts` | 146 | 0 | Adds the cases of the cancellation fix. |
 | `packages/opencode/test/acp/usage.test.ts` | 13 | 0 | Adds the cases of a message without token accounting. |
 | `packages/opencode/test/cli/acp/acp-test-client.ts` | 10 | 0 | Helpers for the specification tests: send without waiting, send a raw line, read stderr. |
 | `packages/opencode/test/cli/acp/initialize-auth.test.ts` | 7 | 3 | Agent name and sign in method id of this product. |

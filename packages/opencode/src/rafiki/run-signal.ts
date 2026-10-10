@@ -11,6 +11,7 @@
 // it. A second signal, or a stop that takes longer than the grace period,
 // exits at once with the same code.
 import { Brand } from "@opencode-ai/core/brand/brand"
+import * as Drain from "./drain"
 
 export const EXIT_CODES = { SIGINT: 130, SIGTERM: 143 } as const
 export type StopSignal = keyof typeof EXIT_CODES
@@ -35,7 +36,7 @@ export function install(input: {
   graceMs?: number
 }) {
   const write = input.write ?? ((text: string) => process.stderr.write(text + "\n"))
-  const exit = input.exit ?? ((code: number) => process.exit(code))
+  const exit = input.exit ?? ((code: number) => void Drain.exit(code))
   let stopping = false
   const handlers = (Object.keys(EXIT_CODES) as StopSignal[]).map((signal) => {
     const handler = () => {
