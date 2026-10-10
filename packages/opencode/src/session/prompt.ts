@@ -15,6 +15,7 @@ import type { JSONSchema7 } from "@ai-sdk/provider"
 import { SessionCompaction } from "./compaction"
 import { SystemPrompt } from "./system"
 import * as CachePrefix from "@/rafiki/cache-prefix"
+import * as RafikiMemory from "@/rafiki/memory"
 import { Instruction } from "./instruction"
 import { Plugin } from "../plugin"
 import { MAX_STEPS_PROMPT } from "@opencode-ai/core/session/runner/max-steps"
@@ -1274,7 +1275,15 @@ const layer = Layer.effect(
               sys.mcp(agent, session.permission),
               MessageV2.toModelMessagesEffect(RafikiResume.withContinuations(msgs), model),
             ])
-            const system = CachePrefix.order({ environment: env, instructions, mcp: mcpInstructions, skills })
+            const memory = session.parentID
+              ? ""
+              : RafikiMemory.forSession({
+                  sessionID,
+                  directory: ctx.directory,
+                  worktree: ctx.worktree,
+                  settings: (yield* config.get()).memory,
+                })
+            const system = CachePrefix.order({ environment: env, instructions, mcp: mcpInstructions, skills, memory })
             const format = lastUser.format ?? { type: "text" as const }
             if (format.type === "json_schema") system.push(STRUCTURED_OUTPUT_SYSTEM_PROMPT)
             const result = yield* handle.process({

@@ -1262,6 +1262,23 @@
           },
           "additionalProperties": false
         },
+        "memory": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Project memory in .rafiki/memory/: read at the start of a session and kept current with the memory_update tool (default: true; RAFIKICODE_MEMORY overrides it)"
+            },
+            "max_bytes": {
+              "exclusiveMinimum": 0,
+              "type": "integer",
+              "maximum": 9007199254740991,
+              "description": "Size cap of the project memory in bytes, from 1024 to 32768 (default: 8192)"
+            }
+          },
+          "additionalProperties": false,
+          "description": "Project memory: short notes on the project, its decisions and progress, carried from one session to the next"
+        },
         "experimental": {
           "type": "object",
           "properties": {
