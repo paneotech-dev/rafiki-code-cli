@@ -235,7 +235,7 @@
     {
       "path": "packages/opencode/src/agent/agent.ts",
       "class": "hook",
-      "why": "Headless permission defaults come from `BrandTrust.headlessPermission`; plans are allowed under each project directory name."
+      "why": "Headless permission defaults come from `BrandTrust.headlessPermission`; plans are allowed under each project directory name. The general subagent does not get `memory_update` (`rafiki/memory.ts`)."
     },
     {
       "path": "packages/opencode/src/cli/cmd/acp.ts",
@@ -460,7 +460,7 @@
     {
       "path": "packages/opencode/src/session/compaction.ts",
       "class": "hook",
-      "why": "Pruning of old tool output follows the rule and the default of `rafiki/prune.ts` (on for Rafiki tiers, `RAFIKICODE_PRUNE`), and a replaced output is shown with its marker."
+      "why": "Pruning of old tool output follows the rule and the default of `rafiki/prune.ts` (on for Rafiki tiers, `RAFIKICODE_PRUNE`), and a replaced output is shown with its marker. After an automatic compaction the project memory is read again and the agent is asked to record what the summary holds (`rafiki/memory.ts`)."
     },
     {
       "path": "packages/opencode/src/session/instruction.ts",
@@ -500,7 +500,7 @@
     {
       "path": "packages/opencode/src/session/prompt.ts",
       "class": "hook",
-      "why": "The order of the system text (`rafiki/cache-prefix.ts`), continuation messages (`rafiki/resume.ts`) and the one retry, then the error, for an empty answer cut by the length limit (`rafiki/reasoning.ts`). Old tool output is pruned before the first request of a turn (`rafiki/prune.ts`)."
+      "why": "The order of the system text (`rafiki/cache-prefix.ts`), continuation messages (`rafiki/resume.ts`) and the one retry, then the error, for an empty answer cut by the length limit (`rafiki/reasoning.ts`). Old tool output is pruned before the first request of a turn (`rafiki/prune.ts`). The project memory goes last in the stable system text, read once per session (`rafiki/memory.ts`)."
     },
     {
       "path": "packages/opencode/src/session/retry.ts",
@@ -528,14 +528,29 @@
       "why": "The built in configuration skill is this product's, hidden skills are removed, and skill discovery honours the switch that disables project configuration."
     },
     {
+      "path": "packages/opencode/src/tool/apply_patch.ts",
+      "class": "hook",
+      "why": "A patch to a file in `.rafiki/memory/` is refused: the project memory changes only through `memory_update` (`rafiki/memory.ts`)."
+    },
+    {
+      "path": "packages/opencode/src/tool/edit.ts",
+      "class": "hook",
+      "why": "An edit to a file in `.rafiki/memory/` is refused: the project memory changes only through `memory_update` (`rafiki/memory.ts`)."
+    },
+    {
       "path": "packages/opencode/src/tool/registry.ts",
       "class": "hook",
-      "why": "Tool directories pass through `BrandTrust.codeDirs` (workspace trust)."
+      "why": "Tool directories pass through `BrandTrust.codeDirs` (workspace trust). `memory_update` (`tool/memory.ts`) is registered and hidden when the project memory is off (`rafiki/memory.ts`)."
     },
     {
       "path": "packages/opencode/src/tool/shell.ts",
       "class": "hook",
       "why": "Before a command that publishes code, the tool asks the \"publish\" question built by `rafiki/publish-guard.ts`."
+    },
+    {
+      "path": "packages/opencode/src/tool/write.ts",
+      "class": "hook",
+      "why": "A write to a file in `.rafiki/memory/` is refused: the project memory changes only through `memory_update` (`rafiki/memory.ts`)."
     },
     {
       "path": "packages/opencode/test/acp/error.test.ts",

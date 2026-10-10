@@ -335,6 +335,9 @@ export const Brand = {
     // turns it off, for every model; it wins over compaction.prune in the
     // config. Unset, Rafiki tiers prune and other providers do not.
     prune: "RAFIKICODE_PRUNE",
+    // Project memory (.rafiki/memory/): 0, off or false turns it off, 1, on or
+    // true turns it on; it wins over memory.enabled in the config.
+    memory: "RAFIKICODE_MEMORY",
     // Overrides the release API URL (mock release servers in tests).
     releaseAPI: "RAFIKICODE_RELEASE_API",
     // Overrides the release download base URL (mock release servers in tests).

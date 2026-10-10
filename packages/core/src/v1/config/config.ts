@@ -166,6 +166,19 @@ export const Info = Schema.Struct({
       }),
     }),
   ),
+  memory: Schema.optional(
+    Schema.Struct({
+      enabled: Schema.optional(Schema.Boolean).annotate({
+        description:
+          "Project memory in .rafiki/memory/: read at the start of a session and kept current with the memory_update tool (default: true; RAFIKICODE_MEMORY overrides it)",
+      }),
+      max_bytes: Schema.optional(PositiveInt).annotate({
+        description: "Size cap of the project memory in bytes, from 1024 to 32768 (default: 8192)",
+      }),
+    }),
+  ).annotate({
+    description: "Project memory: short notes on the project, its decisions and progress, carried from one session to the next",
+  }),
   experimental: Schema.optional(
     Schema.Struct({
       disable_paste_summary: Schema.optional(Schema.Boolean),

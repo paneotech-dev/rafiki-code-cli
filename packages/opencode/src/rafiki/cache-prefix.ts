@@ -3,8 +3,8 @@
 // text at the full input price every turn.
 //
 // The stable part, in order: the system prompt, the project instructions, the
-// MCP instructions and the skills list, then the repository context (model,
-// working directory, platform, project references). The tool definitions
+// MCP instructions and the skills list, the repository context (model,
+// working directory, platform, project references), then the project memory. The tool definitions
 // travel in their own field, sorted by name, and are the same on every
 // request of a task. Nothing in the stable part changes by itself: the one
 // line that does (today's date) goes into a system message of its own, after
@@ -20,12 +20,22 @@ export interface SystemParts {
   instructions: string[]
   mcp?: string
   skills?: string
+  // The project memory (rafiki/memory.ts), read once per session. Last of the stable parts: it changes from one
+  // session to the next, so what comes before it is still reused across sessions of the same project.
+  memory?: string
 }
 
 // The system text that follows the system prompt, most stable first. The last entry is the volatile line, which
 // the request builder takes out again (split) and sends as a message of its own.
 export function order(parts: SystemParts, now: Date = new Date()): string[] {
-  return [...parts.instructions, ...(parts.mcp ? [parts.mcp] : []), ...(parts.skills ? [parts.skills] : []), ...parts.environment, volatile(now)]
+  return [
+    ...parts.instructions,
+    ...(parts.mcp ? [parts.mcp] : []),
+    ...(parts.skills ? [parts.skills] : []),
+    ...parts.environment,
+    ...(parts.memory ? [parts.memory] : []),
+    volatile(now),
+  ]
 }
 
 // Separates the volatile lines from the stable system text. A request that carries none (a title, a summary) stays as it is.

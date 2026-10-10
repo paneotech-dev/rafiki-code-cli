@@ -4,6 +4,7 @@ import HomeTips from "./home/tips"
 import RafikiCost from "./rafiki-cost"
 import RafikiGithub from "./rafiki-github"
 import RafikiHistory from "./rafiki-history"
+import RafikiMemory from "./rafiki-memory"
 import SidebarContext from "./sidebar/context"
 import SidebarFiles from "./sidebar/files"
 import SidebarFooter from "./sidebar/footer"
@@ -29,6 +30,7 @@ export function createBuiltinPlugins(options: { experimentalEventSystem: boolean
     RafikiCost,
     RafikiHistory,
     RafikiGithub,
+    RafikiMemory,
     SidebarMcp,
     SidebarLsp,
     SidebarTodo,

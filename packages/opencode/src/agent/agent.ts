@@ -189,6 +189,8 @@ const layer = Layer.effect(
               defaults,
               Permission.fromConfig({
                 todowrite: "deny",
+                // The project memory is kept by the main agent of a session.
+                memory_update: "deny",
               }),
               user,
             ),

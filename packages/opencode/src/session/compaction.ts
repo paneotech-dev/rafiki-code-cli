@@ -23,6 +23,7 @@ import { ProviderV2 } from "@opencode-ai/core/provider"
 import { ModelV2 } from "@opencode-ai/core/model"
 import { buildPrompt } from "@opencode-ai/core/session/compaction"
 import { SessionCompactionEvent } from "@opencode-ai/schema/session-compaction-event"
+import * as RafikiMemory from "@/rafiki/memory"
 
 export const Event = SessionCompactionEvent
 
@@ -508,6 +509,7 @@ const layer = Layer.effect(
               (input.overflow
                 ? "The previous request exceeded the provider's size limit due to large media attachments. The conversation was compacted and media files were removed from context. If the user was asking about attached images or files, explain that the attachments were too large to process and suggest they try again with smaller or fewer files.\n\n"
                 : "") +
+              (RafikiMemory.enabled(cfg.memory) ? RafikiMemory.AFTER_COMPACTION + "\n\n" : "") +
               "Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed."
             yield* session.updatePart({
               id: PartID.ascending(),
@@ -531,6 +533,8 @@ const layer = Layer.effect(
 
       if (processor.message.error) return "stop"
       if (result === "continue") {
+        // The next request reads the project memory again, with what was recorded before the compaction.
+        RafikiMemory.refresh(input.sessionID)
         yield* events.publish(Event.Compacted, { sessionID: input.sessionID })
       }
       return result
