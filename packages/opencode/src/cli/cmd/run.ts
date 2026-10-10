@@ -33,6 +33,7 @@ import * as RafikiAttach from "@/rafiki/attach"
 import * as RafikiCost from "@/rafiki/cost"
 import * as RafikiServed from "@/rafiki/served"
 import * as RafikiTierCheck from "@/rafiki/tier-check"
+import * as RafikiReasoning from "@/rafiki/reasoning"
 import * as ServerFile from "@/rafiki/server-file"
 import { INTERACTIVE_INPUT_ERROR, resolveInteractiveStdin } from "./run/runtime.stdin"
 
@@ -847,6 +848,22 @@ export const RunCommand = effectCmd({
               if (missingKey) process.exitCode = RafikiMissingKey.exitCode
               if (emit("error", { error: props.error })) continue
               UI.error(err)
+            }
+
+            // A turn that spent its whole output budget reasoning is tried
+            // again once (rafiki/reasoning.ts); one line says so.
+            if (
+              event.type === "session.status" &&
+              event.properties.sessionID === sessionID &&
+              event.properties.status.type === "retry" &&
+              RafikiReasoning.isRetryLine(event.properties.status.message)
+            ) {
+              const line = event.properties.status.message
+              if (toggles.get(line) === true) continue
+              toggles.set(line, true)
+              if (emit("notice", { message: line })) continue
+              UI.println(UI.Style.TEXT_WARNING_BOLD + "!", UI.Style.TEXT_NORMAL + line)
+              continue
             }
 
             if (

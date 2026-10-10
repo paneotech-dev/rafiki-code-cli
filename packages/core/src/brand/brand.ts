@@ -26,8 +26,15 @@ const labels: Record<(typeof models)[number], string> = {
 // rafiki-fast call with reasoning_effort "low" reasons exactly as much as one
 // with no effort parameter, while "none" reasons not at all, and a scaffold
 // sized answer needs about 64000 output tokens with default reasoning. So fast
-// gets a 64000 token output limit and sends no effort by default; pro and max
-// keep 32000.
+// gets a 64000 token output limit and sends no effort by default.
+//
+// rafiki-pro also gets 64000 since 10 October 2026. With 32000, a single pro
+// request on a short task (the regex-log task of the rc.5 evaluation run)
+// spent 31996 tokens reasoning, still checking its answer, and wrote nothing.
+// pro takes no effort setting (below), so the output budget is the only lever
+// on that tier. rafiki-max keeps 32000: it takes effort variants, and nothing
+// has shown it running out. A turn that still runs out on any tier is tried
+// again once with a larger budget (packages/opencode/src/rafiki/reasoning.ts).
 //
 // Turning reasoning off: every tier with variants offers none, low, medium and
 // high. The none variant sends reasoning_effort "none" (rafikicode run
@@ -40,7 +47,7 @@ const reasoningEfforts = ["none", "low", "medium", "high"] as const
 type ReasoningEffort = (typeof reasoningEfforts)[number]
 const requestDefaults: Record<(typeof models)[number], { output: number; effort?: ReasoningEffort; variants: boolean }> = {
   "rafiki-fast": { output: 64_000, variants: true },
-  "rafiki-pro": { output: 32_000, variants: false },
+  "rafiki-pro": { output: 64_000, variants: false },
   "rafiki-max": { output: 32_000, variants: true },
 }
 // Tiers kept out of the model lists people choose from: the terminal
@@ -671,6 +678,14 @@ export const Brand = {
     // The tiers offered to people, in tier order.
     offered(): string[] {
       return models.filter((id) => Brand.provider.listed(providerID, id))
+    },
+    // The upstream maximum output of a tier: the most a request may ask for.
+    maxOutput(id: string): number | undefined {
+      return (models as readonly string[]).includes(id) ? tierLimits[id as (typeof models)[number]].output : undefined
+    },
+    // Whether a tier takes a reasoning effort setting (variants none to high).
+    takesEffort(id: string): boolean {
+      return (models as readonly string[]).includes(id) && requestDefaults[id as (typeof models)[number]].variants
     },
     // The request defaults for one model after the env overrides; invalid values fall back to the defaults.
     request(id: (typeof models)[number]) {

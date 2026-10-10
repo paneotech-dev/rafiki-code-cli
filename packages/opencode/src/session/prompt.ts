@@ -4,6 +4,7 @@ import path from "path"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
 import os from "os"
 import { SessionID, MessageID, PartID } from "./schema"
+import { ProviderTransform } from "@/provider/transform"
 import { MessageV2 } from "./message-v2"
 import { SessionRevert } from "./revert"
 import { Session } from "./session"
@@ -1086,6 +1087,9 @@ const layer = Layer.effect(
         const ctx = yield* InstanceState.context
         let structured: unknown
         let step = 0
+        // The one retry of a turn that spent its whole output budget reasoning
+        // (rafiki/reasoning.ts), keyed by the user message it answers.
+        let reasoningRetry: { user: MessageID; plan: RafikiReasoning.RetryPlan } | undefined
         const session = yield* sessions.get(sessionID).pipe(Effect.orDie)
         // Old tool output is pruned before the first request of a turn, so the
         // turn already sends less (rafiki/prune.ts); a run that exits right
@@ -1132,14 +1136,37 @@ const layer = Layer.effect(
                 callID: orphan.callID,
               })
             }
-            const emptyLength = RafikiReasoning.emptyLengthError(lastAssistant, lastAssistantMsg?.parts)
-            if (emptyLength) {
-              lastAssistant.error = emptyLength
+            const retried = reasoningRetry?.user === lastUser.id ? reasoningRetry.plan : undefined
+            const emptyLength = RafikiReasoning.emptyLengthError(lastAssistant, lastAssistantMsg?.parts, retried)
+            const plan =
+              emptyLength && !retried
+                ? yield* Effect.gen(function* () {
+                    const used = yield* getModel(lastAssistant.providerID, lastAssistant.modelID, sessionID)
+                    return RafikiReasoning.retryPlan({
+                      providerID: lastAssistant.providerID,
+                      modelID: lastAssistant.modelID,
+                      output: ProviderTransform.maxOutputTokens(used, flags.outputTokenMax),
+                      effort: lastUser.model.variant ?? used.options?.reasoningEffort,
+                    })
+                  })
+                : undefined
+            if (plan) {
+              // Tried again once, below, with the larger budget; the empty
+              // turn keeps the line as its note and is not sent again.
+              reasoningRetry = { user: lastUser.id, plan }
+              lastAssistant.error = RafikiReasoning.retryNote(plan)
               yield* sessions.updateMessage(lastAssistant)
-              yield* events.publish(Session.Event.Error, { sessionID, error: emptyLength })
+              yield* status.set(sessionID, { type: "retry", attempt: 1, message: plan.line, next: Date.now() })
+              yield* Effect.logInfo("reasoning exhausted, retrying", { "session.id": sessionID, output: plan.output })
+            } else {
+              if (emptyLength) {
+                lastAssistant.error = emptyLength
+                yield* sessions.updateMessage(lastAssistant)
+                yield* events.publish(Session.Event.Error, { sessionID, error: emptyLength })
+              }
+              yield* Effect.logInfo("exiting loop", { "session.id": sessionID })
+              break
             }
-            yield* Effect.logInfo("exiting loop", { "session.id": sessionID })
-            break
           }
 
           step++
@@ -1151,7 +1178,9 @@ const layer = Layer.effect(
               history: msgs,
             }).pipe(Effect.ignore, Effect.forkIn(scope))
 
-          const model = yield* getModel(lastUser.model.providerID, lastUser.model.modelID, sessionID)
+          const chosen = yield* getModel(lastUser.model.providerID, lastUser.model.modelID, sessionID)
+          const model =
+            reasoningRetry?.user === lastUser.id ? RafikiReasoning.boosted(chosen, reasoningRetry.plan) : chosen
           const task = tasks.pop()
 
           if (task?.type === "subtask") {
