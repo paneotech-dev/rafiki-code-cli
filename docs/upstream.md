@@ -73,7 +73,7 @@ counted with `git diff --numstat -M` against the upstream base.
 
 <!-- upstream-files:start -->
 
-Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 189. Changed lines: 6800 (3938 added, 2862 removed).
+Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 189. Changed lines: 6804 (3941 added, 2863 removed).
 
 | Class | Files | Added | Removed |
 | --- | ---: | ---: | ---: |
@@ -81,12 +81,12 @@ Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 189. Changed lin
 | Source: product name, file names and wording | 42 | 214 | 191 |
 | Source: behaviour changed in place | 16 | 613 | 231 |
 | Tests of upstream, adapted | 34 | 559 | 178 |
-| Generated files | 3 | 366 | 181 |
+| Generated files | 3 | 369 | 182 |
 | Package identity and packaging | 9 | 20 | 479 |
 | Documentation | 23 | 197 | 1182 |
 | Repository tooling and workflows | 6 | 23 | 8 |
 | Editor extension | 13 | 1405 | 210 |
-| Total | 189 | 3938 | 2862 |
+| Total | 189 | 3941 | 2863 |
 
 ### Source: a call into this fork's modules
 
@@ -258,7 +258,7 @@ On a conflict: Never merge by hand. Take either side, finish the merge, then reg
 | File | Added | Removed | Why |
 | --- | ---: | ---: | --- |
 | `bun.lock` | 33 | 33 | Differs by the name of the workspace package only. |
-| `packages/opencode/test/cli/help/__snapshots__/help-snapshots.test.ts.snap` | 305 | 120 | The help text of this product's command list. |
+| `packages/opencode/test/cli/help/__snapshots__/help-snapshots.test.ts.snap` | 308 | 121 | The help text of this product's command list. |
 | `packages/sdk/openapi.json` | 28 | 28 | Descriptions name this product (`Brand.document`). |
 
 ### Package identity and packaging
