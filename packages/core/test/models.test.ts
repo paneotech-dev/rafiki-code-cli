@@ -7,6 +7,7 @@ import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { Flag } from "@opencode-ai/core/flag/flag"
 import { Global } from "@opencode-ai/core/global"
 import { ModelsDev } from "@opencode-ai/core/models-dev"
+import { Brand } from "@opencode-ai/core/brand/brand"
 import { it } from "./lib/effect"
 import { readFile, rm, writeFile, utimes, mkdir } from "fs/promises"
 import path from "path"
@@ -18,13 +19,19 @@ import path from "path"
 // bun process.
 const ORIGINAL_MODELS_PATH = Flag.OPENCODE_MODELS_PATH
 const ORIGINAL_DISABLE_FETCH = Flag.OPENCODE_DISABLE_MODELS_FETCH
+// The catalogue is fetched only while the provider scope is open (brand.ts);
+// these tests drive the fetch, so they open it, except where noted.
+const ORIGINAL_SCOPE = process.env[Brand.providers.testEnv]
 beforeAll(() => {
   Flag.OPENCODE_MODELS_PATH = undefined
   Flag.OPENCODE_DISABLE_MODELS_FETCH = true
+  process.env[Brand.providers.testEnv] = "off"
 })
 afterAll(() => {
   Flag.OPENCODE_MODELS_PATH = ORIGINAL_MODELS_PATH
   Flag.OPENCODE_DISABLE_MODELS_FETCH = ORIGINAL_DISABLE_FETCH
+  if (ORIGINAL_SCOPE === undefined) delete process.env[Brand.providers.testEnv]
+  else process.env[Brand.providers.testEnv] = ORIGINAL_SCOPE
 })
 
 const cacheFile = path.join(Global.Path.cache, "models.json")
@@ -233,6 +240,32 @@ describe("ModelsDev Service", () => {
       expect(final.calls.length).toBe(1)
       expect(final.calls[0].url).toContain("/api.json")
       expect(final.calls[0].userAgent).toContain("/cli")
+    }),
+  )
+
+  it.live("with the provider scope closed (the official build) the catalogue is never fetched", () =>
+    Effect.gen(function* () {
+      yield* Effect.promise(() => rm(cacheFile, { force: true }))
+      process.env[Brand.providers.testEnv] = "on"
+      Flag.OPENCODE_DISABLE_MODELS_FETCH = false
+      const state = yield* Ref.make({ ...initialState, body: JSON.stringify(fixture2) })
+      const result = yield* provided(
+        state,
+        Effect.gen(function* () {
+          const svc = yield* ModelsDev.Service
+          yield* svc.refresh(true)
+          return yield* svc.get()
+        }),
+      ).pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            process.env[Brand.providers.testEnv] = "off"
+            Flag.OPENCODE_DISABLE_MODELS_FETCH = true
+          }),
+        ),
+      )
+      expect(result).toEqual({})
+      expect((yield* Ref.get(state)).calls.length).toBe(0)
     }),
   )
 

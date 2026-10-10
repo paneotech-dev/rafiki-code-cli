@@ -236,11 +236,27 @@ export function plugins<L extends readonly unknown[]>(where: string, list: L | u
   return [] as unknown as L
 }
 
-// Runs self only when code may load from dir: the background dependency
-// install into a project .rafikicode or .opencode directory is skipped for an
-// untrusted one, since nothing it installs would be imported.
+// True when dir holds code that could import the plugin package: plugin or
+// tool files, or a package.json of its own.
+export function hasCode(dir: string) {
+  if (fs.existsSync(path.join(dir, "package.json"))) return true
+  return ["plugin", "plugins", "tool", "tools"].some((sub) => {
+    try {
+      return fs.readdirSync(path.join(dir, sub)).some((f) => /\.(js|mjs|cjs|ts|mts|cts)$/.test(f))
+    } catch {
+      return false
+    }
+  })
+}
+
+// Runs self only when code may load from dir and there is code there: the
+// background dependency install (the plugin package from the npm registry)
+// is skipped for an untrusted project directory, since nothing it installs
+// would be imported, and for any directory with no plugin or tool code, so a
+// plain run contacts no package registry.
 export function whenCodeDir(dir: string) {
-  return <A, E, R>(self: Effect.Effect<A, E, R>): Effect.Effect<A | void, E, R> => (allowsCodeDir(dir) ? self : Effect.void)
+  return <A, E, R>(self: Effect.Effect<A, E, R>): Effect.Effect<A | void, E, R> =>
+    allowsCodeDir(dir) && hasCode(dir) ? self : Effect.void
 }
 
 // Filters the plugin and tool directories a registry scans.

@@ -9,7 +9,14 @@ import fs from "fs"
 import os from "os"
 import path from "path"
 import { Brand } from "@opencode-ai/core/brand/brand"
-import { EMPTY_LENGTH_MESSAGE, emptyLengthError, isEmptyLengthTurn } from "../../src/rafiki/reasoning"
+import {
+  EMPTY_LENGTH_MESSAGE,
+  RETRY_PREFIX,
+  boosted,
+  emptyLengthError,
+  isEmptyLengthTurn,
+  retryPlan,
+} from "../../src/rafiki/reasoning"
 import { ProviderTransform } from "../../src/provider/transform"
 import { createMockGateway } from "./mock-gateway.mjs"
 
@@ -28,12 +35,12 @@ function models() {
 }
 
 describe("rafiki model request defaults", () => {
-  test("fast gets 64000 output tokens and no effort, pro and max 32000, effort variants where the gateway accepted them", () => {
+  test("fast and pro get 64000 output tokens and no effort, max 32000, effort variants where the gateway accepted them", () => {
     delete process.env[Brand.env.maxOutputTokens]
     delete process.env[Brand.env.reasoningEffort]
     const m = models()
     expect(m["rafiki-fast"].limit.output).toBe(64_000)
-    expect(m["rafiki-pro"].limit.output).toBe(32_000)
+    expect(m["rafiki-pro"].limit.output).toBe(64_000)
     expect(m["rafiki-max"].limit.output).toBe(32_000)
     expect(m["rafiki-fast"].options).toBeUndefined()
     expect(m["rafiki-fast"].variants.none).toEqual({ reasoningEffort: "none" })
@@ -63,7 +70,7 @@ describe("rafiki model request defaults", () => {
     m = models()
     expect(m["rafiki-fast"].options).toBeUndefined()
     expect(m["rafiki-fast"].limit.output).toBe(64_000)
-    expect(m["rafiki-pro"].limit.output).toBe(32_000)
+    expect(m["rafiki-pro"].limit.output).toBe(64_000)
   })
 
   test("the rafiki provider is held to its own output limit, not the upstream 32000 cap; an explicit cap still wins", () => {
@@ -89,6 +96,51 @@ describe("rafiki model request defaults", () => {
     expect(EMPTY_LENGTH_MESSAGE).not.toMatch(/deepseek|rafiki-fast|opencode/i)
     expect(emptyLengthError({ providerID: "openai", finish: "length" }, reasoningOnly)).toBeUndefined()
     expect(emptyLengthError({ providerID: "rafiki", finish: "length", error: { name: "APIError" } }, reasoningOnly)).toBeUndefined()
+  })
+
+  test("pro is not told to pick a variant it does not have", () => {
+    const reasoningOnly = [{ type: "reasoning", text: "thinking" }]
+    const pro = emptyLengthError({ providerID: "rafiki", modelID: "rafiki-pro", finish: "length" }, reasoningOnly) as any
+    expect(pro.data.message).not.toContain("--variant")
+    expect(pro.data.message).toContain(Brand.env.maxOutputTokens)
+    const fast = emptyLengthError({ providerID: "rafiki", modelID: "rafiki-fast", finish: "length" }, reasoningOnly) as any
+    expect(fast.data.message).toBe(EMPTY_LENGTH_MESSAGE)
+  })
+
+  test("the retry doubles the output up to the tier's upstream maximum and lowers the effort where the tier takes one", () => {
+    expect(retryPlan({ providerID: "rafiki", modelID: "rafiki-pro", output: 64_000 })).toEqual({
+      output: 128_000,
+      effort: undefined,
+      line: `${RETRY_PREFIX} 128000 output tokens.`,
+    })
+    expect(retryPlan({ providerID: "rafiki", modelID: "rafiki-pro", output: 100_000 })?.output).toBe(128_000)
+    // pro at its maximum, with no effort to lower: nothing more to give.
+    expect(retryPlan({ providerID: "rafiki", modelID: "rafiki-pro", output: 128_000 })).toBeUndefined()
+    expect(retryPlan({ providerID: "rafiki", modelID: "rafiki-fast", output: 64_000 })).toMatchObject({ output: 128_000, effort: "low" })
+    expect(retryPlan({ providerID: "rafiki", modelID: "rafiki-max", output: 32_000, effort: "high" })).toMatchObject({
+      output: 64_000,
+      effort: "medium",
+    })
+    expect(retryPlan({ providerID: "rafiki", modelID: "rafiki-max", output: 128_000, effort: "low" })).toMatchObject({
+      output: 128_000,
+      effort: "none",
+    })
+    expect(retryPlan({ providerID: "rafiki", modelID: "rafiki-max", output: 128_000, effort: "none" })).toBeUndefined()
+    expect(retryPlan({ providerID: "openai", modelID: "gpt-5", output: 32_000 })).toBeUndefined()
+  })
+
+  test("the retry model carries the larger limit and the lower effort over a chosen variant", () => {
+    const model = {
+      limit: { context: 1_000_000, output: 32_000 },
+      options: {},
+      variants: { high: { reasoningEffort: "high" } },
+    }
+    const plan = retryPlan({ providerID: "rafiki", modelID: "rafiki-max", output: 32_000, effort: "high" })!
+    const next = boosted(model, plan)
+    expect(next.limit.output).toBe(64_000)
+    expect(next.options).toEqual({ reasoningEffort: "medium" })
+    expect(next.variants!.high).toEqual({ reasoningEffort: "medium" })
+    expect(model.limit.output).toBe(32_000)
   })
 })
 
@@ -160,14 +212,40 @@ describe("rafikicode run against the mock gateway", () => {
     expect(tuned.reasoning_effort).toBeUndefined()
   }, 120_000)
 
-  test("a turn that ends empty on length prints the clear message instead of going quiet", async () => {
+  test("a turn that ends empty on length is tried again once; an empty retry prints the clear message", async () => {
     gateway = createMockGateway({ quiet: true, emptyLength: true })
     await gateway.ready
     const result = await run(["run", "empty check"])
-    expect(result.all).toContain("whole output budget reasoning and wrote no answer")
-    expect(result.all).toContain(Brand.env.maxOutputTokens)
+    expect(result.exitCode).toBe(1)
+    expect(result.all).toContain(`${RETRY_PREFIX} 128000 output tokens and reasoning effort low.`)
+    expect(result.all).toContain("whole output budget reasoning and wrote no answer, also when tried again with 128000 output tokens")
     expect(result.all).toContain("--variant none")
-    // One agent turn (the call with tools); the title call carries the same text and no tools.
-    expect(promptCalls("empty check").filter((r: any) => r.tools > 0).length).toBe(1)
+    // The cost line is still printed, marked partial.
+    expect(result.all).toContain("Task (partial, ended with an error): tier fast")
+    // Two agent turns (the calls with tools): the first and its one retry. The title call carries the same text and no tools.
+    const turns = promptCalls("empty check").filter((r: any) => r.tools > 0)
+    expect(turns.map((r: any) => [r.max_tokens, r.reasoning_effort])).toEqual([
+      [64_000, undefined],
+      [128_000, "low"],
+    ])
+  }, 120_000)
+
+  test("on pro the retry with the larger budget answers, the run says so in one line and succeeds", async () => {
+    // Empty while the request asks for less than pro's upstream maximum, the way GLM ran out at 32000 in the evaluation.
+    gateway = createMockGateway({ quiet: true, emptyLength: (body: any) => Array.isArray(body.tools) && body.max_tokens < 128_000 })
+    await gateway.ready
+    const result = await run(["run", "--model", "rafiki/rafiki-pro", "pro retry check"])
+    expect(result.exitCode).toBe(0)
+    expect(result.all).toContain("Mock gateway reply")
+    expect(result.all.split(RETRY_PREFIX).length - 1).toBe(1)
+    expect(result.all).toContain(`${RETRY_PREFIX} 128000 output tokens.`)
+    expect(result.all).not.toContain("wrote no answer")
+    const turns = promptCalls("pro retry check").filter((r: any) => r.tools > 0)
+    expect(turns.map((r: any) => [r.max_tokens, r.reasoning_effort])).toEqual([
+      [64_000, undefined],
+      [128_000, undefined],
+    ])
+    // The empty turn is not sent back with the retry: the retry carries the same messages as the first try.
+    expect(turns[1].messages).toBe(turns[0].messages)
   }, 120_000)
 })

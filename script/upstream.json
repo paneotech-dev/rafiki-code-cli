@@ -118,6 +118,11 @@
       "why": "The data, cache and configuration directories are named by the brand module."
     },
     {
+      "path": "packages/core/src/models-dev.ts",
+      "class": "hook",
+      "why": "The upstream model catalogue is fetched only while the provider scope is open (`core/brand/brand.ts`, `Brand.providers.open()`): the official build offers the rafiki provider alone, so a run contacts no catalogue host."
+    },
+    {
       "path": "packages/core/src/oauth/page.ts",
       "class": "text",
       "why": "The sign in result page names this product and shows its name where upstream draws its wordmark."
@@ -138,6 +143,16 @@
       "why": "The built in configuration skill is the one from `brand/skill.ts` when the upstream skill is hidden."
     },
     {
+      "path": "packages/core/src/ripgrep.ts",
+      "class": "hook",
+      "why": "When the ripgrep binary can be neither found nor downloaded, glob, file search and grep run on the built-in search (`core/brand/search-fallback.ts`), with one warning line, instead of failing."
+    },
+    {
+      "path": "packages/core/src/ripgrep/binary.ts",
+      "class": "logic",
+      "why": "The ripgrep download gives up after 60 seconds, so a network that drops connections hands over to the built-in search instead of holding a search up."
+    },
+    {
       "path": "packages/core/src/v1/config/config.ts",
       "class": "text",
       "why": "The `compaction.prune` description gives this product's default (on for Rafiki tiers)."
@@ -146,6 +161,11 @@
       "path": "packages/core/test/global.test.ts",
       "class": "test",
       "why": "The temporary directory name comes from the brand module."
+    },
+    {
+      "path": "packages/core/test/models.test.ts",
+      "class": "test",
+      "why": "The fetch tests open the provider scope, which the catalogue fetch now needs, and one test checks that a closed scope fetches nothing."
     },
     {
       "path": "packages/core/test/plugin/skill.test.ts",
@@ -265,7 +285,7 @@
     {
       "path": "packages/opencode/src/cli/cmd/run.ts",
       "class": "hook",
-      "why": "Exit codes and messages for gateway errors, a missing key and rejected permissions, the attach check, the cost line, the `--resume` alias and server file credentials, each a call into `src/rafiki/`; an answer on another tier is announced through `rafiki/served.ts`, and a run on Rafiki Max is checked against the key first (`rafiki/tier-check.ts`). A command that publishes code is refused unless the run allows it (`--allow-push`, `RAFIKICODE_ALLOW_PUSH`, a `publish` permission in config), `--auto` or not (`core/brand/publish.ts`)."
+      "why": "Exit codes and messages for gateway errors, a missing key and rejected permissions, the attach check, the cost line, the `--resume` alias and server file credentials, each a call into `src/rafiki/`; an answer on another tier is announced through `rafiki/served.ts`, and a run on Rafiki Max is checked against the key first (`rafiki/tier-check.ts`). A command that publishes code is refused unless the run allows it (`--allow-push`, `RAFIKICODE_ALLOW_PUSH`, a `publish` permission in config), `--auto` or not (`core/brand/publish.ts`). A turn tried again after it spent its output budget reasoning is announced in one line (`rafiki/reasoning.ts`), and SIGTERM or SIGINT stop and save the session before exiting 143 or 130 (`rafiki/run-signal.ts`)."
     },
     {
       "path": "packages/opencode/src/cli/cmd/run/footer.permission.tsx",
@@ -480,7 +500,7 @@
     {
       "path": "packages/opencode/src/session/prompt.ts",
       "class": "hook",
-      "why": "The order of the system text (`rafiki/cache-prefix.ts`), continuation messages (`rafiki/resume.ts`) and the error for an empty answer cut by the length limit (`rafiki/reasoning.ts`). Old tool output is pruned before the first request of a turn (`rafiki/prune.ts`)."
+      "why": "The order of the system text (`rafiki/cache-prefix.ts`), continuation messages (`rafiki/resume.ts`) and the one retry, then the error, for an empty answer cut by the length limit (`rafiki/reasoning.ts`). Old tool output is pruned before the first request of a turn (`rafiki/prune.ts`)."
     },
     {
       "path": "packages/opencode/src/session/retry.ts",

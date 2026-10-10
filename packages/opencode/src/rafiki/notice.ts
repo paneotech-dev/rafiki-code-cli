@@ -13,11 +13,14 @@
 // is the part that costs the person an afternoon.
 import { Brand } from "@opencode-ai/core/brand/brand"
 import * as Guard from "@opencode-ai/core/brand/guard"
+import * as SearchFallback from "@opencode-ai/core/brand/search-fallback"
 import type { GlobalEvent } from "@opencode-ai/sdk/v2"
 import { TuiEvent } from "@opencode-ai/schema/tui-event"
 import { Identifier } from "@/id/id"
 
 export const TRUST_TITLE = `${Brand.product} workspace trust`
+// The same sink carries the one line that says searches run without ripgrep.
+export const SEARCH_TITLE = `${Brand.product} search`
 
 // Long enough to read a sentence that names a directory, and once only: warnOnce
 // already keys them, so the same warning never queues twice.
@@ -38,7 +41,12 @@ export function toastEvent(message: string): NoticeEvent {
     payload: {
       id: Identifier.create("evt", "ascending"),
       type: TuiEvent.ToastShow.type,
-      properties: { title: TRUST_TITLE, message: stripPrefix(message), variant: "warning", duration: TRUST_DURATION },
+      properties: {
+        title: message === SearchFallback.NOTICE ? SEARCH_TITLE : TRUST_TITLE,
+        message: stripPrefix(message),
+        variant: "warning",
+        duration: TRUST_DURATION,
+      },
     },
   }
 }

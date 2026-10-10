@@ -56,6 +56,10 @@ export function createMockGateway(options = {}) {
     enforce: options.enforce ?? false,
     cost: options.cost ?? 0.001,
     fail: options.fail,
+    // true: every answer is reasoning only and stops on its output limit. A
+    // function (body) => boolean decides per request, so a test can make the
+    // first request come back empty and a retry with a larger max_tokens or a
+    // lower reasoning_effort answer.
     emptyLength: options.emptyLength ?? process.env.MOCK_GATEWAY_EMPTY_LENGTH === "1",
     // { name, arguments }: the first turn of a conversation asks for this tool
     // call; once a tool result is in the messages the canned reply follows.
@@ -139,14 +143,14 @@ export function createMockGateway(options = {}) {
     })
   }
 
-  function completion(model, text) {
+  function completion(model, text, empty) {
     return {
       id: "chatcmpl-mock-" + Date.now(),
       object: "chat.completion",
       created: Math.floor(Date.now() / 1000),
       model,
       choices: [
-        opts.emptyLength
+        empty
           ? { index: 0, message: { role: "assistant", content: "", reasoning_content: "Planning the answer..." }, finish_reason: "length" }
           : { index: 0, message: { role: "assistant", content: text }, finish_reason: "stop" },
       ],
@@ -154,7 +158,7 @@ export function createMockGateway(options = {}) {
     }
   }
 
-  function stream(res, model, text, headers) {
+  function stream(res, model, text, headers, empty) {
     const id = "chatcmpl-mock-" + Date.now()
     const created = Math.floor(Date.now() / 1000)
     res.writeHead(200, {
@@ -166,7 +170,7 @@ export function createMockGateway(options = {}) {
     const chunk = (delta, finish) =>
       "data: " + JSON.stringify({ id, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta, finish_reason: finish }] }) + "\n\n"
     res.write(chunk({ role: "assistant", content: "" }, null))
-    if (opts.emptyLength) {
+    if (empty) {
       res.write(chunk({ reasoning_content: "Planning the answer..." }, null))
       res.write(chunk({}, "length"))
     } else {
@@ -306,8 +310,9 @@ export function createMockGateway(options = {}) {
       }
       // A fallback: the gateway answers on another tier and names it in the body.
       const answered = opts.answeredBy?.[model] ?? model
-      if (body.stream === true) return stream(res, answered, opts.reply, headers)
-      return json(res, 200, completion(answered, opts.reply), headers)
+      const empty = typeof opts.emptyLength === "function" ? Boolean(opts.emptyLength(body)) : Boolean(opts.emptyLength)
+      if (body.stream === true) return stream(res, answered, opts.reply, headers, empty)
+      return json(res, 200, completion(answered, opts.reply, empty), headers)
     }
 
     // Admin half. The real gateway wants the master key; the mock only wants a bearer.

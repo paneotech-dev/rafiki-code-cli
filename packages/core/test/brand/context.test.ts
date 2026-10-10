@@ -77,17 +77,21 @@ describe("the tiers' limits", () => {
     for (const id of Brand.models) expect(models[id].limit.context).toBe(1_000_000)
   })
 
-  test("the output a request asks for is unchanged, and the override is capped by the tier's upstream maximum", () => {
+  test("the output a request asks for (64000 on pro since 2026-10-10), and the override is capped by the tier's upstream maximum", () => {
     const saved = process.env[Brand.env.maxOutputTokens]
     try {
       delete process.env[Brand.env.maxOutputTokens]
       expect(config()["rafiki-fast"].limit.output).toBe(64_000)
-      expect(config()["rafiki-pro"].limit.output).toBe(32_000)
+      expect(config()["rafiki-pro"].limit.output).toBe(64_000)
       process.env[Brand.env.maxOutputTokens] = "200000"
       // DeepSeek documents 384K for deepseek-flash; Z.ai and Anthropic 128K.
       expect(Brand.provider.request("rafiki-fast").output).toBe(200_000)
-      expect(Brand.provider.request("rafiki-pro").output).toBe(32_000)
+      expect(Brand.provider.request("rafiki-pro").output).toBe(64_000)
       expect(Brand.provider.request("rafiki-max").output).toBe(32_000)
+      expect(Brand.provider.maxOutput("rafiki-pro")).toBe(128_000)
+      expect(Brand.provider.maxOutput("rafiki-fast")).toBe(384_000)
+      expect(Brand.provider.takesEffort("rafiki-pro")).toBe(false)
+      expect(Brand.provider.takesEffort("rafiki-max")).toBe(true)
       process.env[Brand.env.maxOutputTokens] = "128000"
       expect(Brand.provider.request("rafiki-max").output).toBe(128_000)
     } finally {

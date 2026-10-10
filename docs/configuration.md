@@ -106,9 +106,11 @@ Server password: stored in /home/you/.rafikicode/servers/4096.json (user name ra
 
 ## Reasoning and output limits
 
-`rafiki-fast` is a *reasoning model*: it thinks before it answers, and the thinking counts against the output token limit. By default `rafiki-fast` may write up to 64000 output tokens and sends no reasoning setting, so the model decides how much to think. `rafiki-pro` and `rafiki-max` may write up to 32000.
+Every tier is a *reasoning model*: it thinks before it answers, and the thinking counts against the output token limit. By default `rafiki-fast` and `rafiki-pro` may write up to 64000 output tokens and `rafiki-max` up to 32000, and no reasoning setting is sent, so the model decides how much to think.
 
-If a reply stops with "The model used its whole output budget reasoning and wrote no answer", turn reasoning off with the `none` variant:
+If a turn spends its whole output budget thinking and writes no answer, Rafiki Code tries that turn again once, by itself, and says so in one line: "The model used its whole output budget reasoning; trying again once with ...". The retry asks for twice the output (up to the most the model behind the tier can write: 384,000 on `rafiki-fast`, 128,000 on `rafiki-pro` and `rafiki-max`) and, on `rafiki-fast` and `rafiki-max`, one step less reasoning. This happens in the terminal interface and in `rafikicode run`.
+
+If the retry also comes back empty, the reply stops with "The model used its whole output budget reasoning and wrote no answer, also when tried again". Turn reasoning off with the `none` variant:
 
 ```bash
 rafikicode run --variant none "your request"
@@ -132,7 +134,7 @@ Last request sent 24,530 tokens
 - `cached` is the part of that input the provider read from its cache, which costs less. It is inside the tokens sent, not added to them.
 - The tokens received are the answer to that request: output and reasoning.
 - The percentage is the tokens sent over the window of the tier that answered. `rafiki-fast`, `rafiki-pro` and `rafiki-max` each have a window of 1,000,000 tokens (the documented windows of the models behind them, checked on 4 October 2026). A share under one per cent reads `<1%`.
-- A long session is compacted (summarised, so the next requests send less) only near the end of the window of its tier: at the window less the output a request may ask for, about 936,000 tokens on `rafiki-fast` and 968,000 on `rafiki-pro` and `rafiki-max`. Each turn sends the whole conversation, so the cost of a turn grows with the session; start a new session (or run `/compact`) to keep long work cheaper. Old tool output is shortened well before that, see below.
+- A long session is compacted (summarised, so the next requests send less) only near the end of the window of its tier: at the window less the output a request may ask for, about 936,000 tokens on `rafiki-fast` and `rafiki-pro` and 968,000 on `rafiki-max`. Each turn sends the whole conversation, so the cost of a turn grows with the session; start a new session (or run `/compact`) to keep long work cheaper. Old tool output is shortened well before that, see below.
 
 ## Long sessions: old tool output
 

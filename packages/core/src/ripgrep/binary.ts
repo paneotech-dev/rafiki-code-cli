@@ -110,6 +110,9 @@ export namespace RipgrepBinary {
             const bytes = yield* HttpClientRequest.get(url).pipe(
               http.execute,
               Effect.flatMap((response) => response.arrayBuffer),
+              // A network that drops the connection instead of refusing it
+              // must not hold a search up: the built-in search takes over.
+              Effect.timeout("60 seconds"),
               Effect.mapError((cause) => (cause instanceof Error ? cause : new Error(String(cause)))),
             )
             if (bytes.byteLength === 0) throw new Error(`failed to download ripgrep from ${url}`)

@@ -1,12 +1,13 @@
 export * as Ripgrep from "./ripgrep"
 
-import { Context, Effect, Fiber, Layer, Schema, Stream } from "effect"
+import { Context, Effect, Exit, Fiber, Layer, Schema, Stream } from "effect"
 import { ChildProcess } from "effect/unstable/process"
 import { Entry, Match } from "@opencode-ai/schema/filesystem"
 import { makeGlobalNode } from "./effect/app-node"
 import { AppProcess, collectStream, waitForAbort } from "./process"
 import { NonNegativeInt, PositiveInt, RelativePath } from "./schema"
 import { RipgrepBinary } from "./ripgrep/binary"
+import * as SearchFallback from "./brand/search-fallback"
 
 /**
  * Small core-owned ripgrep execution adapter. It deliberately exposes raw
@@ -103,11 +104,27 @@ const layer = Layer.effect(
       readonly parse: (line: string) => Effect.Effect<A | undefined, Error>
       readonly pattern?: string
       readonly onItem?: (item: A) => Effect.Effect<void>
+      // The same search without ripgrep (brand/search-fallback.ts), for when
+      // the binary can be neither found nor downloaded.
+      readonly fallback: () => A[]
     }) => {
       const program = Effect.scoped(
         Effect.gen(function* () {
+          const located = yield* Effect.exit(binary.filepath)
+          if (!Exit.isSuccess(located)) {
+            SearchFallback.notice()
+            const rows = yield* Effect.try({
+              try: input.fallback,
+              catch: (cause) =>
+                cause instanceof SearchFallback.InvalidPattern
+                  ? new InvalidPatternError({ pattern: input.pattern ?? "", message: cause.message })
+                  : failure("built-in search failed", cause),
+            })
+            if (input.onItem) for (const row of rows.slice(0, input.limit)) yield* input.onItem(row)
+            return { items: rows.slice(0, input.limit), truncated: rows.length > input.limit, partial: false }
+          }
           const handle = yield* process.spawn(
-            ChildProcess.make(yield* binary.filepath, input.args, { cwd: input.cwd, extendEnv: true, stdin: "ignore" }),
+            ChildProcess.make(located.value, input.args, { cwd: input.cwd, extendEnv: true, stdin: "ignore" }),
           )
           const stderrFiber = yield* collectStream(handle.stderr, ERROR_BYTES).pipe(
             Effect.map((output) => output.buffer.toString("utf8")),
@@ -166,6 +183,14 @@ const layer = Layer.effect(
             "--glob=!**/.git/**",
             ".",
           ],
+          fallback: () =>
+            SearchFallback.files(input.cwd, {
+              hidden: input.hidden,
+              follow: input.follow,
+              glob: input.pattern,
+              limit: input.limit + 1,
+              signal: input.signal,
+            }),
           parse: (line) =>
             Effect.succeed(
               line
@@ -198,6 +223,14 @@ const layer = Layer.effect(
             "--glob=!**/.git/**",
             ".",
           ],
+          fallback: () =>
+            SearchFallback.files(input.cwd, {
+              hidden: input.hidden,
+              follow: input.follow,
+              glob: input.pattern === "*" ? undefined : input.pattern,
+              limit: input.limit + 1,
+              signal: input.signal,
+            }).map((relative) => Entry.make({ path: RelativePath.make(relative), type: "file" })),
           parse: (line) => {
             const relative = line
               .replace(/^(?:\.[\\/])+/u, "")
@@ -229,6 +262,14 @@ const layer = Layer.effect(
             input.pattern,
             input.file ?? ".",
           ],
+          fallback: () =>
+            SearchFallback.grep(input.cwd, {
+              pattern: input.pattern,
+              file: input.file,
+              include: input.include,
+              limit: input.limit,
+              signal: input.signal,
+            }).map((match) => ({ ...match, submatches: match.submatches.slice(0, MAX_SUBMATCHES) })),
           parse: (line) =>
             (Buffer.byteLength(line, "utf8") > MAX_RECORD_BYTES
               ? Effect.fail(failure(`Ripgrep JSON record exceeded ${MAX_RECORD_BYTES} bytes`))

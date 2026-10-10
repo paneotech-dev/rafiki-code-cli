@@ -30,10 +30,10 @@ describe("the tiers' windows and the compaction point", () => {
     for (const id of Brand.models) expect(registered(id).limit.context).toBe(1_000_000)
   })
 
-  test("a session is compacted near the end of the window: 936000 tokens on fast, 968000 on pro and max", () => {
+  test("a session is compacted near the end of the window: 936000 tokens on fast and pro, 968000 on max", () => {
     delete process.env[Brand.env.maxOutputTokens]
     expect(usable({ cfg, model: registered("rafiki-fast") })).toBe(936_000)
-    expect(usable({ cfg, model: registered("rafiki-pro") })).toBe(968_000)
+    expect(usable({ cfg, model: registered("rafiki-pro") })).toBe(936_000)
     expect(usable({ cfg, model: registered("rafiki-max") })).toBe(968_000)
   })
 
