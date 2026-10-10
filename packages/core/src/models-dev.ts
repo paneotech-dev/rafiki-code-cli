@@ -4,6 +4,7 @@ import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/unstable/
 import { ModelsDev } from "@opencode-ai/schema/models-dev"
 import { Global } from "./global"
 import { Flag } from "./flag/flag"
+import { Brand } from "./brand/brand"
 import { Flock } from "./util/flock"
 import { Hash } from "./util/hash"
 import { FSUtil } from "./fs-util"
@@ -157,6 +158,11 @@ const layer = Layer.effect(
       ),
     )
 
+    // The upstream model catalogue is fetched only while the provider scope is
+    // open: the official build offers the rafiki provider alone, whose models
+    // come from brand.ts, so a run contacts no catalogue host.
+    const catalogue = () => Brand.providers.open()
+    const fetchDisabled = Flag.OPENCODE_DISABLE_MODELS_FETCH || !catalogue()
     const source = Flag.OPENCODE_MODELS_URL || "https://models.opencode.ai"
     const filepath = path.join(
       Global.Path.cache,
@@ -219,7 +225,7 @@ const layer = Layer.effect(
       if (fromDisk) return fromDisk
       const snapshot = yield* loadSnapshot
       if (snapshot) return snapshot
-      if (Flag.OPENCODE_DISABLE_MODELS_FETCH) return {}
+      if (Flag.OPENCODE_DISABLE_MODELS_FETCH || !catalogue()) return {}
       // Flock is cross-process: concurrent opencode CLIs can race on this cache file.
       const text = yield* Effect.scoped(
         Effect.gen(function* () {
@@ -235,6 +241,7 @@ const layer = Layer.effect(
     const get = (): Effect.Effect<Record<string, Provider>> => cachedGet
 
     const refresh = Effect.fn("ModelsDev.refresh")(function* (force = false) {
+      if (!catalogue()) return
       if (!force && (yield* fresh())) return
       yield* Effect.scoped(
         Effect.gen(function* () {
@@ -252,7 +259,7 @@ const layer = Layer.effect(
       )
     })
 
-    if (!Flag.OPENCODE_DISABLE_MODELS_FETCH && !process.argv.includes("--get-yargs-completions")) {
+    if (!fetchDisabled && !process.argv.includes("--get-yargs-completions")) {
       // Schedule.spaced runs the effect once, then waits between completions.
       yield* Effect.forkScoped(refresh().pipe(Effect.repeat(Schedule.spaced("60 minutes")), Effect.ignore))
     }
