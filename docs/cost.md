@@ -1,39 +1,68 @@
 # What a task costs
 
-Rafiki Code shows what a task is costing while it runs, what it cost when it ends, and what your account was charged over the last days. Amounts are in USD, the unit your Rafiki AI account keeps its credits in and the one `rafikicode whoami` prints.
+Rafiki Code shows what the last request sent, what your key has spent, and what your account was charged over the last days. Every figure comes from the gateway or the Rafiki AI console; none is worked out from a price list. Amounts are in USD, the unit your Rafiki AI account keeps its credits in and the one `rafikicode whoami` prints.
 
-Two kinds of figure appear, and the wording keeps them apart:
+| Figure | Where it comes from |
+|---|---|
+| Tokens sent, cached, received | the usage block the gateway returns with each answer, for the tier that answered |
+| Share of the window | tokens the last request sent, over the window of the tier that answered (1,000,000 on every tier) |
+| Spent this session | the key's spend as the gateway counts it (`/key/info`), less its spend when the session started |
+| Key spent and budget, share used | the key's spend and budget as the gateway reports them (`/key/info`) |
+| Credits left | the balance of your account as the Rafiki AI console reports it (`/api/v1/me`) |
+| `rafikicode usage` | the amounts the console recorded as charged |
 
-- **Measured**: token counts (the gateway reports them with every answer), the credits read from your account when the task started, and everything `rafikicode usage` prints (the amounts your account was charged).
-- **Estimates**: every amount shown during and right after a task. The terminal multiplies the token counts by the gateway's price list. Your account is charged by the gateway from its own figures, a little later, and the two can differ: when the provider writes to its cache and the price list gives no price for cache writes, and by rounding. These amounts always read `about ... (estimate)`.
+## Context
 
-## While a task runs
-
-In the terminal interface, the right side of the prompt row shows the tier in use, the estimated spend of the task so far and the credits left:
+The sidebar's `Context` block describes the last request of the session, not a sum over the session:
 
 ```text
-fast · about 0.0312 USD spent (estimate) · about 12.37 USD of credits left
+Last request sent 24,530 tokens
+20,480 of them cached
+2% of the 1M window of Rafiki Fast
+412 tokens received
 ```
 
-A task is one session, from its first request to its last. Calls made by subagents started for the task are counted. The credits figure is the balance read from the Rafiki AI console when the session was opened, minus what the task is estimated to have spent since. The balance and the price list are read once per task, not per request.
+The prompt row shows the same in short (`24.5K sent (2%)`). The tokens sent are everything the request carried (plain input, input read from the cache, input written to the cache), each counted once; the cached part is inside that figure. The share is of the window of the tier that answered.
 
-The sidebar has the same figures in a `Cost` block, with the tier of each turn so far (`Tiers: fast, fast, pro`) and what caching saved.
+## Spend
 
-When the prompt row has less room, the line is shortened rather than cut: first to `fast · about 0.0312 USD (estimate) · about 12.37 USD left`, then without the credits, then to the tier alone. The sidebar block always has every figure.
+The right side of the prompt row shows the tier, what the key has spent since the session started, and the share of the key's budget used:
+
+```text
+fast · 0.0125 USD this session · key budget 4% used
+```
+
+The sidebar's `Spend` block has every figure:
+
+```text
+Tiers: fast, fast, pro
+This session: 0.0125 USD
+Key: 1.21 of 25.00 USD (4%)
+Credits left: 12.40 USD
+from the gateway at 12:04:31
+```
+
+The key's spend and budget are read from the gateway when the interface starts, when a session is opened, and after each answer has completed (once things settle, and once more about 20 seconds later, because the gateway may count a request a moment after answering it). They are never read while an answer is streaming, and reading never holds up the interface. The credits are read from the Rafiki AI console at the same moments.
+
+- `This session` is the difference between two readings of the key, so anything else charged to the same key in the meantime (another terminal, an editor) is in it too.
+- When a reading fails, the last figures stay on screen, the prompt row marks them `(stale)` and the sidebar says since when they have not been updated. A figure that was never read is not shown: before the first reading the prompt row says `spend not read yet`.
+- A key without a budget shows its spend and `no budget cap`. Credits are left out when the console cannot be reached or the key has no view of the account.
+
+When the prompt row has less room, the line is shortened rather than cut: first to `fast · 0.0125 USD · 4% of budget`, then to the tier and the amount, then to the tier alone.
 
 ## Before a tier change
 
-When you pick another tier for the next turn (`/models`), the line leads with the new tier and an estimate for a turn like the last one on that tier, before you send anything:
+When you pick another tier for the next turn (`/models`), the line leads with the new tier and its credit rate, before you send anything:
 
 ```text
-next turn on pro: about 0.0450 USD (estimate) · fast · about 0.0312 USD spent (estimate) · about 12.37 USD of credits left
+next turn on pro (4x credits) · fast · 0.0125 USD this session · key budget 4% used
 ```
 
-When the row has less room, the tier change and its estimate are what stays (`next turn on pro: about 0.0450 USD (estimate)`). The terminal never moves a task to another tier by itself.
+The terminal never moves a task to another tier by itself.
 
 ## When the gateway answers on another tier
 
-When the tier you asked for cannot answer, the gateway answers on the next tier up (`rafiki-fast` on `rafiki-pro`). Rafiki Code reads the tier named in the answer and counts the call on that tier: the tier path, the estimate and the context figure follow the tier that answered. The message footer in the terminal interface says so (`Build · Rafiki Pro (asked for Rafiki Fast)`), and `rafikicode run` prints a second header line:
+When the tier you asked for cannot answer, the gateway answers on the next tier up (`rafiki-fast` on `rafiki-pro`). Rafiki Code reads the tier named in the answer and counts the request on that tier: the tier path and the context figure follow the tier that answered. The message footer in the terminal interface says so (`Build · Rafiki Pro (asked for Rafiki Fast)`), and `rafikicode run` prints a second header line:
 
 ```text
 > build · rafiki-pro (rafiki-fast was asked for, the gateway answered on rafiki-pro)
@@ -43,29 +72,18 @@ Your next request is still made on the tier you chose.
 
 ## After a task
 
-`rafikicode run` prints one line on standard error after the answer, and the terminal interface prints the same line when you quit a session:
+`rafikicode run` prints one line on standard error after the answer:
 
 ```text
-Task cost: tiers fast, fast, pro · about 0.0312 USD (estimate) · caching saved about 0.0101 USD · about 12.37 USD of credits left
+Task: tiers fast, fast, pro · 3 requests, 61,000 tokens sent and 2,400 received in all · 0.0125 USD spent on this key during the task · key 1.21 of 25.00 USD (4%) · 12.40 USD of credits left
 ```
 
 - `tiers`: the tier of each turn, in order. A long task is folded (`fast x12, pro x3`).
-- `caching saved`: what the same input tokens would have cost at the full input price, minus the estimate. `caching saved nothing yet` means the provider wrote to its cache and nothing has read from it so far.
+- `requests` and tokens: every request of the task, subagents included, added up, as the gateway reported them.
+- The spend is the key's spend after the task less its spend before it. It includes the short request that names the session. If the gateway has not counted the requests yet after a few seconds, the line says so instead of showing a figure that is too low as if it were final. If the gateway cannot be asked, the line says `spend not available`.
 - `rafikicode run --format json` prints no such line.
 
-A model call can end without the gateway reporting its tokens, for example when the connection is cut before the end of an answer. Such a call may still have been charged, and the terminal has no figure for it. It is counted and named wherever an amount is shown, and the credits figure becomes an upper bound:
-
-```text
-Task cost: tiers fast, fast · about 0.0172 USD (estimate) · 1 call reported no usage and is not included · caching saved about 0.0108 USD · at most about 12.38 USD of credits left
-```
-
-When the gateway does not send its price list, no amount is shown. The line gives token counts instead:
-
-```text
-Task cost: tier fast · cost unknown, the gateway sent no price list (10,000 input and 2,000 output tokens)
-```
-
-When the Rafiki AI console cannot be reached, or the key has no view of the account, the credits figure is left out.
+When you quit the terminal interface, it prints the last status line of the session under its exit lines.
 
 ## The last 30 days
 
@@ -103,7 +121,7 @@ Every request to the gateway carries three headers, so each line of your usage c
 | Header | Value |
 |---|---|
 | `X-Rafiki-Surface` | `cli`, or `ide` under an editor |
-| `X-Rafiki-Tier` | `fast` or `pro`: the tier the request is made on |
+| `X-Rafiki-Tier` | `fast`, `pro` or `max`: the tier the request is made on |
 | `X-Rafiki-Escalation` | `0` from the terminal: it never retries a task on another tier by itself |
 
 The requests of a task also carry an `Idempotency-Key` header, which says whether a request is a repeat of one already sent. It is described in [the idempotency key contract](./contracts/idempotency-key.md).

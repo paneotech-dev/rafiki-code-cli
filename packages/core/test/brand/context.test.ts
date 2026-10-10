@@ -1,7 +1,8 @@
-// The context figure of the terminal interface (src/brand/context.ts): every
-// token of the last answer counted once, the cached part shown beside the
-// total and never added to it, the share of the window of the tier that
-// answered, and the window named so the share can be checked.
+// The context figure of the terminal interface (src/brand/context.ts): what
+// the last request sent, each token counted once, the cached part shown
+// beside it and never added to it, what came back apart, the share of the
+// window of the tier that answered, and the window named so the share can be
+// checked.
 import { describe, expect, test } from "bun:test"
 import { Brand } from "../../src/brand/brand"
 import * as ContextUsage from "../../src/brand/context"
@@ -12,19 +13,23 @@ import * as ContextUsage from "../../src/brand/context"
 const fast = { input: 4_050, output: 232, reasoning: 180, cache: { read: 20_480, write: 0 } }
 
 describe("context usage", () => {
-  test("the total is prompt plus completion tokens, the cached part counted once", () => {
+  test("sent is what the last request carried, the cached part counted once; received is apart", () => {
     const usage = ContextUsage.usage(fast, 1_000_000)
-    expect(usage.tokens).toBe(24_530 + 412)
+    expect(usage.sent).toBe(24_530)
     expect(usage.cached).toBe(20_480)
+    expect(usage.written).toBe(0)
+    expect(usage.received).toBe(412)
     expect(usage.window).toBe(1_000_000)
     expect(usage.percent).toBe("2%")
   })
 
-  test("cache writes are part of the input once, not added on top", () => {
+  test("cache writes are part of what was sent once, not added on top", () => {
     // rafiki-max: prompt_tokens 61234 = 3234 plain + 50000 read + 8000 written.
     const usage = ContextUsage.usage({ input: 3_234, output: 900, reasoning: 0, cache: { read: 50_000, write: 8_000 } }, 1_000_000)
-    expect(usage.tokens).toBe(61_234 + 900)
+    expect(usage.sent).toBe(61_234)
     expect(usage.cached).toBe(50_000)
+    expect(usage.written).toBe(8_000)
+    expect(usage.received).toBe(900)
     expect(usage.percent).toBe("6%")
   })
 
@@ -41,10 +46,10 @@ describe("context usage", () => {
   })
 
   test("without a window there is no share, and missing or broken counts are zero", () => {
-    expect(ContextUsage.usage(fast, undefined)).toEqual({ tokens: 24_942, cached: 20_480 })
+    expect(ContextUsage.usage(fast, undefined)).toEqual({ sent: 24_530, cached: 20_480, written: 0, received: 412 })
     expect(ContextUsage.usage(fast, 0).percent).toBeUndefined()
-    expect(ContextUsage.usage(undefined, 1_000_000)).toEqual({ tokens: 0, cached: 0, window: 1_000_000, percent: "0%" })
-    expect(ContextUsage.usage({ input: Number.NaN, output: -3, cache: { read: 10, write: 0 } }, 100).tokens).toBe(10)
+    expect(ContextUsage.usage(undefined, 1_000_000)).toEqual({ sent: 0, cached: 0, written: 0, received: 0, window: 1_000_000, percent: "0%" })
+    expect(ContextUsage.usage({ input: Number.NaN, output: -3, cache: { read: 10, write: 0 } }, 100).sent).toBe(10)
   })
 
   test("the window is written short", () => {

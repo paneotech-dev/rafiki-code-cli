@@ -61,8 +61,9 @@ describe("rafikicode run against a gateway stand-in", () => {
     const plain = text.all.replace(/\x1b\[[0-9;]*m/g, "")
     expect(plain).toContain("> build · rafiki-fast")
     expect(plain).not.toContain("was asked for")
-    // Mock prices fast 1 / 2 / 0.1 USD per M: 4050 plain input, 20480 cached, 412 output.
-    expect(plain).toContain("Task cost: tier fast · about 0.0069 USD (estimate)")
+    // The usage block as the gateway reported it: 24,530 sent (20,480 of them cached), 412 back.
+    expect(plain).toContain("Task: tier fast · 1 request, 24,530 tokens sent and 412 received in all")
+    expect(plain).not.toContain("estimate")
 
     const json = await run(["run", "--format", "json", "who are you"])
     expect(json.exitCode).toBe(0)
@@ -87,8 +88,8 @@ describe("rafikicode run against a gateway stand-in", () => {
     const plain = result.all.replace(/\x1b\[[0-9;]*m/g, "")
     expect(plain).toContain("> build · rafiki-fast")
     expect(plain).toContain("> build · rafiki-pro (rafiki-fast was asked for, the gateway answered on rafiki-pro)")
-    // Mock prices pro 4 / 8 / 1: 5000 plain input, 40000 cached, 700 output. On fast it would read 0.0102.
-    expect(plain).toContain("Task cost: tier pro · about 0.0656 USD (estimate)")
+    // The tier path follows the tier that answered.
+    expect(plain).toContain("Task: tier pro · 1 request, 45,000 tokens sent and 700 received in all")
   }, 120_000)
 
   test("rafiki-max: cache writes are recorded as writes and taken out of plain input once", async () => {

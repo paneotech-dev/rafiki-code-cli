@@ -183,7 +183,7 @@ rafikicode run -m rafiki/rafiki-pro "Reply with the single word ok and do nothin
 
 The output starts with `> build · rafiki-pro`. To make a tier your default, add `"model": "rafiki/rafiki-pro"` to `~/.rafikicode/config.json`.
 
-While a task runs the prompt row shows the tier, the estimated spend so far and the credits left, and picking another tier shows an estimate for the next turn before you send it. See [What a task costs](./cost.md).
+While a task runs the prompt row shows the tier, what your key has spent in this session and the share of the key's budget used, all read from the gateway, and the sidebar adds the credits left in your account and what the last request sent. See [What a task costs](./cost.md).
 
 ## 5. Tell it about your project
 

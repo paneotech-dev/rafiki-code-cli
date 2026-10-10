@@ -73,20 +73,20 @@ counted with `git diff --numstat -M` against the upstream base.
 
 <!-- upstream-files:start -->
 
-Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 182. Changed lines: 6561 (3780 added, 2781 removed).
+Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 182. Changed lines: 6601 (3794 added, 2807 removed).
 
 | Class | Files | Added | Removed |
 | --- | ---: | ---: | ---: |
-| Source: a call into this fork's modules | 38 | 447 | 148 |
-| Source: product name, file names and wording | 43 | 214 | 183 |
-| Source: behaviour changed in place | 14 | 554 | 213 |
+| Source: a call into this fork's modules | 38 | 450 | 157 |
+| Source: product name, file names and wording | 43 | 217 | 192 |
+| Source: behaviour changed in place | 14 | 562 | 221 |
 | Tests of upstream, adapted | 33 | 554 | 177 |
 | Generated files | 3 | 366 | 181 |
 | Package identity and packaging | 9 | 20 | 479 |
 | Documentation | 23 | 197 | 1182 |
 | Repository tooling and workflows | 6 | 23 | 8 |
 | Editor extension | 13 | 1405 | 210 |
-| Total | 182 | 3780 | 2781 |
+| Total | 182 | 3794 | 2807 |
 
 ### Source: a call into this fork's modules
 
@@ -130,8 +130,8 @@ On a conflict: Take upstream's side of the conflict, then put the call back at t
 | `packages/opencode/src/session/system.ts` | 6 | 1 | System prompts pass through `Brand.prompt`; the date line leaves the environment block because `rafiki/cache-prefix.ts` places it after the stable part; the gateway provider's prompt starts with `Brand.identity`. |
 | `packages/opencode/src/tool/registry.ts` | 2 | 1 | Tool directories pass through `BrandTrust.codeDirs` (workspace trust). |
 | `packages/tui/src/component/dialog-model.tsx` | 24 | 4 | Tiers that are not listed are hidden (`Brand.provider.listed`); each tier states its price in credits, and Rafiki Max is confirmed once per session and checked against the key (`component/tier-choice.tsx`). |
-| `packages/tui/src/feature-plugins/builtins.ts` | 2 | 0 | Registers the cost plugin (`feature-plugins/rafiki-cost.tsx`). |
-| `packages/tui/src/routes/session/subagent-footer.tsx` | 3 | 5 | The context figure comes from `core/brand/context.ts`. |
+| `packages/tui/src/feature-plugins/builtins.ts` | 2 | 0 | Registers the spend plugin (`feature-plugins/rafiki-cost.tsx`). |
+| `packages/tui/src/routes/session/subagent-footer.tsx` | 6 | 14 | The context figure is what the last request sent (`core/brand/context.ts`); the amount from the model price table is not shown. |
 
 ### Source: product name, file names and wording
 
@@ -172,7 +172,7 @@ On a conflict: Take upstream's side, then replace the literal with the value fro
 | `packages/tui/src/component/dialog-provider.tsx` | 3 | 2 | Messages name this product's configuration file. |
 | `packages/tui/src/component/dialog-status.tsx` | 2 | 1 | A message names this product's command. |
 | `packages/tui/src/component/error-component.tsx` | 7 | 6 | The crash screen names this product and links to its issue tracker. |
-| `packages/tui/src/component/prompt/index.tsx` | 8 | 7 | The message shown without a provider names the sign in command; the context figure comes from `core/brand/context.ts`, and an empty provider label (`Brand.provider.label`) is not drawn. |
+| `packages/tui/src/component/prompt/index.tsx` | 11 | 16 | The message shown without a provider names the sign in command; the context figure is what the last request sent (`core/brand/context.ts`), the amount from the model price table is not shown (the spend is read from the gateway by `feature-plugins/rafiki-cost.tsx`), and an empty provider label (`Brand.provider.label`) is not drawn. |
 | `packages/tui/src/context/local.tsx` | 26 | 4 | The labels shown without a provider name the sign in command; the provider name is not repeated after a model name that starts with it (`Brand.provider.label`); a new session never starts on Rafiki Max from the recent list, and the cycling shortcuts never move to it before it was confirmed (`core/brand/tier.ts`). |
 | `packages/tui/src/context/theme.tsx` | 8 | 7 | The default theme name and the project directory names come from the brand module. |
 | `packages/tui/src/feature-plugins/home/tips-view.tsx` | 19 | 25 | Tips name this product's commands and paths; tips about upstream services are removed. |
@@ -201,7 +201,7 @@ On a conflict: Merge by hand and read both sides. These are the files to thin ne
 | `packages/opencode/src/installation/index.ts` | 59 | 111 | The update source, the install method detection and the upgrade commands are this product's (`rafiki/update.ts`); upstream's installer and package addresses are removed. |
 | `packages/opencode/src/skill/index.ts` | 29 | 16 | The built in configuration skill is this product's, hidden skills are removed, and skill discovery honours the switch that disables project configuration. |
 | `packages/opencode/src/snapshot/index.ts` | 33 | 4 | A snapshot is bounded (10,000 files, 10 seconds) and skipped in the home folder or a filesystem root (`rafiki/workspace.ts`), so the first model request never waits on a scan of an unbounded tree. Upstream stages one pathspec per file, which grows with the square of the count. |
-| `packages/tui/src/feature-plugins/sidebar/context.tsx` | 18 | 16 | The amount spent is hidden when it is zero, because the cost plugin shows the estimate; the context figure comes from `core/brand/context.ts`, which shows the cached part and the window. |
+| `packages/tui/src/feature-plugins/sidebar/context.tsx` | 26 | 24 | The block describes the last request (`core/brand/context.ts`): tokens sent, the cached part, the share of the window of the tier that answered, tokens received; the amount from the model price table is removed, the spend block of `feature-plugins/rafiki-cost.tsx` reads it from the gateway. |
 | `packages/tui/src/routes/session/index.tsx` | 8 | 1 | The message footer names the tier asked for when the gateway answered on another one. |
 
 ### Tests of upstream, adapted

@@ -1,28 +1,35 @@
-// Cost of the task on screen: the status line on the prompt row (tier, spent
-// so far, credits left, and the estimate for the next turn before a tier
-// change) and a block in the sidebar. The figures and every text come from
-// the brand layer (core/brand/cost.ts); this file gathers the task's model
-// calls and reads the balance and the price list once per task.
+// Spend of the session on screen, from the gateway's own count: the status
+// line on the prompt row (tier, spent this session, share of the key budget)
+// and a Spend block in the sidebar (tier path, spent this session, key spent
+// and budget, credits left, and when the figures were read). The figures and
+// the wording come from the brand layer (core/brand/meter.ts).
 //
-// Token counts are measured (the usage block of each gateway answer). USD
-// amounts are estimates from the gateway's price list and are worded as such.
+// The key's spend and budget are read from the gateway (/key/info) and the
+// credits from the Console (/api/v1/me): once when the interface starts,
+// when a session is opened, and after each completed answer (debounced, and
+// once more a little later because the gateway may count a request a moment
+// after answering it). Never per streamed chunk, never in the way of the
+// interface. A failed reading keeps the last figures and marks them stale.
+// "This session" is the key's spend less its spend when the session started:
+// the last reading taken before the session was created, or, for a session
+// created before this interface started, the first reading after it opened.
 import * as Account from "@opencode-ai/core/brand/account"
 import { Brand } from "@opencode-ai/core/brand/brand"
 import * as Cost from "@opencode-ai/core/brand/cost"
+import * as Meter from "@opencode-ai/core/brand/meter"
+import * as Tier from "@opencode-ai/core/brand/tier"
 import type { TuiPlugin, TuiPluginApi } from "@opencode-ai/plugin/tui"
 import { useTerminalDimensions } from "@opentui/solid"
-import { createEffect, createMemo, createSignal, onMount, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, For, onMount, Show } from "solid-js"
 import { useLocal } from "../context/local"
 import type { BuiltinTuiPlugin } from "./builtins"
 
 const id = "internal:rafiki-cost"
 
-// Subagents of subagents are followed this deep when a session is opened.
-const DEPTH = 3
 // Room for the line on the prompt row: the terminal's width less the sidebar
 // (shown from this width up, unless the person hid it), the frame of the
 // prompt, and the agent and model labels on the left of the row. A line that
-// does not fit is shortened (Cost.statusLine); the sidebar block has it all.
+// does not fit is shortened (Meter.statusLine); the sidebar block has it all.
 const SIDEBAR_FROM = 121
 const SIDEBAR_WIDTH = 42
 const FRAME = 8
@@ -31,160 +38,216 @@ export function room(width: number) {
   return width - (width >= SIDEBAR_FROM ? SIDEBAR_WIDTH : 0) - FRAME - LABELS
 }
 
-type Start = { balance?: number; prices?: Cost.Prices; spent: number }
+// After an answer completes, the readings wait this long for more answers.
+export const DEBOUNCE_MS = 1_500
+// And are taken once more this long after, for requests the gateway counts late.
+export const FOLLOW_UP_MS = 20_000
+// Readings kept to find the one before a session was created.
+const HISTORY = 50
 
-export type CostTracker = ReturnType<typeof createCostTracker>
+type Read = () => Promise<Account.KeyInfoResult>
+type Balance = () => Promise<number | undefined>
 
-// The part without a screen: which calls belong to a task, and its readings.
-export function createCostTracker(api: TuiPluginApi, options: { snapshot?: () => Promise<Account.Snapshot> } = {}) {
-  const takeSnapshot = options.snapshot ?? Account.snapshot
-  // Subagent session -> the session that started it.
-  const parents = new Map<string, string>()
-  // Calls made in subagent sessions, by message id.
-  const children = new Map<string, { session: string; call: Cost.Call }>()
-  const starts = new Map<string, Start>()
-  const opened = new Set<string>()
+function defaultBalance() {
+  const from = Account.source()
+  return from ? Account.balance(from) : Promise.resolve(undefined)
+}
+
+export type MeterTracker = ReturnType<typeof createMeterTracker>
+
+// The part without a screen: the readings, the start of each session, and
+// when to read again.
+export function createMeterTracker(
+  api: TuiPluginApi,
+  options: { read?: Read; balance?: Balance; now?: () => number; debounceMs?: number; followUpMs?: number } = {},
+) {
+  const now = options.now ?? Date.now
+  const read: Read = options.read ?? (() => Account.keyInfo())
+  const balance: Balance = options.balance ?? defaultBalance
+  const debounceMs = options.debounceMs ?? DEBOUNCE_MS
+  const followUpMs = options.followUpMs ?? FOLLOW_UP_MS
   const [tick, setTick] = createSignal(0)
   const bump = () => setTick((value) => value + 1)
 
-  function rootOf(sessionID: string) {
-    let current = sessionID
-    for (let depth = 0; depth <= DEPTH + 1 && parents.has(current); depth++) current = parents.get(current)!
-    return current
-  }
+  // Good readings, oldest first; `at` is when the request for it was sent.
+  const history: Meter.Reading[] = []
+  let shared: Meter.State = Meter.empty()
+  const starts = new Map<string, Meter.Reading | undefined>()
+  const waiting = new Set<string>()
+  let inflight: Promise<void> | undefined
+  let again = false
+  let debounce: ReturnType<typeof setTimeout> | undefined
+  let followUp: ReturnType<typeof setTimeout> | undefined
+  const started = now()
 
-  function link(info: { id: string; parentID?: string }) {
-    if (info.parentID && parents.get(info.id) !== info.parentID) {
-      parents.set(info.id, info.parentID)
-      bump()
+  async function once() {
+    const at = now()
+    const [key, credits] = await Promise.all([
+      read().catch((): Account.KeyInfoResult => ({ ok: false, at })),
+      balance().catch(() => undefined),
+    ])
+    if (key.ok) {
+      const reading = Meter.reading(key.info, at)
+      history.push(reading)
+      if (history.length > HISTORY) history.shift()
+      shared = Meter.update(shared, { key: reading, balance: credits, at })
+      for (const session of waiting) starts.set(session, reading)
+      waiting.clear()
+    } else {
+      shared = Meter.update(shared, { failed: true, balance: credits, at })
     }
-  }
-
-  function record(sessionID: string, message: Cost.MessageLike) {
-    if (!parents.has(sessionID)) return
-    const [call] = Cost.callsOf([message], false)
-    if (!call) return
-    children.set(call.id, { session: sessionID, call })
     bump()
   }
 
-  api.event?.on("session.created", (event) => link(event.properties.info))
-  api.event?.on("session.updated", (event) => link(event.properties.info))
-  api.event?.on("message.updated", (event) => record(event.properties.sessionID, event.properties.info))
-  // When a turn of a task on screen ends, list its subagent sessions once
-  // more: a call the event stream did not carry is still counted.
-  api.event?.on("session.status", (event) => {
-    if (event.properties.status.type !== "idle" || !opened.has(event.properties.sessionID)) return
-    void adopt(event.properties.sessionID, 1).catch(() => undefined)
+  // One reading at a time; a request for one while it runs reads again after it.
+  function refresh(): Promise<void> {
+    if (inflight) {
+      again = true
+      return inflight
+    }
+    inflight = once().finally(() => {
+      inflight = undefined
+      if (again) {
+        again = false
+        void refresh()
+      }
+    })
+    return inflight
+  }
+
+  // After an answer: once things settle, and once more later.
+  function schedule() {
+    if (debounce) clearTimeout(debounce)
+    debounce = setTimeout(() => {
+      debounce = undefined
+      void refresh()
+    }, debounceMs)
+    if (followUp) clearTimeout(followUp)
+    followUp = setTimeout(() => {
+      followUp = undefined
+      void refresh()
+    }, followUpMs)
+  }
+
+  api.event?.on("message.updated", (event) => {
+    const info = event.properties.info as { role?: string; time?: { completed?: number } }
+    if (info.role === "assistant" && info.time?.completed) schedule()
   })
+  api.event?.on("session.status", (event) => {
+    if (event.properties.status.type === "idle") schedule()
+  })
+
+  // Called when a session comes on screen.
+  function open(sessionID: string, created?: number) {
+    if (starts.has(sessionID) || waiting.has(sessionID)) return refresh()
+    const before = created !== undefined && created >= started ? history.findLast((item) => item.at <= created) : undefined
+    if (before) starts.set(sessionID, before)
+    else waiting.add(sessionID)
+    bump()
+    return refresh()
+  }
+
+  function state(sessionID: string): Meter.State {
+    tick()
+    return { ...shared, start: starts.get(sessionID) }
+  }
 
   function calls(sessionID: string): Cost.Call[] {
     tick()
-    const own = Cost.callsOf(api.state.session.messages(sessionID), true)
-    const sub = [...children.values()].filter((item) => rootOf(item.session) === sessionID).map((item) => item.call)
-    return [...own, ...sub]
+    return Cost.callsOf(api.state.session.messages(sessionID), true)
   }
 
-  // Subagent sessions that already exist when a session is opened.
-  async function adopt(parent: string, depth: number): Promise<void> {
-    if (depth > DEPTH) return
-    const list = (await api.client.session.children({ sessionID: parent })).data ?? []
-    for (const child of list) {
-      link({ id: child.id, parentID: parent })
-      const messages = (await api.client.session.messages({ sessionID: child.id })).data ?? []
-      for (const item of messages) record(child.id, item.info)
-      await adopt(child.id, depth + 1)
-    }
+  function dispose() {
+    if (debounce) clearTimeout(debounce)
+    if (followUp) clearTimeout(followUp)
   }
 
-  // Called when a session comes on screen: the start of the task as far as
-  // this interface is concerned. Reads the balance and the price list once.
-  async function open(sessionID: string) {
-    if (opened.has(sessionID)) return
-    opened.add(sessionID)
-    await adopt(sessionID, 1).catch(() => undefined)
-    const snapshot = await takeSnapshot().catch((): Account.Snapshot => ({ at: Date.now() }))
-    starts.set(sessionID, {
-      balance: snapshot.balance,
-      prices: snapshot.prices,
-      // What the task had already spent when the balance was read.
-      spent: Cost.summarize(calls(sessionID), snapshot.prices).spent,
-    })
-    bump()
-  }
-
-  function display(sessionID: string, selected?: string): Cost.Display {
-    tick()
-    const start = starts.get(sessionID)
-    return Cost.display({
-      calls: calls(sessionID),
-      prices: start?.prices,
-      start: start?.balance === undefined ? undefined : { balance: start.balance, spent: start.spent },
-      selected,
-    })
-  }
-
-  function start(sessionID: string) {
-    tick()
-    return starts.get(sessionID)
-  }
-
-  return { open, display, start, calls }
+  return { open, state, calls, refresh, schedule, dispose }
 }
 
-function useDisplay(props: { tracker: CostTracker; session_id: string }) {
+export interface View {
+  summary: Cost.Summary
+  state: Meter.State
+  // The tier selected for the next turn, when it differs from the last turn's.
+  next?: string
+}
+
+export function view(tracker: MeterTracker, sessionID: string, selected?: string): View {
+  const summary = Cost.summarize(tracker.calls(sessionID))
+  const tier = Cost.tierOf(selected)
+  return {
+    summary,
+    state: tracker.state(sessionID),
+    next: tier && summary.tier && tier !== summary.tier ? `next turn on ${tier} (${Tier.credits(selected)})` : undefined,
+  }
+}
+
+export function statusLine(value: View, width = Number.POSITIVE_INFINITY) {
+  if (value.summary.path.length === 0) return ""
+  return Meter.statusLine({ tier: value.summary.tier, next: value.next, state: value.state }, width)
+}
+
+function useView(props: { api: TuiPluginApi; tracker: MeterTracker; session_id: string }) {
   const local = useLocal()
-  onMount(() => void props.tracker.open(props.session_id))
+  onMount(() => void props.tracker.open(props.session_id, props.api.state.session.get(props.session_id)?.time.created))
   return createMemo(() => {
     const selected = local.model.current()
-    return props.tracker.display(props.session_id, selected?.providerID === Brand.provider.id ? selected.modelID : undefined)
+    return view(props.tracker, props.session_id, selected?.providerID === Brand.provider.id ? selected.modelID : undefined)
   })
 }
 
-// Shown only for a task that runs on Rafiki tiers.
-const relevant = (view: Cost.Display) => view.summary.path.length > 0
-
-function StatusLine(props: { api: TuiPluginApi; tracker: CostTracker; session_id: string }) {
+function StatusLine(props: { api: TuiPluginApi; tracker: MeterTracker; session_id: string }) {
   const theme = () => props.api.theme.current
   const dimensions = useTerminalDimensions()
-  const view = useDisplay(props)
-  // The end of task line, printed with the exit lines of the interface (app.tsx).
-  createEffect(() => Cost.remember(Cost.taskLine(view())))
-  const line = createMemo(() => (relevant(view()) ? Cost.statusLine(view(), room(dimensions().width)) : ""))
+  const value = useView(props)
+  // The line printed with the exit lines of the interface (app.tsx).
+  createEffect(() => {
+    const text = statusLine(value())
+    Cost.remember(text ? `Last session: ${text}` : undefined)
+  })
+  const line = createMemo(() => statusLine(value(), room(dimensions().width)))
   return (
     <Show when={line()}>
-      <text fg={view().next ? theme().warning : theme().textMuted} wrapMode="none">
+      <text fg={value().next || value().state.stale ? theme().warning : theme().textMuted} wrapMode="none">
         {line()}
       </text>
     </Show>
   )
 }
 
-function Sidebar(props: { api: TuiPluginApi; tracker: CostTracker; session_id: string }) {
+function Sidebar(props: { api: TuiPluginApi; tracker: MeterTracker; session_id: string }) {
   const theme = () => props.api.theme.current
-  const view = useDisplay(props)
-  const start = createMemo(() => props.tracker.start(props.session_id))
+  const value = useView(props)
+  const rows = createMemo(() => Meter.lines(value().state))
   return (
-    <Show when={relevant(view())}>
+    <Show when={value().summary.path.length > 0 || rows().length > 0}>
       <box>
         <text fg={theme().text}>
-          <b>Cost</b>
+          <b>Spend</b>
         </text>
-        <text fg={theme().textMuted}>Tiers: {Cost.pathText(view().summary.path)}</text>
-        <text fg={theme().textMuted}>{Cost.spentText(view().summary)}</text>
-        <Show when={Cost.savedText(view().summary)}>{(text) => <text fg={theme().textMuted}>{text()}</text>}</Show>
-        <Show when={Cost.leftText(view().left, view().summary)}>{(text) => <text fg={theme().textMuted}>{text()}</text>}</Show>
-        <Show when={view().summary.priced > 0 && start()?.balance !== undefined}>
-          <text fg={theme().textMuted}>{Cost.usd(start()!.balance!)} when the task started</text>
+        <Show when={value().summary.path.length > 0}>
+          <text fg={theme().textMuted}>Tiers: {Cost.pathText(value().summary.path)}</text>
         </Show>
-        <Show when={Cost.nextText(view().next)}>{(text) => <text fg={theme().warning}>{text()}</text>}</Show>
+        <For each={rows()}>
+          {(row) => (
+            <text fg={theme().textMuted}>
+              {row.label}: {row.value}
+            </text>
+          )}
+        </For>
+        <Show when={Meter.freshness(value().state)}>
+          {(text) => <text fg={value().state.stale ? theme().warning : theme().textMuted}>{text()}</text>}
+        </Show>
+        <Show when={value().next}>{(text) => <text fg={theme().warning}>{text()}</text>}</Show>
       </box>
     </Show>
   )
 }
 
 const tui: TuiPlugin = async (api) => {
-  const tracker = createCostTracker(api)
+  const tracker = createMeterTracker(api)
+  // A first reading when the interface starts: the start of a session created from here.
+  void tracker.refresh()
   api.slots.register({
     // Right under the context block.
     order: 150,

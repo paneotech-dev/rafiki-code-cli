@@ -413,10 +413,10 @@ describe("rafikicode run through a connection that is cut once", () => {
       expect(wire.requests[0].complete).toBe(false)
       expect(continuing(conversation(wire.requests[1]).at(-1))).toBe(true)
       expect(key(wire.requests[1])).not.toBe(key(wire.requests[0]))
-      expect(result.stdout).not.toContain("Task cost")
-      expect(result.stderr).toContain(
-        "Task cost: tier fast · about 0.0086 USD (estimate) · 1 call reported no usage and is not included · caching saved about 0.0054 USD · at most about 12.39 USD of credits left",
-      )
+      expect(result.stdout).not.toContain("Task:")
+      // The request cut before its usage block reported nothing; the continued one did.
+      expect(result.stderr).toContain("Task: tier fast · 1 request, 10,000 tokens sent and 2,000 received in all")
+      expect(result.stderr).not.toContain("estimate")
     } finally {
       await wire.close()
       await account.close()
