@@ -744,7 +744,11 @@ describe("session.message-v2.toModelMessage", () => {
             type: "tool-result",
             toolCallId: "call-1",
             toolName: "bash",
-            output: { type: "text", value: "[Old tool result content cleared]" },
+            output: {
+              type: "text",
+              value:
+                "[Output of an earlier bash call removed to keep the conversation short: 22 characters. Run the call again if you need it.]",
+            },
           },
         ],
       },

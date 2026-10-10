@@ -152,7 +152,7 @@ export const Info = Schema.Struct({
         description: "Enable automatic compaction when context is full (default: true)",
       }),
       prune: Schema.optional(Schema.Boolean).annotate({
-        description: "Enable pruning of old tool outputs (default: false)",
+        description: "Replace old, large tool outputs with a short note to shorten long sessions (default: on for Rafiki tiers, off otherwise; RAFIKICODE_PRUNE overrides it)",
       }),
       tail_turns: Schema.optional(NonNegativeInt).annotate({
         description:
