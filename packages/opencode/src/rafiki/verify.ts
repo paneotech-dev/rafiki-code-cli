@@ -328,8 +328,9 @@ export function pythonCommand() {
   return undefined
 }
 
+// Isolated mode (-I): nothing is imported from the project before its checks are approved.
 function hasPytest(python: string, root: string) {
-  const result = spawnSync(python, ["-c", "import pytest"], { cwd: root, stdio: "ignore", timeout: 15_000 })
+  const result = spawnSync(python, ["-I", "-c", "import pytest"], { cwd: root, stdio: "ignore", timeout: 15_000 })
   return result.status === 0
 }
 
