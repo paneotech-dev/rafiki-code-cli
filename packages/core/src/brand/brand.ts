@@ -338,6 +338,9 @@ export const Brand = {
     // Project memory (.rafiki/memory/): 0, off or false turns it off, 1, on or
     // true turns it on; it wins over memory.enabled in the config.
     memory: "RAFIKICODE_MEMORY",
+    // The verify step after a turn that changed files: 1, on or true turns it
+    // on, 0, off or false turns it off; it wins over verify.enabled.
+    verify: "RAFIKICODE_VERIFY",
     // Overrides the release API URL (mock release servers in tests).
     releaseAPI: "RAFIKICODE_RELEASE_API",
     // Overrides the release download base URL (mock release servers in tests).

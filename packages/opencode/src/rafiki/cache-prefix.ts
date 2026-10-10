@@ -2,7 +2,8 @@
 // next, so a provider can reuse its prompt cache instead of reading the same
 // text at the full input price every turn.
 //
-// The stable part, in order: the system prompt, the project instructions, the
+// The stable part, in order: the system prompt, the working practice of the
+// verify step (rafiki/verify.ts) when it is on, the project instructions, the
 // MCP instructions and the skills list, the repository context (model,
 // working directory, platform, project references), then the project memory. The tool definitions
 // travel in their own field, sorted by name, and are the same on every
@@ -23,12 +24,15 @@ export interface SystemParts {
   // The project memory (rafiki/memory.ts), read once per session. Last of the stable parts: it changes from one
   // session to the next, so what comes before it is still reused across sessions of the same project.
   memory?: string
+  // The working practice of the verify step (rafiki/verify.ts): fixed text, so it goes first.
+  practice?: string
 }
 
 // The system text that follows the system prompt, most stable first. The last entry is the volatile line, which
 // the request builder takes out again (split) and sends as a message of its own.
 export function order(parts: SystemParts, now: Date = new Date()): string[] {
   return [
+    ...(parts.practice ? [parts.practice] : []),
     ...parts.instructions,
     ...(parts.mcp ? [parts.mcp] : []),
     ...(parts.skills ? [parts.skills] : []),
