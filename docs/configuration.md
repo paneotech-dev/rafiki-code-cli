@@ -46,6 +46,7 @@ Every top-level key the CLI honors, with the meaning from the configuration sche
 | `username` | name displayed in conversations |
 | `instructions` | additional file paths or URLs whose content is added as instructions to every session |
 | `permission` | ordered rules deciding which tool actions run without asking, ask, or are denied, for example `{"permission": {"bash": "allow", "edit": "allow"}}` |
+| `permission.publish` | commands that publish code (`git push`, `gh pr create`, `gh repo create`, `gh release`) always ask in the interface. `"deny"` refuses them without a question; `"allow"` lets `rafikicode run` push. See [Pushes ask first](./github.md#pushes-ask-first) |
 | `agent` | overrides of built-in agents and custom agent definitions |
 | `command` | named slash commands |
 | `skills` | additional paths or URLs to discover skills from |
@@ -72,6 +73,7 @@ The structure of the nested keys (`permission`, `agent`, `mcp`, and so on) is un
 | `RAFIKICODE_API_KEY` | API key for headless and CI use, created in the Rafiki AI console with the Rafiki Code option ticked. Takes precedence over the stored sign in |
 | `RAFIKICODE_GATEWAY_URL` | override the gateway base URL (local test servers). Default `https://gateway.rafikiai.io/v1`. Must be https; plain http is accepted only for `127.0.0.1`, `[::1]` or `localhost`. Any other value is not used, a warning is printed and the key is not sent there. The same rule applies to the gateway URL the console returns at sign in and to a `baseURL` in your own configuration |
 | `RAFIKICODE_CACHE_MARKERS` | which tiers carry a prompt cache marker (a field that tells the model provider where the repeated start of a request ends, so it can reuse it at a lower price): `all`, `off`, or tier names separated by commas. Unset, the CLI marks the tiers that need one. Every request starts with the same text in the same order on every tier either way; today's date is sent after that text, in a message of its own |
+| `RAFIKICODE_ALLOW_PUSH` | `1` lets `rafikicode run` publish code (`git push`, `gh pr create`, `gh repo create`, `gh release`), like `run --allow-push`. Without it a run refuses them. See [Pushing code from a run](./headless-and-ci.md#pushing-code-from-a-run) |
 | `RAFIKICODE_PRUNE` | `0`, `off` or `false` stops replacing old tool output; `1`, `on` or `true` turns it on, on any provider. Wins over `compaction.prune`. Unset, it is on for the Rafiki tiers. See [Long sessions: old tool output](#long-sessions-old-tool-output) |
 | `RAFIKICODE_CONSOLE_URL` | override the Rafiki AI console base URL used by `login`, `logout`, `whoami` and `doctor`. Default `https://console.rafikiai.io`. The key is sent there, so only an https URL is used (plain http only for 127.0.0.1, [::1] or localhost); any other value is ignored with a warning, and so is a console URL on plain http elsewhere returned at sign in |
 | `RAFIKICODE_INSTALL_DIR` | installer target directory. Default `~/.rafikicode/bin` |
