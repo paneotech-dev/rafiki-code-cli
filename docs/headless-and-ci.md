@@ -168,6 +168,17 @@ The sign-in commands (`login`, `logout`, `whoami`) use a fixed table so scripts 
 
 `rafikicode run` exits 0 when the task completes. When the gateway refuses a request it uses the same table: 2 for a revoked or expired key or a tier the key may not use, 3 when the key's budget or the account's credits are spent, 4 when the gateway cannot be reached. Other failures exit 1.
 
+A run stopped from outside exits with its own code: 143 on `SIGTERM` (what `timeout` and most job runners send at a time limit) and 130 on `SIGINT` (Ctrl-c). Before it exits, the turn in progress is stopped the way the interface stops it, the session is written to storage, and one line names it: `Stopped by SIGTERM. The session is saved: rafikicode export <session id>`. So a job can still export the transcript of a run it had to stop. The `Task:` line is printed too, marked partial (`Task (partial, stopped by SIGTERM): ...`), with the spend the gateway reports for the key at that moment; a run that ends with an error marks it `partial, ended with an error`. A request cut short may still be counted on the key after the line is printed. A second signal, or a stop that takes longer than ten seconds, exits at once with the same code.
+
+## Network access in headless runs
+
+A run needs the gateway (`gateway.rafikiai.io`) and nothing else:
+
+- The Rafiki AI console (`console.rafikiai.io`) is asked for the key's spend and the credits left, for the summary line after the answer. When it cannot be reached, the line says less and the run is otherwise unchanged.
+- No model catalogue is fetched: the Rafiki tiers are built in.
+- No package is installed unless a configuration folder holds plugins or custom tools that need one.
+- The search tools use ripgrep (`rg`) when it is on the `PATH` or was downloaded earlier; otherwise it is downloaded once from GitHub. When that download fails, the built-in search takes over and one line says so: it is slower and does not read `.gitignore`. Install ripgrep on a machine without access to GitHub to keep the faster search.
+
 ## Budget exhaustion
 
 Every key has a budget, and your Rafiki AI account has a credit balance. When either is spent, the gateway refuses the next request with a budget exceeded error and the run stops. Nothing is charged for the refused request. To continue:
