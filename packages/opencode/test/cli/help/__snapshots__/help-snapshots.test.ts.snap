@@ -107,7 +107,9 @@ Options:
       --thinking            show thinking blocks                                           [boolean]
   -i, --interactive         run in direct interactive split-footer mode   [boolean] [default: false]
       --auto                auto-approve permissions that are not explicitly denied (dangerous!)
-                                                                          [boolean] [default: false]"
+                                                                          [boolean] [default: false]
+      --allow-push          let this run publish code (git push, gh pr create, gh repo create, gh
+                            release); refused otherwise, even with --auto [boolean] [default: false]"
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode debug --help 1`] = `
@@ -295,6 +297,21 @@ Options:
       --models      show model statistics (default: hidden). Pass a number to show top N, otherwise
                     shows all
       --project     filter by project (default: all projects, empty string: current project)[string]"
+`;
+
+exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode usage --help 1`] = `
+"rafikicode usage
+
+show what your Rafiki AI account was charged over the last 30 days, by day and by tier
+
+Options:
+  -h, --help        show help                                                              [boolean]
+  -v, --version     show version number                                                    [boolean]
+      --print-logs  print logs to stderr                                                   [boolean]
+      --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
+      --pure        run without external plugins                                           [boolean]
+      --days        how many days back to report (1 to 365)                   [number] [default: 30]
+      --json        print the answer of the Rafiki AI console as JSON     [boolean] [default: false]"
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode export --help 1`] = `
@@ -790,19 +807,4 @@ Options:
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
       --body        comment body                                                 [string] [required]"
-`;
-
-exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode usage --help 1`] = `
-"rafikicode usage
-
-show what your Rafiki AI account was charged over the last 30 days, by day and by tier
-
-Options:
-  -h, --help        show help                                                              [boolean]
-  -v, --version     show version number                                                    [boolean]
-      --print-logs  print logs to stderr                                                   [boolean]
-      --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
-      --pure        run without external plugins                                           [boolean]
-      --days        how many days back to report (1 to 365)                   [number] [default: 30]
-      --json        print the answer of the Rafiki AI console as JSON     [boolean] [default: false]"
 `;
