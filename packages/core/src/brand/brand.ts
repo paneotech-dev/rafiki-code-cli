@@ -335,6 +335,9 @@ export const Brand = {
     // turns it off, for every model; it wins over compaction.prune in the
     // config. Unset, Rafiki tiers prune and other providers do not.
     prune: "RAFIKICODE_PRUNE",
+    // The verify step after a turn that changed files: 1, on or true turns it
+    // on, 0, off or false turns it off; it wins over verify.enabled.
+    verify: "RAFIKICODE_VERIFY",
     // Overrides the release API URL (mock release servers in tests).
     releaseAPI: "RAFIKICODE_RELEASE_API",
     // Overrides the release download base URL (mock release servers in tests).

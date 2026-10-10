@@ -58,6 +58,7 @@ Every top-level key the CLI honors, with the meaning from the configuration sche
 | `watcher` | filesystem watcher settings |
 | `snapshot` | enable snapshots used for undo and revert |
 | `compaction` | conversation compaction behavior for long sessions. `compaction.prune` (`true` or `false`) turns the replacement of old tool output on or off, see [Long sessions: old tool output](#long-sessions-old-tool-output) |
+| `verify` | the checks that run after a turn that changed files: `verify.enabled` (`true` by default), `verify.commands` (commands to run instead of the detected ones), `verify.timeout` (seconds for one round, 120 by default) and `verify.rounds` (fix rounds after a failure, 2 by default). See [Checks after a change](#checks-after-a-change) |
 | `attachment` | attachment processing settings |
 | `tool_output` | truncation thresholds for tool output |
 | `provider` | provider definitions. The `rafiki` entry is seeded for you; its `whitelist`, `blacklist` and model settings apply |
@@ -74,6 +75,7 @@ The structure of the nested keys (`permission`, `agent`, `mcp`, and so on) is un
 | `RAFIKICODE_GATEWAY_URL` | override the gateway base URL (local test servers). Default `https://gateway.rafikiai.io/v1`. Must be https; plain http is accepted only for `127.0.0.1`, `[::1]` or `localhost`. Any other value is not used, a warning is printed and the key is not sent there. The same rule applies to the gateway URL the console returns at sign in and to a `baseURL` in your own configuration |
 | `RAFIKICODE_CACHE_MARKERS` | which tiers carry a prompt cache marker (a field that tells the model provider where the repeated start of a request ends, so it can reuse it at a lower price): `all`, `off`, or tier names separated by commas. Unset, the CLI marks the tiers that need one. Every request starts with the same text in the same order on every tier either way; today's date is sent after that text, in a message of its own |
 | `RAFIKICODE_ALLOW_PUSH` | `1` lets `rafikicode run` publish code (`git push`, `gh pr create`, `gh repo create`, `gh release`), like `run --allow-push`. Without it a run refuses them. See [Pushing code from a run](./headless-and-ci.md#pushing-code-from-a-run) |
+| `RAFIKICODE_VERIFY` | `0`, `off` or `false` turns the checks after a change off for this run; `1`, `on` or `true` turns them on. Wins over `verify.enabled`. See [Checks after a change](#checks-after-a-change) |
 | `RAFIKICODE_PRUNE` | `0`, `off` or `false` stops replacing old tool output; `1`, `on` or `true` turns it on, on any provider. Wins over `compaction.prune`. Unset, it is on for the Rafiki tiers. See [Long sessions: old tool output](#long-sessions-old-tool-output) |
 | `RAFIKICODE_CONSOLE_URL` | override the Rafiki AI console base URL used by `login`, `logout`, `whoami` and `doctor`. Default `https://console.rafikiai.io`. The key is sent there, so only an https URL is used (plain http only for 127.0.0.1, [::1] or localhost); any other value is ignored with a warning, and so is a console URL on plain http elsewhere returned at sign in |
 | `RAFIKICODE_INSTALL_DIR` | installer target directory. Default `~/.rafikicode/bin` |
@@ -166,6 +168,69 @@ Providers bill input they have seen before at a lower rate when a request starts
 - Because a batch removes at least 20,000 tokens, the one cache rewrite costs less than the input it saves on the following turns.
 
 When asked who it is, the agent answers that it is Rafiki Code by PANEOTECH, and names the tier it runs on rather than guessing the model behind it.
+
+## Checks after a change
+
+A task is not called done until the project's own checks pass. After a turn that changed files, before the answer is final, Rafiki Code runs the project's tests, type check, lint or build, and sends a failure back to the agent for another fix round.
+
+### Which checks
+
+The checks are found from the project's files, at the root of the repository:
+
+| file | checks |
+|---|---|
+| `package.json` | the `typecheck` (or `type-check`, `check-types`, `tsc`), `lint` and `test` scripts, and `build` when there is no type check script, run with the package manager of the lock file (`bun run`, `pnpm run`, `yarn run`, else `npm run`). npm's placeholder test script is ignored |
+| `pyproject.toml`, `setup.py`, `setup.cfg`, `tox.ini`, `pytest.ini` | `python -m pytest` when pytest is installed, else `python bin/test` when the project has one, else `python -m unittest`; `ruff check .` and `mypy .` when they are configured and installed |
+| `go.mod` | `go vet ./...` and `go test` |
+| `Cargo.toml` | `cargo check` and `cargo test` |
+| `composer.json`, `phpunit.xml` | `vendor/bin/phpunit`, or the `test` and `lint` scripts |
+| `Makefile` | the `typecheck`, `lint`, `test` (or `check`) and `build` targets, for what the files above did not give |
+| `AGENTS.md` | commands written as code on a line about tests, linting, type checking or building, for what the files above did not give |
+
+What was found is kept for the project until one of these files changes.
+
+To choose the checks yourself, give `AGENTS.md` a `Verify` section. Its code blocks and its list items written as code are the commands, run in order, and nothing is detected:
+
+```markdown
+## Verify
+
+- `bun run typecheck`
+- `bun test --timeout 30000`
+```
+
+A line `verify: npm run check` in `AGENTS.md` does the same. `verify.commands` in the configuration wins over both; in a configured command, `{files}` is replaced by the changed files:
+
+```json
+{
+  "verify": { "commands": ["ruff check {files}", "python -m pytest -q tests"], "timeout": 300 }
+}
+```
+
+### Narrowest first
+
+The tests of the changed files run first: for a Python module `pkg/config.py`, the test file `test_config.py` closest to it, else the test files that import the module, else the module's `tests` folder; for JavaScript and TypeScript, the `.test` or `.spec` file named after the changed file (when the test script runs vitest, jest or `bun test`); for Go, the packages of the changed files; for PHP, the matching `*Test.php`. Then the wider checks: build, type check, lint, and the whole test suite only when no narrow test was found.
+
+All of them share one time budget, 120 seconds by default (`verify.timeout`, from 5 to 1800). A command still running when the budget runs out is stopped and reported as not finished, which is not a failure. The first failing command stops the round.
+
+A turn that changed only documentation or images (`.md`, `.txt`, `.rst`, images, the licence) is not checked. The checks run through the shell permission like any other command: when shell commands need approval, you are asked first, and a refusal is reported as `checks not run`.
+
+### Fix rounds and the answer
+
+When a check fails, its command, exit code and the end of its output go back to the agent as a new message, and it gets another round to fix the cause, up to `verify.rounds` rounds (2 by default, 0 to 5). It is asked not to weaken or delete tests, and to say so when a failure was there before its change. The checks run again after each round.
+
+The answer then ends with one line:
+
+- `checks passed: <commands>`
+- `checks failing: <command> (exit code 1) after 2 fix rounds. The changes are not verified.` when they still fail. The agent never reports success over a failing check.
+- `checks not finished within 120 s: <commands>`
+- `checks not run: <command> cannot run here (the tool it needs is missing)`, or `... was not approved`
+- `no checks found for this project, so the changes were not verified (...)` when nothing was found
+
+In `rafikicode run`, a failed round prints `! checks failed, fix round 1 of 2: <command>`, the `Task:` line ends with the status (`checks passed`, `checks failing`, `checks not finished`, `no checks found`), the JSON output (`--format json`) carries a `verify` event with the status and every command, and the run exits with code 8 when the checks still fail. See [Headless and CI](./headless-and-ci.md#exit-codes).
+
+While the checks are on, the start of every request also carries a short working practice: reproduce a reported bug first (a failing test or a short script), then fix it, then run the relevant tests; prefer editing over long exploration; and do not try to download packages or reference copies when the network is restricted.
+
+To turn the checks off, set `"verify": {"enabled": false}` in your configuration, or `RAFIKICODE_VERIFY=0` for one run. They are off when project configuration is disabled (`RAFIKICODE_DISABLE_PROJECT_CONFIG`), and subagents do not run them: the task they belong to does.
 
 ## Choosing a tier per project
 

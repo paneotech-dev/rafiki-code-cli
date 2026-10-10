@@ -60,6 +60,7 @@ import { SessionTools } from "./tools"
 import { LLMEvent } from "@opencode-ai/llm"
 import * as RafikiReasoning from "@/rafiki/reasoning"
 import * as RafikiResume from "@/rafiki/resume"
+import * as RafikiVerify from "@/rafiki/verify-turn"
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -1164,6 +1165,38 @@ const layer = Layer.effect(
                 yield* sessions.updateMessage(lastAssistant)
                 yield* events.publish(Session.Event.Error, { sessionID, error: emptyLength })
               }
+              // The project's checks run before the turn is reported as done (rafiki/verify-turn.ts).
+              const verified =
+                emptyLength || session.parentID
+                  ? "done"
+                  : yield* RafikiVerify.afterTurn({
+                      user: lastUser,
+                      assistant: lastAssistant,
+                      messages: msgs,
+                      directory: ctx.directory,
+                      root: ctx.project.vcs === "git" ? ctx.worktree : ctx.directory,
+                      settings: (yield* config.get()).verify,
+                      shell: (yield* config.get()).shell,
+                      sessions,
+                      ask: (commands) =>
+                        Effect.gen(function* () {
+                          const agent = yield* agents.get(lastUser.agent)
+                          return yield* permission
+                            .ask({
+                              permission: "bash",
+                              patterns: commands,
+                              always: [],
+                              sessionID,
+                              metadata: { command: commands.join("\n"), description: "Run the project's checks" },
+                              ruleset: Permission.merge(agent?.permission ?? [], session.permission ?? []),
+                            })
+                            .pipe(
+                              Effect.as(true),
+                              Effect.catch(() => Effect.succeed(false)),
+                            )
+                        }),
+                    })
+              if (verified === "again") continue
               yield* Effect.logInfo("exiting loop", { "session.id": sessionID })
               break
             }
@@ -1303,7 +1336,8 @@ const layer = Layer.effect(
               sys.mcp(agent, session.permission),
               MessageV2.toModelMessagesEffect(RafikiResume.withContinuations(msgs), model),
             ])
-            const system = CachePrefix.order({ environment: env, instructions, mcp: mcpInstructions, skills })
+            const practice = RafikiVerify.Verify.enabled((yield* config.get()).verify) ? RafikiVerify.Verify.PRACTICE : undefined
+            const system = CachePrefix.order({ environment: env, instructions, mcp: mcpInstructions, skills, practice })
             const format = lastUser.format ?? { type: "text" as const }
             if (format.type === "json_schema") system.push(STRUCTURED_OUTPUT_SYSTEM_PROMPT)
             const result = yield* handle.process({

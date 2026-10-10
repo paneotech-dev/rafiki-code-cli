@@ -73,12 +73,12 @@ counted with `git diff --numstat -M` against the upstream base.
 
 <!-- upstream-files:start -->
 
-Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 193. Changed lines: 7075 (4204 added, 2871 removed).
+Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 193. Changed lines: 7152 (4281 added, 2871 removed).
 
 | Class | Files | Added | Removed |
 | --- | ---: | ---: | ---: |
-| Source: a call into this fork's modules | 45 | 668 | 209 |
-| Source: product name, file names and wording | 42 | 214 | 191 |
+| Source: a call into this fork's modules | 45 | 725 | 209 |
+| Source: product name, file names and wording | 42 | 234 | 191 |
 | Source: behaviour changed in place | 17 | 639 | 232 |
 | Tests of upstream, adapted | 35 | 669 | 178 |
 | Generated files | 3 | 369 | 182 |
@@ -86,7 +86,7 @@ Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 193. Changed lin
 | Documentation | 23 | 197 | 1182 |
 | Repository tooling and workflows | 6 | 23 | 8 |
 | Editor extension | 13 | 1405 | 210 |
-| Total | 193 | 4204 | 2871 |
+| Total | 193 | 4281 | 2871 |
 
 ### Source: a call into this fork's modules
 
@@ -106,7 +106,7 @@ On a conflict: Take upstream's side of the conflict, then put the call back at t
 | `packages/opencode/src/cli/cmd/acp.ts` | 5 | 1 | The internal server gets a generated password (`rafiki/acp.ts`). |
 | `packages/opencode/src/cli/cmd/attach.ts` | 16 | 4 | Terminal check before the interface loads (`rafiki/startup.ts`), credentials from the server file (`rafiki/server-file.ts`), and option text. |
 | `packages/opencode/src/cli/cmd/models.ts` | 6 | 1 | A sign in hint when no provider is connected, and tiers that are not listed are hidden (`Brand.provider.listed`). |
-| `packages/opencode/src/cli/cmd/run.ts` | 145 | 13 | Exit codes and messages for gateway errors, a missing key and rejected permissions, the attach check, the cost line, the `--resume` alias and server file credentials, each a call into `src/rafiki/`; an answer on another tier is announced through `rafiki/served.ts`, and a run on Rafiki Max is checked against the key first (`rafiki/tier-check.ts`). A command that publishes code is refused unless the run allows it (`--allow-push`, `RAFIKICODE_ALLOW_PUSH`, a `publish` permission in config), `--auto` or not (`core/brand/publish.ts`). A turn tried again after it spent its output budget reasoning is announced in one line (`rafiki/reasoning.ts`), and SIGTERM or SIGINT stop and save the session before exiting 143 or 130 (`rafiki/run-signal.ts`). |
+| `packages/opencode/src/cli/cmd/run.ts` | 168 | 13 | Exit codes and messages for gateway errors, a missing key and rejected permissions, the attach check, the cost line, the `--resume` alias and server file credentials, each a call into `src/rafiki/`; an answer on another tier is announced through `rafiki/served.ts`, and a run on Rafiki Max is checked against the key first (`rafiki/tier-check.ts`). A command that publishes code is refused unless the run allows it (`--allow-push`, `RAFIKICODE_ALLOW_PUSH`, a `publish` permission in config), `--auto` or not (`core/brand/publish.ts`). A turn tried again after it spent its output budget reasoning is announced in one line (`rafiki/reasoning.ts`), and SIGTERM or SIGINT stop and save the session before exiting 143 or 130 (`rafiki/run-signal.ts`). The checks after a change are reported on the `Task:` line, in a `verify` JSON event and with exit code 8 when they still fail (`rafiki/verify.ts`). |
 | `packages/opencode/src/cli/cmd/run/variant.shared.ts` | 3 | 1 | The provider name is not repeated after a model name that starts with it (`Brand.provider.label`). |
 | `packages/opencode/src/cli/cmd/serve.ts` | 7 | 6 | The server password is made and stored by `rafiki/server-file.ts`; text names this product. |
 | `packages/opencode/src/cli/cmd/upgrade.ts` | 22 | 5 | The `update` alias, the method choices this product supports, and the refusals and clean up from `rafiki/update.ts` and `rafiki/autoupdate.ts`. |
@@ -129,7 +129,7 @@ On a conflict: Take upstream's side of the conflict, then put the call back at t
 | `packages/opencode/src/session/llm/request.ts` | 7 | 2 | The system text is split into a stable and a changing part (`rafiki/cache-prefix.ts`); the user agent is this product's. |
 | `packages/opencode/src/session/message-v2.ts` | 2 | 1 | A replaced old tool output is sent as the marker of `rafiki/prune.ts`, which names the call and how to run it again. |
 | `packages/opencode/src/session/processor.ts` | 12 | 2 | Retries, error wording and resuming a cut stream go through `rafiki/resilience.ts` and `rafiki/resume.ts`; the tier that answered is recorded on the message through `rafiki/served.ts`. |
-| `packages/opencode/src/session/prompt.ts` | 47 | 10 | The order of the system text (`rafiki/cache-prefix.ts`), continuation messages (`rafiki/resume.ts`) and the one retry, then the error, for an empty answer cut by the length limit (`rafiki/reasoning.ts`). Old tool output is pruned before the first request of a turn (`rafiki/prune.ts`). |
+| `packages/opencode/src/session/prompt.ts` | 81 | 10 | The order of the system text (`rafiki/cache-prefix.ts`), continuation messages (`rafiki/resume.ts`) and the one retry, then the error, for an empty answer cut by the length limit (`rafiki/reasoning.ts`). Old tool output is pruned before the first request of a turn (`rafiki/prune.ts`). Before a turn that changed files ends, the project's checks run and a failure is sent back for a fix round; the working practice that goes with them opens the system text (`rafiki/verify-turn.ts`). |
 | `packages/opencode/src/session/retry.ts` | 6 | 2 | Which gateway errors are never retried and how long to wait (`rafiki/gateway-errors.ts`, `rafiki/resilience.ts`). |
 | `packages/opencode/src/session/revert.ts` | 2 | 0 | A cut turn is recovered before a revert (`rafiki/resume.ts`). |
 | `packages/opencode/src/session/system.ts` | 6 | 1 | System prompts pass through `Brand.prompt`; the date line leaves the environment block because `rafiki/cache-prefix.ts` places it after the stable part; the gateway provider's prompt starts with `Brand.identity`. |
@@ -150,7 +150,7 @@ On a conflict: Take upstream's side, then replace the literal with the value fro
 | `packages/core/src/oauth/page.ts` | 11 | 26 | The sign in result page names this product and shows its name where upstream draws its wordmark. |
 | `packages/core/src/plugin/agent.ts` | 2 | 1 | The plan agent may edit plans under each project directory name in `Brand.project.dirs`. |
 | `packages/core/src/plugin/command/initialize.txt` | 3 | 3 | Prompt text names this product and its configuration file. |
-| `packages/core/src/v1/config/config.ts` | 1 | 1 | The `compaction.prune` description gives this product's default (on for Rafiki tiers). |
+| `packages/core/src/v1/config/config.ts` | 21 | 1 | The `compaction.prune` description gives this product's default (on for Rafiki tiers). The `verify` key configures the checks after a change (`rafiki/verify.ts`). |
 | `packages/opencode/src/cli/cmd/agent.ts` | 2 | 1 | New agents are written under this product's project directory. |
 | `packages/opencode/src/cli/cmd/debug/index.ts` | 2 | 1 | The version line names this product. |
 | `packages/opencode/src/cli/cmd/mcp.ts` | 7 | 5 | Messages name this product; the configuration file candidates come from the brand module. |

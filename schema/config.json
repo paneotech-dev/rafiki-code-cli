@@ -1262,6 +1262,36 @@
           },
           "additionalProperties": false
         },
+        "verify": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Run the project's checks after a turn that changed files, and send failures back for another fix round (default: true; RAFIKICODE_VERIFY overrides it)"
+            },
+            "commands": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Commands to run instead of the detected checks, in order; {files} is replaced by the changed files"
+            },
+            "timeout": {
+              "exclusiveMinimum": 0,
+              "type": "integer",
+              "maximum": 9007199254740991,
+              "description": "Time budget in seconds for all checks of one verify round, from 5 to 1800 (default: 120)"
+            },
+            "rounds": {
+              "minimum": 0,
+              "type": "integer",
+              "maximum": 9007199254740991,
+              "description": "Fix rounds after a failed check, from 0 to 5 (default: 2)"
+            }
+          },
+          "additionalProperties": false,
+          "description": "The verify step: a turn that changed files is not reported as done until the project's checks pass"
+        },
         "experimental": {
           "type": "object",
           "properties": {

@@ -10,6 +10,7 @@ import * as Cost from "@opencode-ai/core/brand/cost"
 import * as Meter from "@opencode-ai/core/brand/meter"
 import type { OpencodeClient } from "@opencode-ai/sdk/v2"
 import { UI } from "@/cli/ui"
+import { metaOf } from "./verify"
 
 // Subagents of subagents are followed this deep.
 const DEPTH = 3
@@ -38,14 +39,31 @@ export function stepsOf(items: readonly Item[]): Cost.Tokens[] {
   )
 }
 
+// A fix round of the verify step (rafiki/verify.ts) counts as part of the
+// turn it follows, so the tier path names the turn once.
+export function withVerifyRounds(items: readonly Item[]): Cost.MessageLike[] {
+  const origin = new Map<string, string>()
+  let last: string | undefined
+  for (const item of items) {
+    if (item.info.role !== "user") continue
+    const round = (item.parts ?? []).some(
+      (part) => metaOf(part as { type: string; metadata?: Record<string, unknown> })?.kind === "feedback",
+    )
+    if (!round || !last) last = item.info.id
+    origin.set(item.info.id, last)
+  }
+  return items.map((item) =>
+    item.info.role === "assistant" && item.info.parentID && origin.has(item.info.parentID)
+      ? { ...item.info, parentID: origin.get(item.info.parentID) }
+      : item.info,
+  )
+}
+
 // Every model call of a task, and every request: the session's own and those
 // of the subagent sessions started under it.
 export async function collect(client: OpencodeClient, sessionID: string): Promise<Collected> {
   const own = await itemsOf(client, sessionID)
-  const calls = Cost.callsOf(
-    own.map((item) => item.info),
-    true,
-  )
+  const calls = Cost.callsOf(withVerifyRounds(own), true)
   const steps = stepsOf(own)
   const walk = async (parent: string, depth: number): Promise<void> => {
     if (depth > DEPTH) return
@@ -114,7 +132,12 @@ export function tracker(
     // partial: why the run ended early (a signal, an error). The line is
     // still printed, from the key's spend as the gateway reports it, and
     // marked partial.
-    async text(client: OpencodeClient, sessionID: string, partial?: string) {
+    // verify: the outcome of the verify step (rafiki/verify.ts), added at the end of the line.
+    async text(client: OpencodeClient, sessionID: string, partial?: string, verify?: string) {
+      const text = await this.measure(client, sessionID, partial)
+      return text && verify ? `${text} · ${verify}` : text
+    },
+    async measure(client: OpencodeClient, sessionID: string, partial?: string) {
       const collected = await collect(client, sessionID)
       const answered = collected.steps.some((step) => Cost.total(step) > 0)
       const [first, credits] = await Promise.all([start, balance().catch(() => undefined)])
@@ -139,11 +162,11 @@ export function tracker(
       return line(collected, state, pending, partial)
     },
     // Prints the line once per run, however the run ends.
-    async report(client: OpencodeClient, sessionID: string, partial?: string) {
+    async report(client: OpencodeClient, sessionID: string, partial?: string, verify?: string) {
       if (reported) return
       reported = true
       try {
-        const text = await this.text(client, sessionID, partial)
+        const text = await this.text(client, sessionID, partial, verify)
         if (text) UI.println(UI.Style.TEXT_DIM + text + UI.Style.TEXT_NORMAL)
       } catch {
         // The answer was already printed; a missing line is not an error.

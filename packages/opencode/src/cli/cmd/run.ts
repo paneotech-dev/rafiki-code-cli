@@ -34,6 +34,7 @@ import * as RafikiCost from "@/rafiki/cost"
 import * as RafikiServed from "@/rafiki/served"
 import * as RafikiTierCheck from "@/rafiki/tier-check"
 import * as RafikiReasoning from "@/rafiki/reasoning"
+import * as RafikiVerify from "@/rafiki/verify"
 import * as RunSignal from "@/rafiki/run-signal"
 import * as ServerFile from "@/rafiki/server-file"
 import { INTERACTIVE_INPUT_ERROR, resolveInteractiveStdin } from "./run/runtime.stdin"
@@ -711,6 +712,9 @@ export const RunCommand = effectCmd({
         }
         const sessionID = sess.id
 
+        // The outcome of the verify step of the last turn (rafiki/verify.ts), when it ran.
+        let verified: RafikiVerify.FinalMeta | undefined
+
         function emit(type: string, data: Record<string, unknown>) {
           if (args.format === "json") {
             process.stdout.write(
@@ -798,6 +802,19 @@ export const RunCommand = effectCmd({
                 await tool(part)
                 toggles.set(part.id, true)
               }
+
+              // The verify step: a failure sent back for a fix round, and the outcome added to the answer.
+              const verify = RafikiVerify.metaOf(part)
+              if (verify?.kind === "feedback") {
+                const failed = verify.result.steps.filter((step) => step.status === "failed").map((step) => step.command)
+                if (emit("verify", { status: "retry", round: verify.round, rounds: verify.rounds, failed })) continue
+                UI.println(
+                  UI.Style.TEXT_WARNING_BOLD + "!",
+                  UI.Style.TEXT_NORMAL + `checks failed, fix round ${verify.round} of ${verify.rounds}: ${failed.join(", ")}`,
+                )
+                continue
+              }
+              if (verify?.kind === "final") verified = verify
 
               if (part.type === "step-start") {
                 if (emit("step_start", { part })) continue
@@ -946,7 +963,9 @@ export const RunCommand = effectCmd({
           // The Task: line however the run ends: an error or a signal still
           // prints it, from the key's spend, marked partial.
           const report = (partial?: string) =>
-            args.format === "json" ? Promise.resolve() : cost.report(client, sessionID, partial)
+            args.format === "json"
+              ? Promise.resolve()
+              : cost.report(client, sessionID, partial, verified ? RafikiVerify.statusLine(verified.result.status) : undefined)
           // SIGTERM or SIGINT: the turn is stopped and saved, the line is
           // printed, then the run exits with 143 or 130 (rafiki/run-signal.ts).
           let stopped = false
@@ -961,6 +980,10 @@ export const RunCommand = effectCmd({
           async function finish() {
             const error = await completed
             if (stopped) return parked()
+            // The verify status, in the JSON output and the exit code: 8 when the checks still fail.
+            emit("verify", RafikiVerify.summary(verified))
+            if (verified?.result.status === "failing")
+              process.exitCode = process.exitCode || RafikiVerify.EXIT_CHECKS_FAILING
             await report(error ? "ended with an error" : undefined)
             if (error) process.exitCode = process.exitCode || 1
           }

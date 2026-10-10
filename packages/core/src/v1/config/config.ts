@@ -166,6 +166,26 @@ export const Info = Schema.Struct({
       }),
     }),
   ),
+  verify: Schema.optional(
+    Schema.Struct({
+      enabled: Schema.optional(Schema.Boolean).annotate({
+        description:
+          "Run the project's checks after a turn that changed files, and send failures back for another fix round (default: true; RAFIKICODE_VERIFY overrides it)",
+      }),
+      commands: Schema.optional(Schema.Array(Schema.String)).annotate({
+        description:
+          "Commands to run instead of the detected checks, in order; {files} is replaced by the changed files",
+      }),
+      timeout: Schema.optional(PositiveInt).annotate({
+        description: "Time budget in seconds for all checks of one verify round, from 5 to 1800 (default: 120)",
+      }),
+      rounds: Schema.optional(NonNegativeInt).annotate({
+        description: "Fix rounds after a failed check, from 0 to 5 (default: 2)",
+      }),
+    }),
+  ).annotate({
+    description: "The verify step: a turn that changed files is not reported as done until the project's checks pass",
+  }),
   experimental: Schema.optional(
     Schema.Struct({
       disable_paste_summary: Schema.optional(Schema.Boolean),

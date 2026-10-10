@@ -155,7 +155,7 @@
     {
       "path": "packages/core/src/v1/config/config.ts",
       "class": "text",
-      "why": "The `compaction.prune` description gives this product's default (on for Rafiki tiers)."
+      "why": "The `compaction.prune` description gives this product's default (on for Rafiki tiers). The `verify` key configures the checks after a change (`rafiki/verify.ts`)."
     },
     {
       "path": "packages/core/test/global.test.ts",
@@ -285,7 +285,7 @@
     {
       "path": "packages/opencode/src/cli/cmd/run.ts",
       "class": "hook",
-      "why": "Exit codes and messages for gateway errors, a missing key and rejected permissions, the attach check, the cost line, the `--resume` alias and server file credentials, each a call into `src/rafiki/`; an answer on another tier is announced through `rafiki/served.ts`, and a run on Rafiki Max is checked against the key first (`rafiki/tier-check.ts`). A command that publishes code is refused unless the run allows it (`--allow-push`, `RAFIKICODE_ALLOW_PUSH`, a `publish` permission in config), `--auto` or not (`core/brand/publish.ts`). A turn tried again after it spent its output budget reasoning is announced in one line (`rafiki/reasoning.ts`), and SIGTERM or SIGINT stop and save the session before exiting 143 or 130 (`rafiki/run-signal.ts`)."
+      "why": "Exit codes and messages for gateway errors, a missing key and rejected permissions, the attach check, the cost line, the `--resume` alias and server file credentials, each a call into `src/rafiki/`; an answer on another tier is announced through `rafiki/served.ts`, and a run on Rafiki Max is checked against the key first (`rafiki/tier-check.ts`). A command that publishes code is refused unless the run allows it (`--allow-push`, `RAFIKICODE_ALLOW_PUSH`, a `publish` permission in config), `--auto` or not (`core/brand/publish.ts`). A turn tried again after it spent its output budget reasoning is announced in one line (`rafiki/reasoning.ts`), and SIGTERM or SIGINT stop and save the session before exiting 143 or 130 (`rafiki/run-signal.ts`). The checks after a change are reported on the `Task:` line, in a `verify` JSON event and with exit code 8 when they still fail (`rafiki/verify.ts`)."
     },
     {
       "path": "packages/opencode/src/cli/cmd/run/footer.permission.tsx",
@@ -500,7 +500,7 @@
     {
       "path": "packages/opencode/src/session/prompt.ts",
       "class": "hook",
-      "why": "The order of the system text (`rafiki/cache-prefix.ts`), continuation messages (`rafiki/resume.ts`) and the one retry, then the error, for an empty answer cut by the length limit (`rafiki/reasoning.ts`). Old tool output is pruned before the first request of a turn (`rafiki/prune.ts`)."
+      "why": "The order of the system text (`rafiki/cache-prefix.ts`), continuation messages (`rafiki/resume.ts`) and the one retry, then the error, for an empty answer cut by the length limit (`rafiki/reasoning.ts`). Old tool output is pruned before the first request of a turn (`rafiki/prune.ts`). Before a turn that changed files ends, the project's checks run and a failure is sent back for a fix round; the working practice that goes with them opens the system text (`rafiki/verify-turn.ts`)."
     },
     {
       "path": "packages/opencode/src/session/retry.ts",
