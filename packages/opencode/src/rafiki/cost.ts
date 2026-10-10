@@ -67,7 +67,7 @@ export async function collect(client: OpencodeClient, sessionID: string): Promis
 }
 
 // The line for a task's requests and the meter readings around it.
-export function line(collected: Collected, state: Meter.State, pending = false): string | undefined {
+export function line(collected: Collected, state: Meter.State, pending = false, partial?: string): string | undefined {
   const summary = Cost.summarize(collected.calls)
   if (summary.path.length === 0) return undefined
   const steps = collected.steps.filter((step) => Cost.total(step) > 0)
@@ -80,6 +80,7 @@ export function line(collected: Collected, state: Meter.State, pending = false):
     received,
     state,
     pending,
+    partial,
   })
 }
 
@@ -108,13 +109,17 @@ export function tracker(
   const read: Read = options.read ?? (() => Account.keyInfo())
   const balance: Balance = options.balance ?? defaultBalance
   const start = settle(read(), now)
+  let reported = false
   return {
-    async text(client: OpencodeClient, sessionID: string) {
+    // partial: why the run ended early (a signal, an error). The line is
+    // still printed, from the key's spend as the gateway reports it, and
+    // marked partial.
+    async text(client: OpencodeClient, sessionID: string, partial?: string) {
       const collected = await collect(client, sessionID)
       const answered = collected.steps.some((step) => Cost.total(step) > 0)
       const [first, credits] = await Promise.all([start, balance().catch(() => undefined)])
       let state = Meter.update(Meter.empty(), { balance: credits, at: now() })
-      if (!first.ok) return line(collected, { ...state, stale: true })
+      if (!first.ok) return line(collected, { ...state, stale: true }, false, partial)
       state = Meter.update(state, { key: Meter.reading(first.info, first.at), at: first.at })
       let pending = false
       for (let attempt = 0; ; attempt++) {
@@ -131,11 +136,14 @@ export function tracker(
         }
         await new Promise((resolve) => setTimeout(resolve, options.retryMs ?? 1500))
       }
-      return line(collected, state, pending)
+      return line(collected, state, pending, partial)
     },
-    async report(client: OpencodeClient, sessionID: string) {
+    // Prints the line once per run, however the run ends.
+    async report(client: OpencodeClient, sessionID: string, partial?: string) {
+      if (reported) return
+      reported = true
       try {
-        const text = await this.text(client, sessionID)
+        const text = await this.text(client, sessionID, partial)
         if (text) UI.println(UI.Style.TEXT_DIM + text + UI.Style.TEXT_NORMAL)
       } catch {
         // The answer was already printed; a missing line is not an error.

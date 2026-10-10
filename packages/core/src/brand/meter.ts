@@ -131,12 +131,23 @@ export function statusLine(input: { tier?: string; next?: string; state: State }
 }
 
 // The line rafikicode run prints after a task.
-export function runLine(input: { path: string; requests: number; sent: number; received: number; state: State; pending?: boolean }): string {
+// partial names why the run ended early ("stopped by SIGTERM", "ended with
+// an error"): the line is then marked partial, since a request cut short may
+// still be counted on the key after the line is printed.
+export function runLine(input: {
+  path: string
+  requests: number
+  sent: number
+  received: number
+  state: State
+  pending?: boolean
+  partial?: string
+}): string {
   const count = (value: number) => Math.round(value).toLocaleString("en-US")
   const { state } = input
   const spent = sessionSpend(state)
   const parts = [
-    `Task: ${input.path}`,
+    input.partial ? `Task (partial, ${input.partial}): ${input.path}` : `Task: ${input.path}`,
     `${input.requests} ${input.requests === 1 ? "request" : "requests"}, ${count(input.sent)} tokens sent and ${count(input.received)} received in all`,
     spent === undefined
       ? "spend not available (the gateway did not answer)"

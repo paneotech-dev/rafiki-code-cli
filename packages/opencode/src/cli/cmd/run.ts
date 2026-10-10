@@ -34,6 +34,7 @@ import * as RafikiCost from "@/rafiki/cost"
 import * as RafikiServed from "@/rafiki/served"
 import * as RafikiTierCheck from "@/rafiki/tier-check"
 import * as RafikiReasoning from "@/rafiki/reasoning"
+import * as RunSignal from "@/rafiki/run-signal"
 import * as ServerFile from "@/rafiki/server-file"
 import { INTERACTIVE_INPUT_ERROR, resolveInteractiveStdin } from "./run/runtime.stdin"
 
@@ -942,9 +943,25 @@ export const RunCommand = effectCmd({
           })
           await connected
           const cost = RafikiCost.tracker()
+          // The Task: line however the run ends: an error or a signal still
+          // prints it, from the key's spend, marked partial.
+          const report = (partial?: string) =>
+            args.format === "json" ? Promise.resolve() : cost.report(client, sessionID, partial)
+          // SIGTERM or SIGINT: the turn is stopped and saved, the line is
+          // printed, then the run exits with 143 or 130 (rafiki/run-signal.ts).
+          let stopped = false
+          RunSignal.install({
+            sessionID,
+            onSignal: () => (stopped = true),
+            stop: () => client.session.abort({ sessionID }),
+            after: (signal) => report(`stopped by ${signal}`),
+          })
+          // A stopped run is finished by the signal handler, which exits.
+          const parked = () => new Promise<never>(() => {})
           async function finish() {
             const error = await completed
-            if (args.format !== "json") await cost.report(client, sessionID)
+            if (stopped) return parked()
+            await report(error ? "ended with an error" : undefined)
             if (error) process.exitCode = process.exitCode || 1
           }
 
@@ -961,6 +978,8 @@ export const RunCommand = effectCmd({
               const missingKey = RafikiMissingKey.message(args.model)
               if (!emit("error", { error: result.error })) UI.error(missingKey ?? formatRunError(result.error))
               process.exitCode = missingKey ? RafikiMissingKey.exitCode : 1
+              if (stopped) return parked()
+              await report("ended with an error")
               return
             }
             await finish()
@@ -979,6 +998,8 @@ export const RunCommand = effectCmd({
             const missingKey = RafikiMissingKey.message(args.model)
             if (!emit("error", { error: result.error })) UI.error(missingKey ?? formatRunError(result.error))
             process.exitCode = missingKey ? RafikiMissingKey.exitCode : 1
+            if (stopped) return parked()
+            await report("ended with an error")
             return
           }
           await finish()
