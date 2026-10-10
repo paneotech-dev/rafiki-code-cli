@@ -375,7 +375,7 @@
     {
       "path": "packages/opencode/src/index.ts",
       "class": "hook",
-      "why": "Registers this product's commands, installs the startup guard, applies a staged update, restarts from a usable temporary directory, reports an unexpected error through `rafiki/startup.ts`, runs the folder checks before anything else is loaded (`rafiki/folders-early.ts`), and moves a start in a folder that is not a project to the default workspace (`rafiki/workspace.ts`)."
+      "why": "Registers this product's commands, installs the startup guard, applies a staged update, restarts from a usable temporary directory, reports an unexpected error through `rafiki/startup.ts`, runs the folder checks before anything else is loaded (`rafiki/folders-early.ts`), and moves a start in a folder that is not a project to the default workspace (`rafiki/workspace.ts`). It also registers `rafikicode github` (`rafiki/github-setup.ts`)."
     },
     {
       "path": "packages/opencode/src/installation/index.ts",
@@ -735,7 +735,7 @@
     {
       "path": "packages/tui/src/feature-plugins/builtins.ts",
       "class": "hook",
-      "why": "Registers the spend plugin (`feature-plugins/rafiki-cost.tsx`) and the History plugin (`feature-plugins/rafiki-history.tsx`)."
+      "why": "Registers the spend plugin (`feature-plugins/rafiki-cost.tsx`), the History plugin (`feature-plugins/rafiki-history.tsx`) and the GitHub setup (`feature-plugins/rafiki-github.tsx`)."
     },
     {
       "path": "packages/tui/src/feature-plugins/home/tips-view.tsx",

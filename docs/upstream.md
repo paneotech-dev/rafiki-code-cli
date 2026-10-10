@@ -73,20 +73,20 @@ counted with `git diff --numstat -M` against the upstream base.
 
 <!-- upstream-files:start -->
 
-Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 183. Changed lines: 6608 (3801 added, 2807 removed).
+Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 189. Changed lines: 6800 (3938 added, 2862 removed).
 
 | Class | Files | Added | Removed |
 | --- | ---: | ---: | ---: |
-| Source: a call into this fork's modules | 39 | 454 | 157 |
-| Source: product name, file names and wording | 43 | 217 | 192 |
-| Source: behaviour changed in place | 14 | 565 | 221 |
-| Tests of upstream, adapted | 33 | 554 | 177 |
+| Source: a call into this fork's modules | 43 | 541 | 202 |
+| Source: product name, file names and wording | 42 | 214 | 191 |
+| Source: behaviour changed in place | 16 | 613 | 231 |
+| Tests of upstream, adapted | 34 | 559 | 178 |
 | Generated files | 3 | 366 | 181 |
 | Package identity and packaging | 9 | 20 | 479 |
 | Documentation | 23 | 197 | 1182 |
 | Repository tooling and workflows | 6 | 23 | 8 |
 | Editor extension | 13 | 1405 | 210 |
-| Total | 183 | 3801 | 2807 |
+| Total | 189 | 3938 | 2862 |
 
 ### Source: a call into this fork's modules
 
@@ -104,7 +104,7 @@ On a conflict: Take upstream's side of the conflict, then put the call back at t
 | `packages/opencode/src/cli/cmd/acp.ts` | 5 | 1 | The internal server gets a generated password (`rafiki/acp.ts`). |
 | `packages/opencode/src/cli/cmd/attach.ts` | 16 | 4 | Terminal check before the interface loads (`rafiki/startup.ts`), credentials from the server file (`rafiki/server-file.ts`), and option text. |
 | `packages/opencode/src/cli/cmd/models.ts` | 6 | 1 | A sign in hint when no provider is connected, and tiers that are not listed are hidden (`Brand.provider.listed`). |
-| `packages/opencode/src/cli/cmd/run.ts` | 74 | 13 | Exit codes and messages for gateway errors, a missing key and rejected permissions, the attach check, the cost line, the `--resume` alias and server file credentials, each a call into `src/rafiki/`; an answer on another tier is announced through `rafiki/served.ts`, and a run on Rafiki Max is checked against the key first (`rafiki/tier-check.ts`). |
+| `packages/opencode/src/cli/cmd/run.ts` | 107 | 13 | Exit codes and messages for gateway errors, a missing key and rejected permissions, the attach check, the cost line, the `--resume` alias and server file credentials, each a call into `src/rafiki/`; an answer on another tier is announced through `rafiki/served.ts`, and a run on Rafiki Max is checked against the key first (`rafiki/tier-check.ts`). A command that publishes code is refused unless the run allows it (`--allow-push`, `RAFIKICODE_ALLOW_PUSH`, a `publish` permission in config), `--auto` or not (`core/brand/publish.ts`). |
 | `packages/opencode/src/cli/cmd/run/variant.shared.ts` | 3 | 1 | The provider name is not repeated after a model name that starts with it (`Brand.provider.label`). |
 | `packages/opencode/src/cli/cmd/serve.ts` | 7 | 6 | The server password is made and stored by `rafiki/server-file.ts`; text names this product. |
 | `packages/opencode/src/cli/cmd/upgrade.ts` | 22 | 5 | The `update` alias, the method choices this product supports, and the refusals and clean up from `rafiki/update.ts` and `rafiki/autoupdate.ts`. |
@@ -113,25 +113,29 @@ On a conflict: Take upstream's side of the conflict, then put the call back at t
 | `packages/opencode/src/config/config.ts` | 46 | 40 | File names and the schema address come from the brand module; substitution limits, workspace trust, the provider scope and redacted secrets are calls into `brand/guard.ts`, `brand/trust.ts` and `brand/serve.ts`. |
 | `packages/opencode/src/config/tui.ts` | 9 | 5 | Substitution limits and plugin trust for the interface configuration (`brand/guard.ts`, `brand/trust.ts`). |
 | `packages/opencode/src/config/variable.ts` | 9 | 1 | The `restrict` option that `brand/guard.ts` uses to limit substitution in a project file. |
-| `packages/opencode/src/index.ts` | 61 | 10 | Registers this product's commands, installs the startup guard, applies a staged update, restarts from a usable temporary directory, reports an unexpected error through `rafiki/startup.ts`, runs the folder checks before anything else is loaded (`rafiki/folders-early.ts`), and moves a start in a folder that is not a project to the default workspace (`rafiki/workspace.ts`). |
+| `packages/opencode/src/index.ts` | 63 | 10 | Registers this product's commands, installs the startup guard, applies a staged update, restarts from a usable temporary directory, reports an unexpected error through `rafiki/startup.ts`, runs the folder checks before anything else is loaded (`rafiki/folders-early.ts`), and moves a start in a folder that is not a project to the default workspace (`rafiki/workspace.ts`). It also registers `rafikicode github` (`rafiki/github-setup.ts`). |
+| `packages/opencode/src/permission/index.ts` | 19 | 3 | A request for the "publish" permission (`core/brand/publish.ts`) is asked every time: wildcard and shell allows and earlier "always" answers do not apply to it, and only a rule named "publish" can deny it. |
 | `packages/opencode/src/provider/error.ts` | 15 | 2 | Gateway errors are classified by `rafiki/gateway-errors.ts`; a message names this product's sign in step. |
 | `packages/opencode/src/provider/provider.ts` | 4 | 1 | `BrandGuard.request` in front of every provider request keeps the key on the gateway (`test/rafiki/key-guard.test.ts`); the model priority list is extended from the brand module. |
 | `packages/opencode/src/provider/transform.ts` | 8 | 1 | The cache marker is set by tier (`rafiki/cache-prefix.ts`); the output limit of the gateway provider is the model's own. |
 | `packages/opencode/src/server/routes/instance/httpapi/public.ts` | 2 | 1 | The published OpenAPI document passes through `Brand.document`. |
 | `packages/opencode/src/server/routes/instance/httpapi/server.ts` | 8 | 4 | `BrandServe.listenerGuard` refuses requests from other origins. |
+| `packages/opencode/src/session/compaction.ts` | 21 | 41 | Pruning of old tool output follows the rule and the default of `rafiki/prune.ts` (on for Rafiki tiers, `RAFIKICODE_PRUNE`), and a replaced output is shown with its marker. |
 | `packages/opencode/src/session/instruction.ts` | 2 | 0 | The house style is appended to the instructions. |
 | `packages/opencode/src/session/llm/ai-sdk.ts` | 5 | 2 | The tier named by the gateway's answer and the cache writes in its raw usage block are read through `rafiki/served.ts`. |
 | `packages/opencode/src/session/llm/native-runtime.ts` | 3 | 0 | The native runtime is refused when it would send the key anywhere but the gateway (`BrandGuard.allowed`). |
 | `packages/opencode/src/session/llm/request.ts` | 7 | 2 | The system text is split into a stable and a changing part (`rafiki/cache-prefix.ts`); the user agent is this product's. |
+| `packages/opencode/src/session/message-v2.ts` | 2 | 1 | A replaced old tool output is sent as the marker of `rafiki/prune.ts`, which names the call and how to run it again. |
 | `packages/opencode/src/session/processor.ts` | 12 | 2 | Retries, error wording and resuming a cut stream go through `rafiki/resilience.ts` and `rafiki/resume.ts`; the tier that answered is recorded on the message through `rafiki/served.ts`. |
-| `packages/opencode/src/session/prompt.ts` | 11 | 7 | The order of the system text (`rafiki/cache-prefix.ts`), continuation messages (`rafiki/resume.ts`) and the error for an empty answer cut by the length limit (`rafiki/reasoning.ts`). |
+| `packages/opencode/src/session/prompt.ts` | 15 | 7 | The order of the system text (`rafiki/cache-prefix.ts`), continuation messages (`rafiki/resume.ts`) and the error for an empty answer cut by the length limit (`rafiki/reasoning.ts`). Old tool output is pruned before the first request of a turn (`rafiki/prune.ts`). |
 | `packages/opencode/src/session/retry.ts` | 6 | 2 | Which gateway errors are never retried and how long to wait (`rafiki/gateway-errors.ts`, `rafiki/resilience.ts`). |
 | `packages/opencode/src/session/revert.ts` | 2 | 0 | A cut turn is recovered before a revert (`rafiki/resume.ts`). |
 | `packages/opencode/src/session/system.ts` | 6 | 1 | System prompts pass through `Brand.prompt`; the date line leaves the environment block because `rafiki/cache-prefix.ts` places it after the stable part; the gateway provider's prompt starts with `Brand.identity`. |
 | `packages/opencode/src/tool/registry.ts` | 2 | 1 | Tool directories pass through `BrandTrust.codeDirs` (workspace trust). |
+| `packages/opencode/src/tool/shell.ts` | 4 | 0 | Before a command that publishes code, the tool asks the "publish" question built by `rafiki/publish-guard.ts`. |
 | `packages/tui/src/component/dialog-model.tsx` | 24 | 4 | Tiers that are not listed are hidden (`Brand.provider.listed`); each tier states its price in credits, and Rafiki Max is confirmed once per session and checked against the key (`component/tier-choice.tsx`). |
 | `packages/tui/src/config/keybind.ts` | 2 | 0 | The key that opens the History panel (`recent_open`, `<leader>o`, `feature-plugins/rafiki-history.tsx`). |
-| `packages/tui/src/feature-plugins/builtins.ts` | 4 | 0 | Registers the spend plugin (`feature-plugins/rafiki-cost.tsx`) and the History plugin (`feature-plugins/rafiki-history.tsx`). |
+| `packages/tui/src/feature-plugins/builtins.ts` | 6 | 0 | Registers the spend plugin (`feature-plugins/rafiki-cost.tsx`), the History plugin (`feature-plugins/rafiki-history.tsx`) and the GitHub setup (`feature-plugins/rafiki-github.tsx`). |
 | `packages/tui/src/routes/session/subagent-footer.tsx` | 6 | 14 | The context figure is what the last request sent (`core/brand/context.ts`); the amount from the model price table is not shown. |
 
 ### Source: product name, file names and wording
@@ -144,15 +148,15 @@ On a conflict: Take upstream's side, then replace the literal with the value fro
 | `packages/core/src/oauth/page.ts` | 11 | 26 | The sign in result page names this product and shows its name where upstream draws its wordmark. |
 | `packages/core/src/plugin/agent.ts` | 2 | 1 | The plan agent may edit plans under each project directory name in `Brand.project.dirs`. |
 | `packages/core/src/plugin/command/initialize.txt` | 3 | 3 | Prompt text names this product and its configuration file. |
+| `packages/core/src/v1/config/config.ts` | 1 | 1 | The `compaction.prune` description gives this product's default (on for Rafiki tiers). |
 | `packages/opencode/src/cli/cmd/agent.ts` | 2 | 1 | New agents are written under this product's project directory. |
 | `packages/opencode/src/cli/cmd/debug/index.ts` | 2 | 1 | The version line names this product. |
 | `packages/opencode/src/cli/cmd/mcp.ts` | 7 | 5 | Messages name this product; the configuration file candidates come from the brand module. |
 | `packages/opencode/src/cli/cmd/plug.ts` | 1 | 1 | A type is widened so that the configuration base name can be this product's. |
 | `packages/opencode/src/cli/cmd/pr.ts` | 7 | 6 | Messages and the command started name this product. |
 | `packages/opencode/src/cli/cmd/providers.ts` | 4 | 3 | Messages name this product and its configuration file. |
-| `packages/opencode/src/cli/cmd/run/footer.permission.tsx` | 3 | 2 | Product name in the prompt. |
+| `packages/opencode/src/cli/cmd/run/footer.permission.tsx` | 6 | 5 | Product name in the prompt. The "publish" question offers no "Allow always" option. |
 | `packages/opencode/src/cli/cmd/run/footer.prompt.tsx` | 2 | 1 | Product name in a command description. |
-| `packages/opencode/src/cli/cmd/run/permission.shared.ts` | 3 | 2 | Product name in the permission text. |
 | `packages/opencode/src/cli/cmd/run/splash.ts` | 3 | 2 | Product name and command in the banner. |
 | `packages/opencode/src/cli/network.ts` | 3 | 2 | The default mDNS domain uses the binary name. |
 | `packages/opencode/src/cli/ui.ts` | 2 | 6 | The wordmark comes from the brand module. |
@@ -179,7 +183,6 @@ On a conflict: Take upstream's side, then replace the literal with the value fro
 | `packages/tui/src/feature-plugins/home/tips-view.tsx` | 19 | 25 | Tips name this product's commands and paths; tips about upstream services are removed. |
 | `packages/tui/src/feature-plugins/sidebar/footer.tsx` | 4 | 3 | The footer names this product and its sign in command. |
 | `packages/tui/src/logo.ts` | 1 | 11 | The logo is exported from `brand/wordmark.ts`. |
-| `packages/tui/src/routes/session/permission.tsx` | 4 | 3 | Product name in the permission text. |
 | `packages/tui/src/theme/index.ts` | 2 | 1 | The default theme is registered under the name from the brand module. |
 | `packages/tui/src/util/error.ts` | 5 | 4 | Messages name this product's commands and configuration file. |
 | `packages/tui/src/util/presentation.ts` | 4 | 5 | The exit text uses the brand logo and command name. |
@@ -196,6 +199,7 @@ On a conflict: Merge by hand and read both sides. These are the files to thin ne
 | `packages/opencode/src/acp/service.ts` | 66 | 23 | Names and the sign in method of this product, trust warnings sent to the client, and the cancellation fix: a cancelled turn answers `cancelled`, and `usage` is omitted when there is no token accounting. The fix is not specific to this product. |
 | `packages/opencode/src/acp/session.ts` | 29 | 0 | The per turn cancellation flag used by the fix in `acp/service.ts`. |
 | `packages/opencode/src/acp/usage.ts` | 29 | 11 | Token accounting may be absent on a message; part of the fix in `acp/service.ts`. |
+| `packages/opencode/src/cli/cmd/run/permission.shared.ts` | 20 | 6 | Product name in the permission text. The "publish" question has its own text and no "Allow always" option. |
 | `packages/opencode/src/cli/cmd/tui.ts` | 69 | 10 | Events raised before the interface subscribes are buffered and replayed, the terminal is checked before the renderer loads, trust warnings become notices, and a refused listener stops the start. The buffering is not specific to this product. After the interface closes, a conversation or folder picked in the History panel is opened by starting the program again there (`rafiki/history.ts`). |
 | `packages/opencode/src/cli/error.ts` | 37 | 5 | Configuration errors end with three lines that say what to do, and messages name this product's commands. |
 | `packages/opencode/src/config/parse.ts` | 38 | 0 | `normalizeLoaded` and `issuesOf` live beside the decoder so that `doctor` validates a file the way a session does, without loading the configuration layer. |
@@ -204,6 +208,7 @@ On a conflict: Merge by hand and read both sides. These are the files to thin ne
 | `packages/opencode/src/snapshot/index.ts` | 33 | 4 | A snapshot is bounded (10,000 files, 10 seconds) and skipped in the home folder or a filesystem root (`rafiki/workspace.ts`), so the first model request never waits on a scan of an unbounded tree. Upstream stages one pathspec per file, which grows with the square of the count. |
 | `packages/tui/src/feature-plugins/sidebar/context.tsx` | 26 | 24 | The block describes the last request (`core/brand/context.ts`): tokens sent, the cached part, the share of the window of the tier that answered, tokens received; the amount from the model price table is removed, the spend block of `feature-plugins/rafiki-cost.tsx` reads it from the gateway. |
 | `packages/tui/src/routes/session/index.tsx` | 8 | 1 | The message footer names the tier asked for when the gateway answered on another one. |
+| `packages/tui/src/routes/session/permission.tsx` | 28 | 4 | Product name in the permission text. The "publish" question has its own text and no "Allow always" option. |
 
 ### Tests of upstream, adapted
 
@@ -239,6 +244,7 @@ On a conflict: Take upstream's side, then apply the expectation of this product 
 | `packages/opencode/test/server/httpapi-instance-route-auth.test.ts` | 2 | 2 | Default user name. |
 | `packages/opencode/test/session/instruction.test.ts` | 4 | 2 | The house style entry. |
 | `packages/opencode/test/session/llm-native-recorded.test.ts` | 1 | 0 | Providers that are disabled by default here are enabled for the test. |
+| `packages/opencode/test/session/message-v2.test.ts` | 5 | 1 | Expects the marker of `rafiki/prune.ts` for a replaced tool output. |
 | `packages/opencode/test/session/prompt.test.ts` | 1 | 0 | The test instance is given its configuration explicitly. |
 | `packages/opencode/test/skill/skill.test.ts` | 20 | 0 | The built in configuration skill is this product's. |
 | `packages/tui/test/app-lifecycle.test.tsx` | 2 | 2 | Command name and the credentials message. |
