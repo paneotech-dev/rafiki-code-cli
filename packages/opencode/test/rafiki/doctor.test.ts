@@ -120,7 +120,7 @@ describe("doctor checks", () => {
     expect(byName(report, "credential").detail).toContain(token.key_alias)
     expect(byName(report, "gateway").detail).toMatch(/answered in \d+ ms/)
     expect(byName(report, "key").detail).toBe(`key ${token.key_alias}, spent 0 USD of 2.5 USD budget, no expiry`)
-    expect(byName(report, "tiers").detail).toBe("rafiki-fast, rafiki-pro")
+    expect(byName(report, "tiers").detail).toBe("rafiki-fast, rafiki-pro, rafiki-max")
     expect(byName(report, "console").detail).toContain("account Jane jane@example.com")
     expect(byName(report, "console").detail).toContain("credits 12.4 USD available")
     expect(byName(report, "version").detail).toBe("rafikicode 1.2.3, latest channel, installed by the installer script, rafikicode update applies")
@@ -156,7 +156,7 @@ describe("doctor checks", () => {
     const report = await Doctor.run(options({ env: { RAFIKICODE_API_KEY: "sk-server-stub", CI: "1" } }))
     expect(byName(report, "credential")).toMatchObject({ status: "ok", detail: "RAFIKICODE_API_KEY from the environment" })
     expect(byName(report, "key")).toMatchObject({ status: "ok" })
-    expect(byName(report, "tiers")).toMatchObject({ status: "ok", detail: "rafiki-fast (not on this key: rafiki-pro)" })
+    expect(byName(report, "tiers")).toMatchObject({ status: "ok", detail: "rafiki-fast (not on this key: rafiki-pro, rafiki-max)" })
     // The mock Console does not know a key minted at the gateway, which the gateway
     // accepts: a warning that it is not registered, not a revoked key, and doctor passes.
     expect(byName(report, "console")).toMatchObject({ status: "warn" })
@@ -247,7 +247,7 @@ describe("doctor checks", () => {
     await fetch(gateway!.url + "/__test/spend", { method: "POST", body: JSON.stringify({ key_alias: token.key_alias, spend: 0.25 }) })
     const partial = await Doctor.run(options())
     expect(byName(partial, "key").detail).toBe(`key ${token.key_alias}, spent 0.25 USD of 1 USD budget, no expiry`)
-    expect(byName(partial, "tiers").detail).toBe("rafiki-fast, rafiki-pro")
+    expect(byName(partial, "tiers").detail).toBe("rafiki-fast, rafiki-pro (not on this key: rafiki-max)")
 
     const deleted = await fetch(gateway!.url + "/key/delete", {
       method: "POST",
@@ -262,14 +262,14 @@ describe("doctor checks", () => {
 
     const none = await Doctor.checkTiers(gateway!.url, "sk-none", { models: ["some-other-model"] }, console_!.url, fetch, 3000)
     expect(none).toMatchObject({ status: "fail" })
-    expect(none.detail).toContain("none of rafiki-fast, rafiki-pro is on this key")
+    expect(none.detail).toContain("none of rafiki-fast, rafiki-pro, rafiki-max is on this key")
     expect(none.fix).toContain(keysPage)
   })
 
   test("an empty model list on the key falls back to the gateway's model list", async () => {
     await start()
     const line = await Doctor.checkTiers(gateway!.url, "sk-any", { models: [] }, console_!.url, fetch, 3000)
-    expect(line).toMatchObject({ status: "ok", detail: "rafiki-fast, rafiki-pro" })
+    expect(line).toMatchObject({ status: "ok", detail: "rafiki-fast, rafiki-pro, rafiki-max" })
     expect(gateway!.requests.find((r: any) => r.path === "/v1/models")).toBeTruthy()
   })
 
@@ -454,7 +454,7 @@ describe("rafikicode doctor as a subprocess", () => {
     expect(good.exitCode).toBe(0)
     expect(good.all).toContain("All checks passed.")
     expect(good.all).toContain(`ok    key         key ${token.key_alias}, spent 0 USD of 2.5 USD budget`)
-    expect(good.all).toContain("ok    tiers       rafiki-fast, rafiki-pro\n")
+    expect(good.all).toContain("ok    tiers       rafiki-fast, rafiki-pro, rafiki-max\n")
     expect(good.all).toContain("ok    version     rafikicode ")
     expect(good.all).not.toContain(token.access_token)
     expect(good.all).not.toMatch(upstreamWord)
@@ -752,7 +752,7 @@ describe("key type", () => {
     })
     const report = await Doctor.run(options({ env: { RAFIKICODE_API_KEY: "sk-console-plain-stub" } }))
     expect(byName(report, "key")).toMatchObject({ status: "warn", fix: Doctor.NOT_CODE_KEY })
-    expect(byName(report, "tiers")).toMatchObject({ status: "ok", detail: "rafiki-fast, rafiki-pro" })
+    expect(byName(report, "tiers")).toMatchObject({ status: "ok", detail: "rafiki-fast, rafiki-pro (not on this key: rafiki-max)" })
     expect(report).toMatchObject({ ok: true, failed: 0, exitCode: 0 })
     expect(report.warned).toBeGreaterThanOrEqual(1)
     expect(JSON.stringify(report)).not.toContain("sk-console-plain-stub")

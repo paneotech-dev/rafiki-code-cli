@@ -102,7 +102,8 @@ export const MESSAGE: Record<string, string> = {
   [ERROR.serviceUnavailable]: "The service is not available.",
   [ERROR.keyBudgetExhausted]:
     "Your key has run out of budget. Top up or raise the key's budget at console.rafikiai.io/keys.",
-  [ERROR.tierNotAllowed]: "This key is not allowed to use the <tier> tier. Approve it at console.rafikiai.io/keys.",
+  [ERROR.tierNotAllowed]:
+    "This key is not allowed to use the <tier> tier. Run rafikicode login again and tick <Tier> on the approval page, or approve it at console.rafikiai.io/keys.",
   [ERROR.gatewayUnavailable]: "The model gateway is having trouble. Try again shortly.",
   [ERROR.requestTimeout]: "The request timed out.",
   [ERROR.rateLimited]: "Too many requests. Try again in <n> seconds.",

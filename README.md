@@ -108,12 +108,13 @@ The full walkthrough is in [docs/quickstart.md](./docs/quickstart.md), and commo
 
 All requests go through the Rafiki AI gateway under a tier name. The CLI never uses provider model names:
 
-| tier | use it for |
-|---|---|
-| `rafiki-fast` | everyday edits, fixes and questions (default) |
-| `rafiki-pro` | long agentic tasks and larger features; uses more credits per token |
+| tier | use it for | credits |
+|---|---|---|
+| `rafiki-fast` | everyday edits, fixes and questions (default) | 1x |
+| `rafiki-pro` | long agentic tasks and larger features | 4x |
+| `rafiki-max` | the hardest problems, on frontier models | 15x |
 
-Pick one with `--model rafiki/rafiki-pro`, from the model dialog in the terminal interface, or set `"model": "rafiki/rafiki-pro"` in your configuration. `rafikicode models rafiki` lists the Rafiki models.
+Pick one with `--model rafiki/rafiki-pro`, from the model dialog in the terminal interface (`/models`, each tier shows its credit rate), or set `"model": "rafiki/rafiki-pro"` in your configuration. `rafikicode models rafiki` lists the Rafiki models. The interface asks once before a session moves to `rafiki-max`, and never starts a new session on it by itself. A key approved without a tier cannot use it: run `rafikicode login` again and tick the tier on the approval page.
 
 ## Configuration
 

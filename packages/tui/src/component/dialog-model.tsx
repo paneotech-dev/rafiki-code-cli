@@ -9,11 +9,15 @@ import * as fuzzysort from "fuzzysort"
 import { useConnected } from "./use-connected"
 import { useSync } from "../context/sync"
 import { Brand } from "@opencode-ai/core/brand/brand"
+import * as Tier from "@opencode-ai/core/brand/tier"
+import { useRoute } from "../context/route"
+import { confirmChoice, sessionKey } from "./tier-choice"
 
 export function DialogModel(props: { providerID?: string }) {
   const local = useLocal()
   const sync = useSync()
   const dialog = useDialog()
+  const route = useRoute()
   const [query, setQuery] = createSignal("")
 
   const connected = useConnected()
@@ -45,7 +49,7 @@ export function DialogModel(props: { providerID?: string }) {
             description: provider.name,
             category,
             disabled: provider.id === "opencode" && model.id.includes("-nano"),
-            footer: model.cost?.input === 0 && provider.id === "opencode" ? "Free" : undefined,
+            footer: credits(provider.id, model.id) ?? (model.cost?.input === 0 && provider.id === "opencode" ? "Free" : undefined),
             onSelect: () => {
               onSelect(provider.id, model.id)
             },
@@ -84,7 +88,7 @@ export function DialogModel(props: { providerID?: string }) {
               : undefined,
             category: connected() ? provider.name : undefined,
             disabled: provider.id === "opencode" && model.includes("-nano"),
-            footer: info.cost?.input === 0 && provider.id === "opencode" ? "Free" : undefined,
+            footer: credits(provider.id, model) ?? (info.cost?.input === 0 && provider.id === "opencode" ? "Free" : undefined),
             onSelect() {
               onSelect(provider.id, model)
             },
@@ -144,7 +148,13 @@ export function DialogModel(props: { providerID?: string }) {
     return value.name
   })
 
-  function onSelect(providerID: string, modelID: string) {
+  async function onSelect(providerID: string, modelID: string) {
+    const current = local.model.current()
+    const same = current?.providerID === providerID && current.modelID === modelID
+    if (!same) {
+      const key = sessionKey(route.data.type === "session" ? route.data.sessionID : undefined)
+      if (!(await confirmChoice({ dialog, providerID, modelID, key }))) return
+    }
     local.model.set({ providerID, modelID }, { recent: true })
     const list = local.model.variant.list()
     const cur = local.model.variant.selected()
@@ -199,4 +209,9 @@ export function sortModelOptions<T extends { footer?: string; releaseDate: strin
     [(option) => option.releaseDate, "desc"],
     (option) => option.title,
   )
+}
+
+// "15x credits" beside a Rafiki tier: the price is stated where the tier is chosen.
+function credits(providerID: string, modelID: string) {
+  return providerID === Brand.provider.id ? Tier.credits(modelID) : undefined
 }

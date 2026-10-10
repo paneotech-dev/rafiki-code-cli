@@ -31,6 +31,7 @@ import * as RafikiMissingKey from "@/rafiki/missing-key"
 import * as RafikiAttach from "@/rafiki/attach"
 import * as RafikiCost from "@/rafiki/cost"
 import * as RafikiServed from "@/rafiki/served"
+import * as RafikiTierCheck from "@/rafiki/tier-check"
 import * as ServerFile from "@/rafiki/server-file"
 import { INTERACTIVE_INPUT_ERROR, resolveInteractiveStdin } from "./run/runtime.stdin"
 
@@ -334,6 +335,19 @@ export const RunCommand = effectCmd({
         } catch (error) {
           dieInteractive(error)
         }
+      }
+
+      // Rafiki Max asked for with --model: the gateway says whether the key
+      // may use it before anything is sent (rafiki/tier-check.ts).
+      if (!args.attach) {
+        const refusal = await RafikiTierCheck.refusal(args.model)
+        if (refusal) {
+          UI.error(refusal)
+          process.exitCode = RafikiTierCheck.exitCode
+          return
+        }
+        const note = RafikiTierCheck.note(args.model)
+        if (note && args.format !== "json") process.stderr.write(UI.Style.TEXT_DIM + note + UI.Style.TEXT_NORMAL + EOL)
       }
 
       const replay = args.replay === false ? false : args.replay || args["replay-limit"] !== undefined
