@@ -40,6 +40,7 @@ Flags that matter in automation, all listed by `rafikicode run --help`:
 |---|---|
 | `--format json` | emit raw JSON events instead of formatted text, one per line, for machines to parse |
 | `--auto` | approve tool permissions that ask (the shell in headless runs, reads of `.env` files, paths outside the workspace) unless they are explicitly denied; without it such a request is rejected and the task continues without it. Grant this only to jobs that run in a disposable checkout |
+| `--allow-push` | let this run publish code: `git push` in any form, `gh pr create`, `gh repo create`, `gh release`. Without it such a command is refused, `--auto` or not. See [Pushing code from a run](#pushing-code-from-a-run) |
 | `--model rafiki/rafiki-pro` | choose the tier for this run (default `rafiki/rafiki-fast`) |
 | `--dir PATH` | run in another directory |
 | `--title TEXT` | name the session for later `rafikicode session` and `rafikicode export` use |
@@ -89,6 +90,27 @@ To let a job run commands, say so from a place the repository does not control:
 | trust the workspace | `RAFIKICODE_TRUST_WORKSPACE=1` in the job, or `rafikicode trust` on a long lived machine; the repository's own permission settings then apply |
 
 An untrusted workspace also loads no project plugins, custom tools or provider packages, and in headless runs starts none of its local MCP servers, formatters or language servers. See [workspace trust](security/workspace-trust.md) for the full rules. The pull request review action needs none of these: it denies edits, shell commands and web fetches explicitly and reviews an untrusted checkout.
+
+## Pushing code from a run
+
+A command that publishes code is never run without a yes from you. This covers `git push` in every form (force pushes, `git -C dir push`, a push inside `&&` lists, `bash -c` strings, after `env`, `sudo` or `VAR=value` prefixes, and git aliases that expand to a push), `gh pr create`, `gh pr merge`, `gh repo create`, `gh release` commands that change a release, `gh gist create` and `gh api` calls that write. In the terminal interface it is asked every time, even when shell commands are allowed, and the question has no "Allow always".
+
+`rafikicode run` cannot ask, so it refuses such a command, with `--auto` too, and prints:
+
+```text
+! refused to publish code: git push (git push origin main)
+rafikicode run does not publish code unless the run allows it: rerun with --allow-push, set RAFIKICODE_ALLOW_PUSH=1, or put "permission": { "publish": "allow" } in the config of this CI job.
+```
+
+A job that is meant to push allows it in one of these ways:
+
+| way | example |
+|---|---|
+| the flag | `rafikicode run --allow-push "tag the release and push it"` |
+| the environment | `RAFIKICODE_ALLOW_PUSH=1` in the job |
+| your own config | `{"permission":{"publish":"allow"}}` in `~/.rafikicode/config.json`, or in `OPENCODE_PERMISSION` |
+
+A wildcard such as `"permission": "allow"` or `{"bash": "allow"}` does not allow pushes; only a `publish` entry does. A repository's own config cannot allow them unless you trust the workspace. `{"permission":{"publish":"deny"}}` refuses them everywhere without a question. The check reads the command line, so a script or program that pushes by itself is not seen: keep credentials that can push out of jobs that should not.
 
 ## Checking a machine with doctor
 

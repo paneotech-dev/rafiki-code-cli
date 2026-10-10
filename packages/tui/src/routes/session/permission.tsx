@@ -358,6 +358,25 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
               }
             }
 
+            if (permission === "publish") {
+              const meta = props.request.metadata ?? {}
+              const command = typeof meta.command === "string" ? meta.command : (props.request.patterns[0] ?? "")
+              const what = Array.isArray(meta.publish) ? meta.publish.filter((item) => typeof item === "string").join(", ") : ""
+              return {
+                icon: "↑",
+                title: what ? `Publish code: ${what}` : "Publish code",
+                body: (
+                  <box paddingLeft={1} gap={1}>
+                    <text fg={theme.text}>{"$ " + command}</text>
+                    <text fg={theme.textMuted}>
+                      This sends code to GitHub or another remote. It is asked every time and cannot be allowed for the
+                      rest of the session.
+                    </text>
+                  </box>
+                ),
+              }
+            }
+
             if (permission === "doom_loop") {
               return {
                 icon: "⟳",
@@ -403,7 +422,11 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
               title="Permission required"
               header={header()}
               body={current.body}
-              options={{ once: "Allow once", always: "Allow always", reject: "Reject" }}
+              options={
+                props.request.permission === "publish"
+                  ? { once: "Allow once", reject: "Reject" }
+                  : { once: "Allow once", always: "Allow always", reject: "Reject" }
+              }
               escapeKey="reject"
               fullscreen
               onSelect={(option) => {

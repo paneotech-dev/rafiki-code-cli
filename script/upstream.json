@@ -260,12 +260,12 @@
     {
       "path": "packages/opencode/src/cli/cmd/run.ts",
       "class": "hook",
-      "why": "Exit codes and messages for gateway errors, a missing key and rejected permissions, the attach check, the cost line, the `--resume` alias and server file credentials, each a call into `src/rafiki/`; an answer on another tier is announced through `rafiki/served.ts`, and a run on Rafiki Max is checked against the key first (`rafiki/tier-check.ts`)."
+      "why": "Exit codes and messages for gateway errors, a missing key and rejected permissions, the attach check, the cost line, the `--resume` alias and server file credentials, each a call into `src/rafiki/`; an answer on another tier is announced through `rafiki/served.ts`, and a run on Rafiki Max is checked against the key first (`rafiki/tier-check.ts`). A command that publishes code is refused unless the run allows it (`--allow-push`, `RAFIKICODE_ALLOW_PUSH`, a `publish` permission in config), `--auto` or not (`core/brand/publish.ts`)."
     },
     {
       "path": "packages/opencode/src/cli/cmd/run/footer.permission.tsx",
       "class": "text",
-      "why": "Product name in the prompt."
+      "why": "Product name in the prompt. The \"publish\" question offers no \"Allow always\" option."
     },
     {
       "path": "packages/opencode/src/cli/cmd/run/footer.prompt.tsx",
@@ -274,8 +274,8 @@
     },
     {
       "path": "packages/opencode/src/cli/cmd/run/permission.shared.ts",
-      "class": "text",
-      "why": "Product name in the permission text."
+      "class": "logic",
+      "why": "Product name in the permission text. The \"publish\" question has its own text and no \"Allow always\" option."
     },
     {
       "path": "packages/opencode/src/cli/cmd/run/splash.ts",
@@ -388,6 +388,11 @@
       "why": "Client name and address given to an MCP server."
     },
     {
+      "path": "packages/opencode/src/permission/index.ts",
+      "class": "hook",
+      "why": "A request for the \"publish\" permission (`core/brand/publish.ts`) is asked every time: wildcard and shell allows and earlier \"always\" answers do not apply to it, and only a rule named \"publish\" can deny it."
+    },
+    {
       "path": "packages/opencode/src/plugin/install.ts",
       "class": "text",
       "why": "The plugin entry is written to this product's configuration file, project or global."
@@ -491,6 +496,11 @@
       "path": "packages/opencode/src/tool/registry.ts",
       "class": "hook",
       "why": "Tool directories pass through `BrandTrust.codeDirs` (workspace trust)."
+    },
+    {
+      "path": "packages/opencode/src/tool/shell.ts",
+      "class": "hook",
+      "why": "Before a command that publishes code, the tool asks the \"publish\" question built by `rafiki/publish-guard.ts`."
     },
     {
       "path": "packages/opencode/test/acp/error.test.ts",
@@ -734,8 +744,8 @@
     },
     {
       "path": "packages/tui/src/routes/session/permission.tsx",
-      "class": "text",
-      "why": "Product name in the permission text."
+      "class": "logic",
+      "why": "Product name in the permission text. The \"publish\" question has its own text and no \"Allow always\" option."
     },
     {
       "path": "packages/tui/src/routes/session/subagent-footer.tsx",
