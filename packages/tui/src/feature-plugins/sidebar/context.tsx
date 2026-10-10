@@ -6,28 +6,19 @@ import * as ContextUsage from "@opencode-ai/core/brand/context"
 
 const id = "internal:sidebar-context"
 
-const money = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-})
-
+// The last request of the session as the gateway reported it: what it sent,
+// how much of that was read from the cache, the share of the window of the
+// tier that answered, and what came back. Spend is in the Spend block below
+// (rafiki-cost.tsx), read from the gateway.
 function View(props: { api: TuiPluginApi; session_id: string }) {
   const theme = () => props.api.theme.current
   const msg = createMemo(() => props.api.state.session.messages(props.session_id))
-  const session = createMemo(() => props.api.state.session.get(props.session_id))
-  const cost = createMemo(() => session()?.cost ?? 0)
 
   const state = createMemo(() => {
     const last = msg().findLast((item): item is AssistantMessage => item.role === "assistant" && item.tokens.output > 0)
-    if (!last) return ContextUsage.usage(undefined, undefined)
+    if (!last) return undefined
     const model = props.api.state.provider.find((item) => item.id === last.providerID)?.models[last.modelID]
-    return ContextUsage.usage(last.tokens, model?.limit.context)
-  })
-
-  // "2% of 1M used": the window is named, so the share can be checked.
-  const used = createMemo(() => {
-    const value = state()
-    return `${value.percent ?? "0%"}${value.window ? ` of ${ContextUsage.windowText(value.window)}` : ""} used`
+    return { usage: ContextUsage.usage(last.tokens, model?.limit.context), name: model?.name ?? last.modelID }
   })
 
   return (
@@ -35,14 +26,23 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
       <text fg={theme().text}>
         <b>Context</b>
       </text>
-      <text fg={theme().textMuted}>{state().tokens.toLocaleString()} tokens</text>
-      <Show when={state().cached > 0}>
-        <text fg={theme().textMuted}>{state().cached.toLocaleString()} cached</text>
-      </Show>
-      <text fg={theme().textMuted}>{used()}</text>
-      {/* The Rafiki tiers carry no price here, so this would always read $0.00; the cost block below it has the estimate. */}
-      <Show when={cost() > 0}>
-        <text fg={theme().textMuted}>{money.format(cost())} spent</text>
+      <Show when={state()} fallback={<text fg={theme().textMuted}>no request yet</text>}>
+        {(value) => (
+          <>
+            <text fg={theme().textMuted}>Last request sent {value().usage.sent.toLocaleString("en-US")} tokens</text>
+            <Show when={value().usage.cached > 0}>
+              <text fg={theme().textMuted}>{value().usage.cached.toLocaleString("en-US")} of them cached</text>
+            </Show>
+            <Show when={value().usage.window}>
+              {(window) => (
+                <text fg={theme().textMuted}>
+                  {value().usage.percent} of the {ContextUsage.windowText(window())} window of {value().name}
+                </text>
+              )}
+            </Show>
+            <text fg={theme().textMuted}>{value().usage.received.toLocaleString("en-US")} tokens received</text>
+          </>
+        )}
       </Show>
     </box>
   )

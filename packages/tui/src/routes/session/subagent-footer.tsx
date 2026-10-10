@@ -37,18 +37,12 @@ export function SubagentFooter() {
     if (!last) return
 
     const model = sync.data.provider.find((item) => item.id === last.providerID)?.models[last.modelID]
-    const { tokens, percent: pct } = ContextUsage.usage(last.tokens, model?.limit.context)
-    if (tokens <= 0) return
-    const cost = session()?.cost ?? 0
-
-    const money = new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-    })
+    // What the last request sent, and its share of the window of the tier that answered.
+    const { sent, percent: pct } = ContextUsage.usage(last.tokens, model?.limit.context)
+    if (sent <= 0) return
 
     return {
-      context: pct ? `${Locale.number(tokens)} (${pct})` : Locale.number(tokens),
-      cost: cost > 0 ? money.format(cost) : undefined,
+      context: pct ? `${Locale.number(sent)} sent (${pct})` : `${Locale.number(sent)} sent`,
     }
   })
 
@@ -86,7 +80,7 @@ export function SubagentFooter() {
             <Show when={usage()}>
               {(item) => (
                 <text fg={theme.textMuted} wrapMode="none">
-                  {[item().context, item().cost].filter(Boolean).join(" · ")}
+                  {item().context}
                 </text>
               )}
             </Show>

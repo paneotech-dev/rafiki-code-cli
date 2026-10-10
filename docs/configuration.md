@@ -115,18 +115,20 @@ In the terminal interface, press `ctrl+t` to cycle the model's variants until `n
 
 ## Context and tokens in the terminal interface
 
-The sidebar's `Context` block and the prompt row show how much of the model's context window the conversation takes after the last answer:
+The sidebar's `Context` block and the prompt row describe the last request of the session, as the gateway reported it:
 
 ```text
 Context
-24,942 tokens
-20,480 cached
-2% of 1M used
+Last request sent 24,530 tokens
+20,480 of them cached
+2% of the 1M window of Rafiki Fast
+412 tokens received
 ```
 
-- The token figure is everything sent with the last request plus the answer: input, cached input, cache writes, output and reasoning, each counted once.
-- `cached` is the part of that input the provider read from its cache, which costs less. It is inside the token figure, not added to it.
-- The percentage is of the window of the tier that answered. `rafiki-fast`, `rafiki-pro` and `rafiki-max` each have a window of 1,000,000 tokens (the documented windows of the models behind them, checked on 4 October 2026). A share under one per cent reads `<1%`.
+- The tokens sent are everything the last request carried: plain input, input read from the cache and input written to the cache, each counted once. Nothing is added up over the session.
+- `cached` is the part of that input the provider read from its cache, which costs less. It is inside the tokens sent, not added to them.
+- The tokens received are the answer to that request: output and reasoning.
+- The percentage is the tokens sent over the window of the tier that answered. `rafiki-fast`, `rafiki-pro` and `rafiki-max` each have a window of 1,000,000 tokens (the documented windows of the models behind them, checked on 4 October 2026). A share under one per cent reads `<1%`.
 - A long session is compacted (summarised, so the next requests send less) only near the end of the window of its tier: at the window less the output a request may ask for, about 936,000 tokens on `rafiki-fast` and 968,000 on `rafiki-pro` and `rafiki-max`. Each turn sends the whole conversation, so the cost of a turn grows with the session; start a new session (or run `/compact`) to keep long work cheaper.
 
 When asked who it is, the agent answers that it is Rafiki Code by PANEOTECH, and names the tier it runs on rather than guessing the model behind it.

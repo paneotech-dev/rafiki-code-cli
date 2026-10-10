@@ -149,7 +149,7 @@ Put an `AGENTS.md` at the root of your repository (or in any subdirectory) and `
 
 - [Quick start](./docs/quickstart.md): install, sign in, first task, tiers.
 - [Configuration](./docs/configuration.md): files, settings, environment variables.
-- [What a task costs](./docs/cost.md): the status line, the line after a task, `rafikicode usage`, estimates and charged amounts.
+- [What a task costs](./docs/cost.md): the context and spend figures, where each comes from, the line after a task, `rafikicode usage`.
 - [Headless and CI](./docs/headless-and-ci.md): API keys, non-interactive runs, `rafikicode doctor`, exit codes, credits running out, pipeline examples.
 - [Pull request review](./docs/review-recipe.md): review a diff from the terminal, or every pull request with the bundled GitHub Action.
 - [GitHub Action recipe](./docs/github-action.md): one workflow file that reviews every pull request and posts a comment.

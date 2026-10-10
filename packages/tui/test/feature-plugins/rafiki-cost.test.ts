@@ -1,19 +1,20 @@
-// The cost plugin's tracker: which model calls belong to the task on screen
-// (its own, and those of subagent sessions seen on the event stream or found
-// when the session is opened), the one reading of balance and price list per
-// task, and the status line built from them.
-import { describe, expect, test } from "bun:test"
-import * as Cost from "@opencode-ai/core/brand/cost"
+// The spend plugin's tracker: readings of the key from the gateway after each
+// completed answer (debounced, never per chunk), the start of each session,
+// stale figures after a failed reading, and the lines built from them. One
+// test reads a mock gateway over HTTP and checks the figures shown are the
+// ones it reported.
+import { afterEach, describe, expect, test } from "bun:test"
+import * as Account from "@opencode-ai/core/brand/account"
+import * as Meter from "@opencode-ai/core/brand/meter"
 import type { TuiPluginApi } from "@opencode-ai/plugin/tui"
 import { createBuiltinPlugins } from "../../src/feature-plugins/builtins"
-import { createCostTracker, room } from "../../src/feature-plugins/rafiki-cost"
+import { createMeterTracker, room, statusLine, view } from "../../src/feature-plugins/rafiki-cost"
 import { createTuiPluginApi } from "../fixture/tui-plugin"
+import { createMockGateway } from "../../../opencode/test/brand/mock-gateway.mjs"
 
-const prices: Cost.Prices = { fast: { input: 1, output: 2, cacheRead: 0.1 }, pro: { input: 4, output: 8, cacheRead: 1 } }
 const tokens = (input: number, output: number, read = 0) => ({ input, output, reasoning: 0, cache: { read, write: 0 } })
-
 let clock = 0
-const assistant = (id: string, parentID: string, modelID: string, t = tokens(1_000_000, 100_000)) => ({
+const assistant = (id: string, parentID: string, modelID: string, t = tokens(1_000, 100)) => ({
   id,
   sessionID: "ses_root",
   role: "assistant" as const,
@@ -21,33 +22,41 @@ const assistant = (id: string, parentID: string, modelID: string, t = tokens(1_0
   modelID,
   providerID: "rafiki",
   tokens: t,
-  time: { created: ++clock },
+  time: { created: ++clock, completed: clock },
 })
 
-function harness(options: { children?: Record<string, { id: string }[]>; childMessages?: Record<string, unknown[]> } = {}) {
+const trackers: { dispose(): void }[] = []
+afterEach(() => {
+  for (const tracker of trackers.splice(0)) tracker.dispose()
+})
+
+function harness(input: { replies: (Account.KeyInfoResult | Error)[]; balance?: number; now?: () => number }) {
   const handlers = new Map<string, (event: any) => void>()
   const messages: unknown[] = []
-  let snapshots = 0
+  let reads = 0
   const api = createTuiPluginApi({
     event: { on: (type: string, handler: (event: any) => void) => (handlers.set(type, handler), () => {}) } as TuiPluginApi["event"],
     state: { session: { messages: () => messages as never } },
-    client: {
-      session: {
-        children: async ({ sessionID }: { sessionID: string }) => ({ data: options.children?.[sessionID] ?? [] }),
-        messages: async ({ sessionID }: { sessionID: string }) => ({ data: (options.childMessages?.[sessionID] ?? []).map((info) => ({ info, parts: [] })) }),
-      },
-    } as never,
   })
-  const tracker = createCostTracker(api, {
-    snapshot: async () => {
-      snapshots++
-      return { balance: 12.4, prices, at: 1 }
+  const tracker = createMeterTracker(api, {
+    read: async () => {
+      const reply = input.replies[Math.min(reads++, input.replies.length - 1)]!
+      if (reply instanceof Error) throw reply
+      return reply
     },
+    balance: async () => input.balance,
+    now: input.now,
+    debounceMs: 5,
+    followUpMs: 40,
   })
-  return { tracker, messages, emit: (type: string, properties: unknown) => handlers.get(type)?.({ type, properties }), snapshots: () => snapshots }
+  trackers.push(tracker)
+  return { tracker, messages, reads: () => reads, emit: (type: string, properties: unknown) => handlers.get(type)?.({ type, properties }) }
 }
 
-describe("the cost plugin", () => {
+const info = (spend: number, maxBudget: number | null = 25): Account.KeyInfoResult => ({ ok: true, info: { spend, maxBudget, models: [] }, at: 0 })
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+describe("the spend plugin", () => {
   test("is one of the built in plugins", () => {
     expect(createBuiltinPlugins({ experimentalEventSystem: false }).map((plugin) => plugin.id)).toContain("internal:rafiki-cost")
   })
@@ -59,114 +68,117 @@ describe("the cost plugin", () => {
     expect(room(80)).toBe(32)
   })
 
-  test("before the readings arrive it shows the tier and tokens, no amount", () => {
-    const { tracker, messages } = harness()
+  test("before any reading it shows the tier and says spend is not read, no amount", () => {
+    const { tracker, messages } = harness({ replies: [info(1)] })
     messages.push(assistant("a1", "u1", "rafiki-fast"))
-    expect(Cost.statusLine(tracker.display("ses_root", "rafiki-fast"))).toBe("fast · cost unknown (1,100,000 tokens)")
+    expect(statusLine(view(tracker, "ses_root", "rafiki-fast"))).toBe("fast · spend not read yet")
   })
 
-  test("reads balance and price list once per task and follows the spend from the answers", async () => {
-    const { tracker, messages, snapshots } = harness()
+  test("this session is the key's spend less its spend when the session opened, read again after an answer", async () => {
+    const { tracker, messages, emit, reads } = harness({ replies: [info(1.2), info(1.2125)], balance: 12.4 })
     messages.push(assistant("a1", "u1", "rafiki-fast"))
     await tracker.open("ses_root")
-    await tracker.open("ses_root")
-    expect(snapshots()).toBe(1)
-    // 1.2 USD had been spent when the balance was read: nothing is taken off it yet.
-    expect(Cost.statusLine(tracker.display("ses_root", "rafiki-fast"))).toBe(
-      "fast · about 1.20 USD spent (estimate) · about 12.40 USD of credits left",
-    )
-    messages.push(assistant("a2", "u2", "rafiki-fast"))
-    expect(Cost.statusLine(tracker.display("ses_root", "rafiki-fast"))).toBe(
-      "fast · about 2.40 USD spent (estimate) · about 11.20 USD of credits left",
-    )
-    expect(snapshots()).toBe(1)
-  })
-
-  test("selecting another tier shows the new tier and its estimate before the turn is sent", async () => {
-    const { tracker, messages } = harness()
-    messages.push(assistant("a1", "u1", "rafiki-fast"))
-    await tracker.open("ses_root")
-    const view = tracker.display("ses_root", "rafiki-pro")
-    expect(view.next).toEqual({ tier: "pro", estimate: 4.8 })
-    expect(Cost.statusLine(view)).toStartWith("next turn on pro: about 4.80 USD (estimate) · fast · ")
-    expect(Cost.taskLine(view)).toStartWith("Task cost: tier fast · about 1.20 USD (estimate)")
-  })
-
-  test("calls of a subagent session count toward the task, from the event stream", async () => {
-    const { tracker, messages, emit } = harness()
-    messages.push(assistant("a1", "u1", "rafiki-fast"))
-    await tracker.open("ses_root")
-    emit("session.created", { sessionID: "ses_child", info: { id: "ses_child", parentID: "ses_root" } })
-    emit("message.updated", { sessionID: "ses_child", info: { ...assistant("c1", "cu1", "rafiki-fast", tokens(500_000, 0)), sessionID: "ses_child" } })
-    // The same message again with its final usage: counted once.
-    emit("message.updated", { sessionID: "ses_child", info: { ...assistant("c1", "cu1", "rafiki-fast", tokens(1_000_000, 0)), sessionID: "ses_child" } })
-    // A session that is not under this task is ignored.
-    emit("message.updated", { sessionID: "ses_other", info: { ...assistant("o1", "ou1", "rafiki-pro"), sessionID: "ses_other" } })
-    const view = tracker.display("ses_root", "rafiki-fast")
-    expect(view.summary.spent).toBeCloseTo(2.2, 10)
-    expect(view.summary.path).toEqual(["fast"])
-    expect(view.left).toBeCloseTo(11.4, 10)
-  })
-
-  test("subagent sessions that already exist are found when the session is opened", async () => {
-    const { tracker, messages } = harness({
-      children: { ses_root: [{ id: "ses_child" }], ses_child: [{ id: "ses_grandchild" }] },
-      childMessages: {
-        ses_child: [assistant("c1", "cu1", "rafiki-fast", tokens(1_000_000, 0))],
-        ses_grandchild: [assistant("g1", "gu1", "rafiki-pro", tokens(1_000_000, 0))],
-      },
-    })
-    messages.push(assistant("a1", "u1", "rafiki-fast"))
-    await tracker.open("ses_root")
-    const view = tracker.display("ses_root", "rafiki-fast")
-    // 1.2 own, 1 on fast and 4 on pro in the subagents.
-    expect(view.summary.spent).toBeCloseTo(6.2, 10)
-    // All of it was spent before the balance was read.
-    expect(view.left).toBeCloseTo(12.4, 10)
-  })
-
-  test("when a turn ends the subagent sessions are listed again, so a call the stream missed is counted", async () => {
-    const children: Record<string, { id: string }[]> = {}
-    const childMessages: Record<string, unknown[]> = {}
-    const { tracker, messages, emit } = harness({ children, childMessages })
-    messages.push(assistant("a1", "u1", "rafiki-fast"))
-    await tracker.open("ses_root")
-    children.ses_root = [{ id: "ses_child" }]
-    childMessages.ses_child = [assistant("c1", "cu1", "rafiki-fast", tokens(1_000_000, 0))]
-    emit("session.status", { sessionID: "ses_root", status: { type: "busy" } })
-    expect(tracker.display("ses_root").summary.spent).toBeCloseTo(1.2, 10)
+    expect(Meter.sessionSpend(tracker.state("ses_root"))).toBe(0)
+    // Streamed chunks do not read; a completed answer does, once, after the debounce.
+    emit("message.part.updated", {})
+    emit("message.updated", { sessionID: "ses_root", info: { role: "assistant", time: { created: 1 } } })
+    expect(reads()).toBe(1)
+    emit("message.updated", { sessionID: "ses_root", info: { role: "assistant", time: { created: 1, completed: 2 } } })
     emit("session.status", { sessionID: "ses_root", status: { type: "idle" } })
-    await new Promise((resolve) => setTimeout(resolve, 10))
-    expect(tracker.display("ses_root").summary.spent).toBeCloseTo(2.2, 10)
+    await wait(25)
+    expect(reads()).toBe(2)
+    const value = view(tracker, "ses_root", "rafiki-fast")
+    expect(statusLine(value)).toBe("fast · 0.0125 USD this session · key budget 4% used")
+    expect(Meter.lines(value.state)).toEqual([
+      { label: "This session", value: "0.0125 USD" },
+      { label: "Key", value: "1.21 of 25.00 USD (4%)" },
+      { label: "Credits left", value: "12.40 USD" },
+    ])
+    // The follow up reading for a request the gateway counts late.
+    await wait(40)
+    expect(reads()).toBe(3)
   })
 
-  test("a call that ended without usage is named on the line, in the middle of a task and at its end", async () => {
-    const { tracker, messages } = harness()
-    const cut = (id: string, parentID: string) => ({ ...assistant(id, parentID, "rafiki-fast", tokens(0, 0)), time: { created: ++clock, completed: ++clock } })
-    messages.push(assistant("a1", "u1", "rafiki-fast"), cut("a2", "u2"), assistant("a3", "u2", "rafiki-fast"))
-    await tracker.open("ses_root")
-    expect(Cost.statusLine(tracker.display("ses_root", "rafiki-fast"))).toBe(
-      "fast · about 2.40 USD spent (estimate, 1 call reported no usage and is not included) · at most about 12.40 USD of credits left",
-    )
-    messages.push(cut("a4", "u3"))
-    const view = tracker.display("ses_root", "rafiki-fast")
-    expect(view.summary.unreported).toBe(2)
-    expect(Cost.taskLine(view)).toBe(
-      "Task cost: tiers fast, fast, fast · about 2.40 USD (estimate) · 2 calls reported no usage and are not included · caching saved nothing · at most about 12.40 USD of credits left",
-    )
-    // A call still running is not one of them.
-    messages.push(assistant("a5", "u4", "rafiki-fast", tokens(0, 0)))
-    expect(tracker.display("ses_root", "rafiki-fast").summary.unreported).toBe(2)
+  test("a session created after the interface started counts from the reading before it was created", async () => {
+    let time = 100
+    const { tracker } = harness({ replies: [info(2), info(2.5)], now: () => time })
+    await tracker.refresh()
+    time = 200
+    // Created at 150: the first request was already charged when the session came on screen.
+    await tracker.open("ses_root", 150)
+    expect(Meter.sessionSpend(tracker.state("ses_root"))).toBe(0.5)
   })
 
-  test("a failed reading leaves the line without amounts instead of failing", async () => {
-    const api = createTuiPluginApi({
-      event: { on: () => () => {} } as TuiPluginApi["event"],
-      state: { session: { messages: () => [assistant("a1", "u1", "rafiki-fast")] as never } },
-      client: { session: { children: async () => Promise.reject(new Error("down")), messages: async () => ({ data: [] }) } } as never,
-    })
-    const tracker = createCostTracker(api, { snapshot: async () => Promise.reject(new Error("down")) })
+  test("a failed reading keeps the last figures and marks them stale", async () => {
+    const { tracker, messages } = harness({ replies: [info(1), info(1.5), new Error("down")] })
+    messages.push(assistant("a1", "u1", "rafiki-fast"))
     await tracker.open("ses_root")
-    expect(Cost.statusLine(tracker.display("ses_root"))).toBe("fast · cost unknown (1,100,000 tokens)")
+    await tracker.refresh()
+    await tracker.refresh()
+    const state = tracker.state("ses_root")
+    expect(state.stale).toBe(true)
+    expect(Meter.sessionSpend(state)).toBe(0.5)
+    expect(statusLine(view(tracker, "ses_root", "rafiki-fast"))).toBe("fast · 0.5000 USD this session (stale) · key budget 6% used")
+    expect(Meter.freshness(state)).toStartWith("not updated since ")
+  })
+
+  test("a gateway that never answered shows no amount at all", async () => {
+    const { tracker, messages } = harness({ replies: [{ ok: false, at: 0 }] })
+    messages.push(assistant("a1", "u1", "rafiki-fast"))
+    await tracker.open("ses_root")
+    expect(statusLine(view(tracker, "ses_root", "rafiki-fast"))).toBe("fast · spend not available")
+    expect(Meter.lines(tracker.state("ses_root"))).toEqual([])
+  })
+
+  test("picking another tier names it with its credit rate, no estimate", async () => {
+    const { tracker, messages } = harness({ replies: [info(1)] })
+    messages.push(assistant("a1", "u1", "rafiki-fast"))
+    await tracker.open("ses_root")
+    expect(view(tracker, "ses_root", "rafiki-max").next).toBe("next turn on max (15x credits)")
+    expect(view(tracker, "ses_root", "rafiki-fast").next).toBeUndefined()
+  })
+})
+
+describe("against the mock gateway", () => {
+  test("the figures shown are the ones the gateway reported for the key", async () => {
+    const gateway = createMockGateway({ quiet: true, cost: 0.0025 })
+    await gateway.ready
+    try {
+      await fetch(gateway.url + "/__test/register", {
+        method: "POST",
+        body: JSON.stringify({ key: "sk-meter-0001", key_alias: "rafikicode-meter", models: ["rafiki-fast"], max_budget: 2.5 }),
+      })
+      const source = { key: "sk-meter-0001", gatewayURL: gateway.url + "/v1" }
+      const handlers = new Map<string, (event: any) => void>()
+      const api = createTuiPluginApi({
+        event: { on: (type: string, handler: (event: any) => void) => (handlers.set(type, handler), () => {}) } as TuiPluginApi["event"],
+        state: { session: { messages: () => [assistant("a1", "u1", "rafiki-fast")] as never } },
+      })
+      const tracker = createMeterTracker(api, { read: () => Account.keyInfo({ source }), balance: async () => undefined, debounceMs: 5, followUpMs: 10_000 })
+      trackers.push(tracker)
+      await tracker.open("ses_root")
+      for (let i = 0; i < 3; i++) {
+        const response = await fetch(gateway.url + "/v1/chat/completions", {
+          method: "POST",
+          headers: { authorization: "Bearer sk-meter-0001" },
+          body: JSON.stringify({ model: "rafiki-fast", messages: [{ role: "user", content: "hi" }] }),
+        })
+        expect(response.status).toBe(200)
+      }
+      handlers.get("session.status")?.({ properties: { sessionID: "ses_root", status: { type: "idle" } } })
+      await wait(100)
+      const reported = (await (await fetch(gateway.url + "/__test/keys")).json())[0]
+      const state = tracker.state("ses_root")
+      expect(state.last?.spend).toBe(reported.spend)
+      expect(state.last?.maxBudget).toBe(reported.max_budget)
+      expect(Meter.sessionSpend(state)).toBe(0.0075)
+      expect(statusLine(view(tracker, "ses_root", "rafiki-fast"))).toBe("fast · 0.0075 USD this session · key budget <1% used")
+      expect(Meter.lines(state)).toEqual([
+        { label: "This session", value: "0.0075 USD" },
+        { label: "Key", value: "0.0075 of 2.50 USD (<1%)" },
+      ])
+    } finally {
+      await gateway.close()
+    }
   })
 })

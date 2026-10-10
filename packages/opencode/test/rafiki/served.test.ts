@@ -131,7 +131,8 @@ describe("from a gateway answer to the recorded figures", () => {
     })
     expect(result.modelID).toBe("rafiki-fast")
     expect(result.tokens).toMatchObject({ input: 4_050, output: 232, reasoning: 180, cache: { read: 20_480, write: 0 } })
-    expect(ContextUsage.usage(result.tokens, 1_000_000)).toEqual({ tokens: 24_942, cached: 20_480, window: 1_000_000, percent: "2%" })
+    // What the request sent is the gateway's prompt_tokens; what came back is its completion_tokens.
+    expect(ContextUsage.usage(result.tokens, 1_000_000)).toEqual({ sent: 24_530, cached: 20_480, written: 0, received: 412, window: 1_000_000, percent: "2%" })
   })
 
   test("rafiki-max: cache writes leave plain input once and are recorded as writes", async () => {
@@ -144,7 +145,7 @@ describe("from a gateway answer to the recorded figures", () => {
       cache_creation_input_tokens: 8_000,
     })
     expect(result.tokens).toMatchObject({ input: 3_234, output: 900, cache: { read: 50_000, write: 8_000 } })
-    expect(ContextUsage.usage(result.tokens, 1_000_000).tokens).toBe(62_134)
+    expect(ContextUsage.usage(result.tokens, 1_000_000)).toMatchObject({ sent: 61_234, written: 8_000, received: 900 })
   })
 
   test("a fallback from fast to pro is recorded on pro", async () => {

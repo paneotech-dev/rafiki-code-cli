@@ -183,7 +183,13 @@ rafikicode run -m rafiki/rafiki-pro "Reply with the single word ok and do nothin
 
 The output starts with `> build · rafiki-pro`. To make a tier your default, add `"model": "rafiki/rafiki-pro"` to `~/.rafikicode/config.json`.
 
-While a task runs the prompt row shows the tier, the estimated spend so far and the credits left, and picking another tier shows an estimate for the next turn before you send it. See [What a task costs](./cost.md).
+While a task runs the prompt row shows the tier, what your key has spent in this session and the share of the key's budget used, all read from the gateway, and the sidebar adds the credits left in your account and what the last request sent. See [What a task costs](./cost.md).
+
+## Pick up where you left off
+
+In the terminal interface the sidebar has a `History` section: your latest conversations in every folder (title, folder, tier and when you last worked on it) and the folders you worked in, newest first. Click one, or press `ctrl+x o` for the full list and pick one with the arrow keys and Enter (type to search). A conversation of the folder you are in opens at once; one of another folder, or a folder, starts the interface again there, with the conversation open or a new session. Click `History` to fold the section. From a shell, `rafikicode --resume` reopens the last session and `rafikicode <folder> --session <id>` a given one.
+
+Projects made in the builder at code.rafikiai.io are not listed: the builder has no way yet for a Rafiki Code key to list them.
 
 ## 5. Tell it about your project
 

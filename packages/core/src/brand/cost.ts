@@ -1,18 +1,7 @@
-// What a task costs, as far as this client can tell: token counts the gateway
-// reported, priced with the gateway's own price list. Pure functions, no I/O.
-//
-// Two kinds of figure, kept apart on purpose:
-//   measured   token counts (the usage block of each gateway answer) and the
-//              balance read from the account when the task started
-//   estimates  every USD amount derived from tokens and the price list. The
-//              account is charged by the gateway from its own figures, later,
-//              and that charge can differ (another tier answered after a
-//              failure, cache writes reported as plain input, rounding).
-// Every text built here says "about" and "estimate" for the second kind and
-// never prints a zero as if it were a charge.
-//
-// Unit: USD, the unit the Rafiki AI account keeps its credits in and the one
-// rafikicode whoami prints. No other unit is introduced here.
+// What a task did, as the gateway reported it: the tier of each turn and the
+// token counts of each request. Pure functions, no I/O. Amounts of money are
+// not worked out here: they come from the gateway's own count of what the key
+// has spent (meter.ts), never from a price list.
 
 export const TIERS = ["fast", "pro", "max"] as const
 export type Tier = (typeof TIERS)[number]
@@ -31,17 +20,6 @@ export interface Tokens {
   cache: { read: number; write: number }
 }
 
-// USD per million tokens. A missing cache price means the gateway lists none:
-// those tokens are priced as plain input.
-export interface TierPrice {
-  input: number
-  output: number
-  cacheRead?: number
-  cacheWrite?: number
-}
-
-export type Prices = Partial<Record<Tier, TierPrice>>
-
 // One model call: an assistant message of the task's session or of a
 // subagent session started for it.
 export interface Call {
@@ -55,8 +33,7 @@ export interface Call {
   // When the call started, in milliseconds.
   time: number
   // True once the call has ended (completed, failed or was cut). A call that
-  // ended without token counts reported no usage: the provider may still have
-  // charged for it, so it is counted and named, never dropped.
+  // ended without token counts reported no usage.
   done?: boolean
 }
 
@@ -117,51 +94,27 @@ export function total(value: Tokens) {
 
 const NONE: Tokens = { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } }
 
-// The estimated charge for some tokens on one tier, and what the same tokens
-// would have cost with every input token at the full input price. Reasoning
-// tokens are priced as output.
-export function price(value: Tokens, rate: TierPrice) {
-  const out = (value.output + value.reasoning) * rate.output
-  const charged =
-    value.input * rate.input +
-    value.cache.read * (rate.cacheRead ?? rate.input) +
-    value.cache.write * (rate.cacheWrite ?? rate.input) +
-    out
-  const uncached = (value.input + value.cache.read + value.cache.write) * rate.input + out
-  return { charged: charged / 1_000_000, uncached: uncached / 1_000_000 }
-}
-
 export interface Summary {
   // The tier of each turn of the task, in order.
   path: Tier[]
   // The tier of the latest call of the task's own session.
   tier?: Tier
-  // Estimated USD charged for the calls that could be priced.
-  spent: number
-  // Estimated USD the same calls would have cost without caching, minus spent.
-  // Negative when cache writes cost more than they have saved so far.
-  saved: number
+  // Every token the gateway reported for the task's calls, added up.
   tokens: Tokens
-  // Calls with tokens that were priced, and that could not be (no price for
-  // the tier, or a model that is not a Rafiki tier).
-  priced: number
-  unpriced: number
+  // Calls with token counts.
+  reported: number
   // Calls that ended without token counts (a stream cut before its usage
-  // block, a request that failed). Nothing is known about what they cost, so
-  // they are in no amount here and every text that shows an amount says so.
+  // block, a request that failed).
   unreported: number
 }
 
-export function summarize(calls: readonly Call[], prices: Prices | undefined): Summary {
+export function summarize(calls: readonly Call[]): Summary {
   const ordered = [...calls].sort((a, b) => a.time - b.time)
   const path: Tier[] = []
   let turn: string | undefined
   let tier: Tier | undefined
-  let spent = 0
-  let uncached = 0
   let sum = NONE
-  let priced = 0
-  let unpriced = 0
+  let reported = 0
   let unreported = 0
   for (const call of ordered) {
     const callTier = tierOf(call.model)
@@ -172,63 +125,14 @@ export function summarize(calls: readonly Call[], prices: Prices | undefined): S
       tier = callTier
     }
     if (total(call.tokens) === 0) {
-      // Still running: its usage has not arrived yet. Ended: it never will.
       if (call.done) unreported++
       continue
     }
     sum = add(sum, call.tokens)
-    const rate = callTier ? prices?.[callTier] : undefined
-    if (!rate) {
-      unpriced++
-      continue
-    }
-    const cost = price(call.tokens, rate)
-    spent += cost.charged
-    uncached += cost.uncached
-    priced++
+    reported++
   }
-  return { path, tier, spent, saved: uncached - spent, tokens: sum, priced, unpriced, unreported }
+  return { path, tier, tokens: sum, reported, unreported }
 }
-
-// What a turn like the last one would cost on another tier: the tokens of the
-// last turn (subagent calls made since it started included) at that tier's
-// prices. Undefined without a last turn or without a price for the tier.
-export function nextTurn(calls: readonly Call[], tier: Tier, prices: Prices | undefined): number | undefined {
-  const rate = prices?.[tier]
-  if (!rate) return undefined
-  const root = calls.filter((call) => call.root && total(call.tokens) > 0).sort((a, b) => a.time - b.time)
-  const last = root.at(-1)
-  if (!last) return undefined
-  const start = Math.min(...root.filter((call) => call.turn === last.turn).map((call) => call.time))
-  const sum = calls
-    .filter((call) => (call.root ? call.turn === last.turn : call.time >= start))
-    .reduce((acc, call) => add(acc, call.tokens), NONE)
-  return price(sum, rate).charged
-}
-
-// Credits left: the balance read when the task started, minus what the task
-// is estimated to have spent since that reading.
-export function remaining(start: { balance: number; spent: number } | undefined, spentNow: number): number | undefined {
-  if (!start) return undefined
-  return start.balance - Math.max(0, spentNow - start.spent)
-}
-
-// 0.0312 below one USD, 12.37 above: enough digits for a single call to show.
-export function usd(value: number): string {
-  if (!Number.isFinite(value)) return "?"
-  const abs = Math.abs(value)
-  if (abs === 0) return "0 USD"
-  if (abs < 0.00005) return "under 0.0001 USD"
-  return `${value.toFixed(abs < 1 ? 4 : 2)} USD`
-}
-
-// An estimated amount in a sentence: "about 0.0312 USD", or "under 0.0001 USD".
-export function about(value: number): string {
-  const text = usd(value)
-  return text.startsWith("under") || text === "?" ? text : `about ${text}`
-}
-
-const count = (value: number) => Math.round(value).toLocaleString("en-US")
 
 // fast, fast, pro. A long task is folded into runs: fast x12, pro x3.
 export function pathText(path: readonly Tier[]): string {
@@ -240,137 +144,6 @@ export function pathText(path: readonly Tier[]): string {
     else runs.push({ tier, n: 1 })
   }
   return runs.map((run) => (run.n > 1 ? `${run.tier} x${run.n}` : run.tier)).join(", ")
-}
-
-const callsWord = (n: number) => `${n} ${n === 1 ? "call" : "calls"}`
-
-// "1 call reported no usage and is not included": the estimate leaves those
-// calls out, and says so wherever it is shown.
-export function unreportedText(summary: Summary): string | undefined {
-  if (summary.unreported === 0) return undefined
-  const n = summary.unreported
-  return `${callsWord(n)} reported no usage and ${n === 1 ? "is" : "are"} not included`
-}
-
-// The notes inside "(estimate ...)": what the amount leaves out.
-function caveats(summary: Summary, short = false): string {
-  const notes: string[] = []
-  if (summary.unpriced > 0) notes.push(`${callsWord(summary.unpriced)} not priced`)
-  if (summary.unreported > 0) notes.push(short ? `${callsWord(summary.unreported)} not included` : unreportedText(summary)!)
-  return notes.length ? `, ${notes.join(", ")}` : ""
-}
-
-export function spentText(summary: Summary): string {
-  if (summary.priced === 0 && summary.unpriced === 0) {
-    return summary.unreported > 0 ? `cost unknown (${callsWord(summary.unreported)} reported no usage)` : "nothing spent yet"
-  }
-  if (summary.priced === 0) {
-    const missing = summary.unreported > 0 ? `, ${callsWord(summary.unreported)} reported no usage` : ""
-    return `cost unknown (${count(total(summary.tokens))} tokens${missing})`
-  }
-  return `${about(summary.spent)} spent (estimate${caveats(summary)})`
-}
-
-export function savedText(summary: Summary): string | undefined {
-  if (summary.priced === 0) return undefined
-  if (summary.tokens.cache.read + summary.tokens.cache.write === 0) return "caching saved nothing"
-  if (summary.saved <= 0) return "caching saved nothing yet"
-  return `caching saved ${about(summary.saved)}`
-}
-
-export function leftText(left: number | undefined, summary: Summary): string | undefined {
-  if (left === undefined) return undefined
-  // Before anything is spent the figure is the balance as read, not an estimate.
-  if (summary.priced === 0 && summary.unpriced === 0 && summary.unreported === 0) return `${usd(left)} of credits`
-  if (summary.priced === 0) return `${usd(left)} of credits when the task started`
-  // With calls left out of the estimate, what is left can only be less.
-  return `${summary.unreported > 0 ? "at most " : ""}${about(left)} of credits left`
-}
-
-export interface Display {
-  summary: Summary
-  // Credits left (remaining()), when the balance was read.
-  left?: number
-  // The tier selected for the next turn and its estimate, when it differs
-  // from the tier of the last turn. `floor` when the last turn had a call that
-  // reported no usage: a turn like it costs at least the estimate.
-  next?: { tier: Tier; estimate?: number; floor?: boolean }
-}
-
-// Everything the status line shows, from the task's calls, the price list,
-// the balance reading and the model selected for the next turn.
-export function display(input: {
-  calls: readonly Call[]
-  prices?: Prices
-  // The balance read when the task started and what the task had already
-  // spent at that moment (estimate).
-  start?: { balance: number; spent: number }
-  selected?: string
-}): Display {
-  const summary = summarize(input.calls, input.prices)
-  const tier = tierOf(input.selected)
-  return {
-    summary,
-    left: remaining(input.start, summary.spent),
-    next:
-      tier && summary.tier && tier !== summary.tier
-        ? { tier, estimate: nextTurn(input.calls, tier, input.prices), ...(summary.unreported > 0 ? { floor: true } : {}) }
-        : undefined,
-  }
-}
-
-export function nextText(next: Display["next"]): string | undefined {
-  if (!next) return undefined
-  if (next.estimate === undefined) return `next turn on ${next.tier}`
-  return `next turn on ${next.tier}: ${next.floor ? "at least " : ""}${about(next.estimate)} (estimate)`
-}
-
-// The status line while a task runs: tier, spent so far, credits left, led by
-// the next turn's tier and estimate before a tier change. `room` is how many
-// columns the line may take: the longest form that fits is used, shorter
-// forms drop words first, then the credits, then everything but the tier
-// change. Empty when nothing fits.
-export function statusLine(input: Display, room = Number.POSITIVE_INFINITY): string {
-  const { summary } = input
-  const next = nextText(input.next)
-  const priced = summary.priced > 0
-  const spentShort = priced
-    ? `${about(summary.spent)} (estimate${caveats(summary, true)})`
-    : summary.unpriced > 0 || summary.unreported > 0
-      ? "cost unknown"
-      : "nothing spent yet"
-  const leftShort =
-    input.left === undefined
-      ? undefined
-      : priced
-        ? `${summary.unreported > 0 ? "at most " : ""}${about(input.left)} left`
-        : `${usd(input.left)} of credits`
-  const forms = [
-    [next, summary.tier, spentText(summary), leftText(input.left, summary)],
-    [next, summary.tier, spentShort, leftShort],
-    [next, summary.tier, spentShort],
-    next ? [next] : [summary.tier],
-  ].map((parts) => parts.filter(Boolean).join(" · "))
-  return forms.find((text) => text.length <= room) ?? ""
-}
-
-// The one line after a task: tier path, spent, cache saving.
-export function taskLine(input: Display): string | undefined {
-  const { summary } = input
-  if (summary.path.length === 0) return undefined
-  const cost =
-    summary.priced === 0 && summary.unpriced === 0
-      ? summary.unreported > 0
-        ? "cost unknown"
-        : "no usage reported"
-      : summary.priced === 0
-      ? `cost unknown, the gateway sent no price list (${count(summary.tokens.input + summary.tokens.cache.read + summary.tokens.cache.write)} input and ${count(summary.tokens.output + summary.tokens.reasoning)} output tokens)`
-      : `${about(summary.spent)} (estimate${summary.unpriced > 0 ? `, ${callsWord(summary.unpriced)} not priced` : ""})`
-  const left = summary.priced > 0 ? leftText(input.left, summary) : undefined
-  // Said in the closing line itself, right after the amount it qualifies.
-  return [`Task cost: ${summary.path.length === 1 ? "tier" : "tiers"} ${pathText(summary.path)}`, cost, unreportedText(summary), savedText(summary), left]
-    .filter(Boolean)
-    .join(" · ")
 }
 
 // The last end of task line a terminal interface built, printed with its exit

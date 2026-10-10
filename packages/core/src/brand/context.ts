@@ -1,13 +1,14 @@
-// The context figure the terminal interface shows for the last answer of a
+// The context figure the terminal interface shows for the last request of a
 // session (sidebar, prompt row, subagent footer). Pure, no I/O.
 //
-// The tokens of an answer are recorded split: plain input, cache reads and
-// cache writes (the three parts of what was sent, each counted once), output
-// and reasoning. What the conversation takes in the model's window after that
-// answer is all five added up. The cached part is what of the input was read
-// from the provider's cache; it is inside the total, shown beside it, never
-// added to it again. The percentage is of the window of the model recorded on
-// the answer, which is the tier that answered.
+// The figures come from the usage block the gateway returned for the last
+// request (the last step of the last answer), recorded split: plain input,
+// cache reads and cache writes (the three parts of what was sent, each
+// counted once), output and reasoning (what came back). "Sent" is what that
+// request carried into the model's window: plain input, cache reads and cache
+// writes added up. The cached part is inside it, shown beside it, never added
+// again. The percentage is of the window of the model recorded on the answer,
+// which is the tier that answered. Nothing is summed across the session.
 export interface Tokens {
   input: number
   output: number
@@ -16,13 +17,17 @@ export interface Tokens {
 }
 
 export interface Usage {
-  // Tokens the conversation takes in the window after the answer.
-  tokens: number
+  // Tokens the last request sent: plain input, cache reads and cache writes.
+  sent: number
   // Of those, input read from the cache.
   cached: number
+  // Of those, input written to the cache.
+  written: number
+  // Tokens the answer to it returned: output and reasoning.
+  received: number
   // The window measured against, when known.
   window?: number
-  // "2%", "<1%", or undefined without a window.
+  // Share of the window the request sent: "2%", "<1%", or undefined without a window.
   percent?: string
 }
 
@@ -30,13 +35,16 @@ const count = (value: unknown) => (typeof value === "number" && Number.isFinite(
 
 export function usage(tokens: Partial<Tokens> | undefined, window: number | undefined): Usage {
   const read = count(tokens?.cache?.read)
-  const total =
-    count(tokens?.input) + count(tokens?.output) + count(tokens?.reasoning) + read + count(tokens?.cache?.write)
+  const written = count(tokens?.cache?.write)
+  const sent = count(tokens?.input) + read + written
+  const received = count(tokens?.output) + count(tokens?.reasoning)
   const size = count(window) || undefined
   return {
-    tokens: total,
+    sent,
     cached: read,
-    ...(size ? { window: size, percent: percent(total, size) } : {}),
+    written,
+    received,
+    ...(size ? { window: size, percent: percent(sent, size) } : {}),
   }
 }
 

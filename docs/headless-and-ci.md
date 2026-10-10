@@ -32,7 +32,7 @@ Store the key in the secret store of your CI system, never in the repository. Re
 rafikicode run "update the changelog for release 1.4.0 from the commits since the last tag"
 ```
 
-After the answer, `run` prints one `Task cost:` line on standard error: the tier of each turn, the estimated spend and the credits left (see [What a task costs](./cost.md)). Standard output carries the answer only, and `--format json` prints no such line.
+After the answer, `run` prints one `Task:` line on standard error: the tier of each turn, the requests and tokens, what the key spent during the task by the gateway's count, the key's budget and the credits left (see [What a task costs](./cost.md)). Standard output carries the answer only, and `--format json` prints no such line.
 
 Flags that matter in automation, all listed by `rafikicode run --help`:
 

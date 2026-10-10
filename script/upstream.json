@@ -295,7 +295,7 @@
     {
       "path": "packages/opencode/src/cli/cmd/tui.ts",
       "class": "logic",
-      "why": "Events raised before the interface subscribes are buffered and replayed, the terminal is checked before the renderer loads, trust warnings become notices, and a refused listener stops the start. The buffering is not specific to this product."
+      "why": "Events raised before the interface subscribes are buffered and replayed, the terminal is checked before the renderer loads, trust warnings become notices, and a refused listener stops the start. The buffering is not specific to this product. After the interface closes, a conversation or folder picked in the History panel is opened by starting the program again there (`rafiki/history.ts`)."
     },
     {
       "path": "packages/opencode/src/cli/cmd/upgrade.ts",
@@ -685,7 +685,7 @@
     {
       "path": "packages/tui/src/component/prompt/index.tsx",
       "class": "text",
-      "why": "The message shown without a provider names the sign in command; the context figure comes from `core/brand/context.ts`, and an empty provider label (`Brand.provider.label`) is not drawn."
+      "why": "The message shown without a provider names the sign in command; the context figure is what the last request sent (`core/brand/context.ts`), the amount from the model price table is not shown (the spend is read from the gateway by `feature-plugins/rafiki-cost.tsx`), and an empty provider label (`Brand.provider.label`) is not drawn."
     },
     {
       "path": "packages/tui/src/context/local.tsx",
@@ -698,9 +698,14 @@
       "why": "The default theme name and the project directory names come from the brand module."
     },
     {
+      "path": "packages/tui/src/config/keybind.ts",
+      "class": "hook",
+      "why": "The key that opens the History panel (`recent_open`, `<leader>o`, `feature-plugins/rafiki-history.tsx`)."
+    },
+    {
       "path": "packages/tui/src/feature-plugins/builtins.ts",
       "class": "hook",
-      "why": "Registers the cost plugin (`feature-plugins/rafiki-cost.tsx`)."
+      "why": "Registers the spend plugin (`feature-plugins/rafiki-cost.tsx`) and the History plugin (`feature-plugins/rafiki-history.tsx`)."
     },
     {
       "path": "packages/tui/src/feature-plugins/home/tips-view.tsx",
@@ -710,7 +715,7 @@
     {
       "path": "packages/tui/src/feature-plugins/sidebar/context.tsx",
       "class": "logic",
-      "why": "The amount spent is hidden when it is zero, because the cost plugin shows the estimate; the context figure comes from `core/brand/context.ts`, which shows the cached part and the window."
+      "why": "The block describes the last request (`core/brand/context.ts`): tokens sent, the cached part, the share of the window of the tier that answered, tokens received; the amount from the model price table is removed, the spend block of `feature-plugins/rafiki-cost.tsx` reads it from the gateway."
     },
     {
       "path": "packages/tui/src/feature-plugins/sidebar/footer.tsx",
@@ -735,7 +740,7 @@
     {
       "path": "packages/tui/src/routes/session/subagent-footer.tsx",
       "class": "hook",
-      "why": "The context figure comes from `core/brand/context.ts`."
+      "why": "The context figure is what the last request sent (`core/brand/context.ts`); the amount from the model price table is not shown."
     },
     {
       "path": "packages/tui/src/theme/index.ts",
