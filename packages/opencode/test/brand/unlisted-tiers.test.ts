@@ -1,8 +1,9 @@
-// Unlisted tiers (Brand.provider.unlisted): rafiki-max is left out of the
-// model lists people choose from (rafikicode models, the terminal interface
-// picker, the model option an editor gets over ACP) while its provider is
-// unavailable. The tier stays registered, so an explicit choice still reaches
-// the gateway, and an empty list offers every tier again.
+// Unlisted tiers (Brand.provider.unlisted): a tier listed there is left out
+// of the model lists people choose from (rafikicode models, the terminal
+// interface picker, the model option an editor gets over ACP). Since
+// 10 October 2026 the list is empty and every tier, Rafiki Max included, is
+// offered. A listed tier stays registered, so an explicit choice still
+// reaches the gateway.
 import { afterEach, describe, expect, test } from "bun:test"
 import fs from "fs"
 import os from "os"
@@ -38,20 +39,24 @@ function modelValues(options: ReturnType<typeof buildConfigOptions>) {
 }
 
 describe("the switch", () => {
-  test("rafiki-max is unlisted by default; fast and pro are offered", () => {
-    expect([...Brand.provider.unlisted]).toEqual(["rafiki-max"])
-    expect(Brand.provider.listed("rafiki", "rafiki-max")).toBe(false)
+  test("every tier is offered by default, rafiki-max included", () => {
+    expect([...Brand.provider.unlisted]).toEqual([])
+    expect(Brand.provider.listed("rafiki", "rafiki-max")).toBe(true)
     expect(Brand.provider.listed("rafiki", "rafiki-fast")).toBe(true)
     expect(Brand.provider.listed("rafiki", "rafiki-pro")).toBe(true)
+    expect(Brand.provider.offered()).toEqual(["rafiki-fast", "rafiki-pro", "rafiki-max"])
+    expect(MissingKey.outOfScope()).toContain("(rafiki-fast, rafiki-pro, rafiki-max)")
+  })
+
+  test("a tier listed in the switch is left out", () => {
+    Brand.provider.unlisted = ["rafiki-max"]
+    expect(Brand.provider.listed("rafiki", "rafiki-max")).toBe(false)
     expect(Brand.provider.listed("other", "rafiki-max")).toBe(true)
     expect(Brand.provider.offered()).toEqual(["rafiki-fast", "rafiki-pro"])
   })
 
-  test("an empty list offers every tier again", () => {
-    Brand.provider.unlisted = []
-    expect(Brand.provider.listed("rafiki", "rafiki-max")).toBe(true)
-    expect(Brand.provider.offered()).toEqual(["rafiki-fast", "rafiki-pro", "rafiki-max"])
-    expect(MissingKey.outOfScope()).toContain("(rafiki-fast, rafiki-pro, rafiki-max)")
+  test("fast stays the default tier", () => {
+    expect(Brand.defaultModel).toBe("rafiki/rafiki-fast")
   })
 
   test("the tier stays registered with the gateway provider", () => {
@@ -68,7 +73,7 @@ describe("the switch", () => {
 
   test("the out of scope message names the offered tiers", () => {
     expect(MissingKey.outOfScope()).toBe(
-      "rafikicode runs on Rafiki models only (rafiki-fast, rafiki-pro). Run rafikicode models to see them.",
+      "rafikicode runs on Rafiki models only (rafiki-fast, rafiki-pro, rafiki-max). Run rafikicode models to see them.",
     )
   })
 })
@@ -77,7 +82,13 @@ describe("the ACP model option", () => {
   const fast = { providerID: "rafiki", modelID: "rafiki-fast" }
   const max = { providerID: "rafiki", modelID: "rafiki-max" }
 
-  test("leaves rafiki-max out", () => {
+  test("offers rafiki-max", () => {
+    const listed = RafikiACP.listedProviders(providers, fast)
+    expect(Object.keys(listed[0]!.models)).toEqual(["rafiki-fast", "rafiki-pro", "rafiki-max"])
+  })
+
+  test("leaves a tier listed in the switch out", () => {
+    Brand.provider.unlisted = ["rafiki-max"]
     const listed = RafikiACP.listedProviders(providers, fast)
     expect(Object.keys(listed[0]!.models)).toEqual(["rafiki-fast", "rafiki-pro"])
     const option = modelValues(buildConfigOptions({ providers: listed, currentModel: fast }))
@@ -87,6 +98,7 @@ describe("the ACP model option", () => {
   })
 
   test("keeps rafiki-max, with its effort levels, when the session already uses it", () => {
+    Brand.provider.unlisted = ["rafiki-max"]
     const listed = RafikiACP.listedProviders(providers, max)
     const options = buildConfigOptions({ providers: listed, currentModel: max })
     expect(modelValues(options)).toEqual({
@@ -112,7 +124,7 @@ describe("the terminal interface picker", () => {
   })
 })
 
-describe("an explicit rafiki-max still runs", () => {
+describe("an explicit rafiki-max runs", () => {
   test("run --model rafiki/rafiki-max sends rafiki-max to the gateway", async () => {
     const gateway = createMockGateway({ quiet: true })
     await gateway.ready

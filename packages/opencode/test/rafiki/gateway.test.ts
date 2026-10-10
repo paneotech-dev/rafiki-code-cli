@@ -110,8 +110,10 @@ describe("rafikicode run through the gateway", () => {
 
     const denied = await run(["run", "--model", "rafiki/rafiki-max", "try max"])
     expect(denied.exitCode).toBe(2)
-    expect(denied.all).toContain("This key is not allowed to use the max tier.")
-    expect(chatCalls().at(-1)).toMatchObject({ status: 403, error_type: "key_model_access_denied", model: "rafiki-max" })
+    // The gateway's /key/info answer leaves rafiki-max out: the run says so before any request.
+    expect(denied.all).toContain("approved without the Rafiki Max tier")
+    expect(denied.all).toContain("rafikicode login again and tick Max")
+    expect(chatCalls().some((call: any) => call.model === "rafiki-max")).toBe(false)
 
     const revoked = await fetch(gateway!.url + "/key/delete", {
       method: "POST",

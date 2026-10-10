@@ -260,7 +260,7 @@
     {
       "path": "packages/opencode/src/cli/cmd/run.ts",
       "class": "hook",
-      "why": "Exit codes and messages for gateway errors, a missing key and rejected permissions, the attach check, the cost line, the `--resume` alias and server file credentials, each a call into `src/rafiki/`; an answer on another tier is announced through `rafiki/served.ts`."
+      "why": "Exit codes and messages for gateway errors, a missing key and rejected permissions, the attach check, the cost line, the `--resume` alias and server file credentials, each a call into `src/rafiki/`; an answer on another tier is announced through `rafiki/served.ts`, and a run on Rafiki Max is checked against the key first (`rafiki/tier-check.ts`)."
     },
     {
       "path": "packages/opencode/src/cli/cmd/run/footer.permission.tsx",
@@ -665,7 +665,7 @@
     {
       "path": "packages/tui/src/component/dialog-model.tsx",
       "class": "hook",
-      "why": "Tiers that are not listed are hidden (`Brand.provider.listed`)."
+      "why": "Tiers that are not listed are hidden (`Brand.provider.listed`); each tier states its price in credits, and Rafiki Max is confirmed once per session and checked against the key (`component/tier-choice.tsx`)."
     },
     {
       "path": "packages/tui/src/component/dialog-provider.tsx",
@@ -690,7 +690,7 @@
     {
       "path": "packages/tui/src/context/local.tsx",
       "class": "text",
-      "why": "The labels shown without a provider name the sign in command; the provider name is not repeated after a model name that starts with it (`Brand.provider.label`)."
+      "why": "The labels shown without a provider name the sign in command; the provider name is not repeated after a model name that starts with it (`Brand.provider.label`); a new session never starts on Rafiki Max from the recent list, and the cycling shortcuts never move to it before it was confirmed (`core/brand/tier.ts`)."
     },
     {
       "path": "packages/tui/src/context/theme.tsx",

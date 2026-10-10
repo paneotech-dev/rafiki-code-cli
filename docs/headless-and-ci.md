@@ -102,7 +102,7 @@ WARN  trust       /srv/build/api is not trusted. Fix: Run rafikicode trust /srv/
 ok    credential  RAFIKICODE_API_KEY from the environment
 ok    gateway     https://gateway.rafikiai.io answered in 134 ms
 ok    key         key rafikicode-..., spent 0.1568 USD of 2.5 USD budget, expires 2026-10-13T12:34:43.455000+00:00
-ok    tiers       rafiki-fast, rafiki-pro
+ok    tiers       rafiki-fast, rafiki-pro, rafiki-max
 ok    console     https://console.rafikiai.io, account ...
 ok    path        rafikicode resolves to /usr/local/bin/rafikicode (a link to ~/.rafikicode/bin/rafikicode), the binary running this check
 ok    version     rafikicode ..., stable channel, installed by the installer script, rafikicode update applies

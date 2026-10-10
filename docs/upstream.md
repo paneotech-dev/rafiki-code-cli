@@ -73,20 +73,20 @@ counted with `git diff --numstat -M` against the upstream base.
 
 <!-- upstream-files:start -->
 
-Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 182. Changed lines: 6505 (3727 added, 2778 removed).
+Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 182. Changed lines: 6561 (3780 added, 2781 removed).
 
 | Class | Files | Added | Removed |
 | --- | ---: | ---: | ---: |
-| Source: a call into this fork's modules | 38 | 415 | 145 |
-| Source: product name, file names and wording | 43 | 194 | 183 |
+| Source: a call into this fork's modules | 38 | 447 | 148 |
+| Source: product name, file names and wording | 43 | 214 | 183 |
 | Source: behaviour changed in place | 14 | 554 | 213 |
 | Tests of upstream, adapted | 33 | 554 | 177 |
 | Generated files | 3 | 366 | 181 |
 | Package identity and packaging | 9 | 20 | 479 |
-| Documentation | 23 | 196 | 1182 |
+| Documentation | 23 | 197 | 1182 |
 | Repository tooling and workflows | 6 | 23 | 8 |
 | Editor extension | 13 | 1405 | 210 |
-| Total | 182 | 3727 | 2778 |
+| Total | 182 | 3780 | 2781 |
 
 ### Source: a call into this fork's modules
 
@@ -104,7 +104,7 @@ On a conflict: Take upstream's side of the conflict, then put the call back at t
 | `packages/opencode/src/cli/cmd/acp.ts` | 5 | 1 | The internal server gets a generated password (`rafiki/acp.ts`). |
 | `packages/opencode/src/cli/cmd/attach.ts` | 16 | 4 | Terminal check before the interface loads (`rafiki/startup.ts`), credentials from the server file (`rafiki/server-file.ts`), and option text. |
 | `packages/opencode/src/cli/cmd/models.ts` | 6 | 1 | A sign in hint when no provider is connected, and tiers that are not listed are hidden (`Brand.provider.listed`). |
-| `packages/opencode/src/cli/cmd/run.ts` | 60 | 13 | Exit codes and messages for gateway errors, a missing key and rejected permissions, the attach check, the cost line, the `--resume` alias and server file credentials, each a call into `src/rafiki/`; an answer on another tier is announced through `rafiki/served.ts`. |
+| `packages/opencode/src/cli/cmd/run.ts` | 74 | 13 | Exit codes and messages for gateway errors, a missing key and rejected permissions, the attach check, the cost line, the `--resume` alias and server file credentials, each a call into `src/rafiki/`; an answer on another tier is announced through `rafiki/served.ts`, and a run on Rafiki Max is checked against the key first (`rafiki/tier-check.ts`). |
 | `packages/opencode/src/cli/cmd/run/variant.shared.ts` | 3 | 1 | The provider name is not repeated after a model name that starts with it (`Brand.provider.label`). |
 | `packages/opencode/src/cli/cmd/serve.ts` | 7 | 6 | The server password is made and stored by `rafiki/server-file.ts`; text names this product. |
 | `packages/opencode/src/cli/cmd/upgrade.ts` | 22 | 5 | The `update` alias, the method choices this product supports, and the refusals and clean up from `rafiki/update.ts` and `rafiki/autoupdate.ts`. |
@@ -129,7 +129,7 @@ On a conflict: Take upstream's side of the conflict, then put the call back at t
 | `packages/opencode/src/session/revert.ts` | 2 | 0 | A cut turn is recovered before a revert (`rafiki/resume.ts`). |
 | `packages/opencode/src/session/system.ts` | 6 | 1 | System prompts pass through `Brand.prompt`; the date line leaves the environment block because `rafiki/cache-prefix.ts` places it after the stable part; the gateway provider's prompt starts with `Brand.identity`. |
 | `packages/opencode/src/tool/registry.ts` | 2 | 1 | Tool directories pass through `BrandTrust.codeDirs` (workspace trust). |
-| `packages/tui/src/component/dialog-model.tsx` | 6 | 1 | Tiers that are not listed are hidden (`Brand.provider.listed`). |
+| `packages/tui/src/component/dialog-model.tsx` | 24 | 4 | Tiers that are not listed are hidden (`Brand.provider.listed`); each tier states its price in credits, and Rafiki Max is confirmed once per session and checked against the key (`component/tier-choice.tsx`). |
 | `packages/tui/src/feature-plugins/builtins.ts` | 2 | 0 | Registers the cost plugin (`feature-plugins/rafiki-cost.tsx`). |
 | `packages/tui/src/routes/session/subagent-footer.tsx` | 3 | 5 | The context figure comes from `core/brand/context.ts`. |
 
@@ -173,7 +173,7 @@ On a conflict: Take upstream's side, then replace the literal with the value fro
 | `packages/tui/src/component/dialog-status.tsx` | 2 | 1 | A message names this product's command. |
 | `packages/tui/src/component/error-component.tsx` | 7 | 6 | The crash screen names this product and links to its issue tracker. |
 | `packages/tui/src/component/prompt/index.tsx` | 8 | 7 | The message shown without a provider names the sign in command; the context figure comes from `core/brand/context.ts`, and an empty provider label (`Brand.provider.label`) is not drawn. |
-| `packages/tui/src/context/local.tsx` | 6 | 4 | The labels shown without a provider name the sign in command; the provider name is not repeated after a model name that starts with it (`Brand.provider.label`). |
+| `packages/tui/src/context/local.tsx` | 26 | 4 | The labels shown without a provider name the sign in command; the provider name is not repeated after a model name that starts with it (`Brand.provider.label`); a new session never starts on Rafiki Max from the recent list, and the cycling shortcuts never move to it before it was confirmed (`core/brand/tier.ts`). |
 | `packages/tui/src/context/theme.tsx` | 8 | 7 | The default theme name and the project directory names come from the brand module. |
 | `packages/tui/src/feature-plugins/home/tips-view.tsx` | 19 | 25 | Tips name this product's commands and paths; tips about upstream services are removed. |
 | `packages/tui/src/feature-plugins/sidebar/footer.tsx` | 4 | 3 | The footer names this product and its sign in command. |
@@ -288,7 +288,7 @@ On a conflict: Keep this fork's text. Read what upstream changed and carry over 
 | `README.it.md` | 1 | 51 | Translated pages of upstream: the install instructions are removed so that no page tells a reader to install the upstream product (`test/brand/docs-wording.test.ts`). |
 | `README.ja.md` | 1 | 51 | Translated pages of upstream: the install instructions are removed so that no page tells a reader to install the upstream product (`test/brand/docs-wording.test.ts`). |
 | `README.ko.md` | 1 | 51 | Translated pages of upstream: the install instructions are removed so that no page tells a reader to install the upstream product (`test/brand/docs-wording.test.ts`). |
-| `README.md` | 172 | 100 | This product's README, with the attribution section. |
+| `README.md` | 173 | 100 | This product's README, with the attribution section. |
 | `README.no.md` | 1 | 51 | Translated pages of upstream: the install instructions are removed so that no page tells a reader to install the upstream product (`test/brand/docs-wording.test.ts`). |
 | `README.pl.md` | 1 | 51 | Translated pages of upstream: the install instructions are removed so that no page tells a reader to install the upstream product (`test/brand/docs-wording.test.ts`). |
 | `README.ru.md` | 1 | 51 | Translated pages of upstream: the install instructions are removed so that no page tells a reader to install the upstream product (`test/brand/docs-wording.test.ts`). |

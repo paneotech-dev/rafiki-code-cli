@@ -129,7 +129,7 @@ In a shared room or on a recorded screen, load the key without showing it: `read
 ok    credential  RAFIKICODE_API_KEY from the environment
 ok    gateway     https://gateway.rafikiai.io answered in 181 ms
 ok    key         key rafikicode-..., spent 0.0769 USD of 2.5 USD budget, expires 2026-10-13T12:34:43.455000+00:00
-ok    tiers       rafiki-fast, rafiki-pro
+ok    tiers       rafiki-fast, rafiki-pro, rafiki-max
 ```
 
 The other lines check things that are not about the key: your configuration file and the project configuration of the directory you are in, whether the workspace is trusted, which copy of `rafikicode` your shell resolves the name to, and the installed version. Every line is one of `ok`, `WARN` with a fix hint, `FAIL` with a fix hint, or `skip`, and `doctor` exits 0 unless something failed. The full list is in [Headless and CI](./headless-and-ci.md#checking-a-machine-with-doctor).
@@ -165,10 +165,15 @@ The agent does not need `git`. Clean Debian and Ubuntu images do not include it;
 
 Every request goes through the Rafiki AI gateway under a tier name:
 
-| tier | good for |
-|---|---|
-| `rafiki-fast` | everyday edits, fixes, questions (default) |
-| `rafiki-pro` | longer agentic work and larger features; uses more credits per token |
+| tier | good for | credits |
+|---|---|---|
+| `rafiki-fast` | everyday edits, fixes, questions (default) | 1x |
+| `rafiki-pro` | longer agentic work and larger features | 4x |
+| `rafiki-max` | the hardest problems, on frontier models | 15x |
+
+A request on `rafiki-pro` uses four times the credits of the same request on `rafiki-fast`, and one on `rafiki-max` fifteen times. In the terminal interface the model dialog (`/models`) shows each tier with its rate; the first time a session switches to `rafiki-max` it asks you to confirm, and a new session starts on `rafiki-fast` (or the model in your configuration), never on `rafiki-max` by itself.
+
+When you sign in, the approval page lets you tick the tiers the key may use. If you picked `rafiki-max` and the key was approved without it, the interface and `rafikicode run` say so before sending anything: run `rafikicode login` again and tick Max.
 
 Pick a tier for one run with `-m` (or `--model`):
 

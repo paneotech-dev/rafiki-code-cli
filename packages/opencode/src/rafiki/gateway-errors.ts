@@ -63,6 +63,12 @@ function tierFrom(message?: string) {
   return all.at(-1)?.[1] ?? "requested"
 }
 
+// "max" in the sentence, "Max" where it names the box on the approval page.
+function tierMessage(tier: string) {
+  const box = tier === "requested" ? "the tier" : tier[0]!.toUpperCase() + tier.slice(1)
+  return Contract.MESSAGE[Contract.ERROR.tierNotAllowed]!.replace("<tier>", tier).replace("<Tier>", box)
+}
+
 function retryAfter(headers?: Record<string, string>) {
   const raw = headers?.["retry-after"] ?? headers?.["Retry-After"]
   const seconds = Number(raw)
@@ -124,7 +130,7 @@ export function classify(input: GatewayErrorInput): GatewayFailure | undefined {
     if (denied) {
       return {
         code: Contract.ERROR.tierNotAllowed,
-        message: withConsole(Contract.MESSAGE[Contract.ERROR.tierNotAllowed]!.replace("<tier>", tierFrom(body.message))),
+        message: withConsole(tierMessage(tierFrom(body.message))),
         exitCode: Contract.EXIT.usage,
         isRetryable: false,
       }

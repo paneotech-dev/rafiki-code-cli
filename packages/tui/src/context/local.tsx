@@ -13,6 +13,8 @@ import { readJson, writeJsonAtomic } from "../util/persistence"
 import { useTheme } from "./theme"
 import { useToast } from "../ui/toast"
 import { useRoute } from "./route"
+import * as Tier from "@opencode-ai/core/brand/tier"
+import { isConfirmed, sessionKey } from "../util/tier-confirmed"
 import { usePermission } from "./permission"
 
 export type LocalTheme = {
@@ -216,7 +218,10 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           }
         }
 
+        // A tier picked earlier is reused, except Rafiki Max: a new session
+        // never starts on it unless it is asked for (--model, config).
         for (const item of modelStore.recent) {
+          if (Tier.needsConfirm(item.providerID, item.modelID)) continue
           if (isModelValid(item)) {
             return item
           }
@@ -233,6 +238,19 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           modelID: model,
         }
       })
+
+      // A shortcut never moves a session to Rafiki Max before it was
+      // confirmed in the model dialog (component/tier-choice.tsx).
+      function switchAllowed(model: { providerID: string; modelID: string }) {
+        if (!Tier.needsConfirm(model.providerID, model.modelID)) return true
+        if (isConfirmed(sessionKey(route.data.type === "session" ? route.data.sessionID : undefined))) return true
+        toast.show({
+          variant: "info",
+          message: `${Tier.label(model.modelID)} uses ${Tier.credits(model.modelID)}: choose it once from /models to confirm`,
+          duration: 4000,
+        })
+        return false
+      }
 
       const currentModel = createMemo(() => {
         const a = agent.current()
@@ -285,6 +303,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           if (next >= recent.length) next = 0
           const val = recent[next]
           if (!val) return
+          if (!switchAllowed(val)) return
           const a = agent.current()
           if (!a) return
           setModelStore("model", a.name, { ...val })
@@ -313,6 +332,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           }
           const next = favorites[index]
           if (!next) return
+          if (!switchAllowed(next)) return
           const a = agent.current()
           if (!a) return
           setModelStore("model", a.name, { ...next })

@@ -21,7 +21,7 @@ const noKeyLines = [
   "Rafiki Code needs a Rafiki AI account. Create one in the Rafiki AI console (https://console.rafikiai.io), then run: rafikicode login",
   "On a server or in CI, create an API key at https://console.rafikiai.io/keys with the Rafiki Code option ticked, and set RAFIKICODE_API_KEY.",
 ]
-const outOfScopeLine = "rafikicode runs on Rafiki models only (rafiki-fast, rafiki-pro). Run rafikicode models to see them."
+const outOfScopeLine = "rafikicode runs on Rafiki models only (rafiki-fast, rafiki-pro, rafiki-max). Run rafikicode models to see them."
 
 type Env = Record<string, string | undefined>
 
@@ -173,7 +173,7 @@ describe("models with stub OpenAI and Anthropic keys", () => {
     const plain = await cli(["models"], { [Brand.env.apiKey]: stubKey })
     expect(plain.exitCode).toBe(0)
     expect(providersOf(plain.stdout)).toEqual(["rafiki"])
-    expect(plain.stdout.trim().split("\n")).toEqual(["rafiki/rafiki-fast", "rafiki/rafiki-pro"])
+    expect(plain.stdout.trim().split("\n")).toEqual(["rafiki/rafiki-fast", "rafiki/rafiki-max", "rafiki/rafiki-pro"])
 
     const widened = await cli(
       ["models"],
@@ -354,9 +354,9 @@ describe("acp", () => {
       const ids: string[] = (option?.options ?? []).flatMap((item: any) => ("value" in item ? [item.value] : item.options.map((inner: any) => inner.value)))
       expect(ids.length).toBeGreaterThan(0)
       for (const id of ids) expect(id.startsWith("rafiki/")).toBe(true)
-      // rafiki-max is unlisted (Brand.provider.unlisted) unless the session uses it.
+      // Every tier is offered, rafiki-max included.
       expect(ids).toContain("rafiki/rafiki-fast")
-      expect(ids.some((id) => id.startsWith("rafiki/rafiki-max"))).toBe(false)
+      expect(ids.some((id) => id.startsWith("rafiki/rafiki-max"))).toBe(true)
     } finally {
       await acp.close()
     }

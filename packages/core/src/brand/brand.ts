@@ -45,12 +45,14 @@ const requestDefaults: Record<(typeof models)[number], { output: number; effort?
 }
 // Tiers kept out of the model lists people choose from: the terminal
 // interface picker (/models), rafikicode models, and the model option an
-// editor gets over ACP. rafiki-max is listed here while its provider is
-// unavailable. This is the one switch: make the list empty to offer every
-// tier again. A tier listed here stays registered with the gateway provider,
-// so a model set explicitly (config "model", --model, a session already on
-// it) keeps working and stays visible as the current choice.
-const unlistedModels: readonly string[] = ["rafiki-max"]
+// editor gets over ACP. Empty since 10 October 2026 (owner's decision): every
+// tier, Rafiki Max included, is offered to every user, with its price in
+// credits, and the interface confirms once before a session moves to Rafiki
+// Max (tier.ts). This is the one switch: list a tier here to hide it again. A
+// tier listed here stays registered with the gateway provider, so a model set
+// explicitly (config "model", --model, a session already on it) keeps working
+// and stays visible as the current choice.
+const unlistedModels: readonly string[] = []
 // Tiers whose requests carry a prompt cache marker at the end of the stable
 // system text (packages/opencode/src/rafiki/cache-prefix.ts). A tier belongs
 // here when the provider behind it caches only what a request marks. The
