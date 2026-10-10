@@ -1499,6 +1499,83 @@ describe("ACP service sessions", () => {
     expect(result.usage).toBeUndefined()
   })
 
+  // The same early cancel, when it lands just after the backing session created
+  // the assistant message: that message still has the zeroed counters it was
+  // created with, which is no accounting either. Which of the two a cancel meets
+  // is a race with the start of the turn, so the answer must be the same.
+  it("leaves usage out of a cancelled turn whose message has no parts and only zeroed counters", async () => {
+    const called = deferred<void>()
+    const response = deferred<{ data: { info: ReturnType<typeof assistantInfo>; parts: unknown[] } }>()
+    const { service } = makeService([], {
+      prompt: () => {
+        called.resolve(undefined)
+        return response.promise
+      },
+    })
+    const session = await Effect.runPromise(service.newSession({ cwd: "/workspace", mcpServers: [] }))
+
+    const turn = Effect.runPromise(
+      service.prompt({ sessionId: session.sessionId, prompt: [{ type: "text", text: "hello" }] }),
+    )
+    await called.promise
+    await Effect.runPromise(service.cancel({ sessionId: session.sessionId }))
+    response.resolve({
+      data: {
+        info: assistantInfo(
+          { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+          { name: "MessageAbortedError", data: { message: "Aborted" } },
+        ),
+        parts: [],
+      },
+    })
+
+    const result = await turn
+    expect(result.stopReason).toBe("cancelled")
+    expect(result.usage).toBeUndefined()
+    expect("usage" in result).toBe(false)
+  })
+
+  it("keeps usage on a cancelled turn the model had started, counted or not", async () => {
+    const { service } = makeService([], {
+      prompt: () =>
+        Promise.resolve({
+          data: {
+            info: assistantInfo(
+              { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+              { name: "MessageAbortedError", data: { message: "Aborted" } },
+            ),
+            parts: [{ type: "step-start" }, { type: "text", text: "working on it" }],
+          },
+        }),
+    })
+    const session = await Effect.runPromise(service.newSession({ cwd: "/workspace", mcpServers: [] }))
+    const result = await Effect.runPromise(
+      service.prompt({ sessionId: session.sessionId, prompt: [{ type: "text", text: "hello" }] }),
+    )
+    expect(result.stopReason).toBe("cancelled")
+    expect(result.usage).toEqual({ inputTokens: 0, outputTokens: 0, totalTokens: 0 })
+  })
+
+  it("keeps usage on a cancelled turn that had already been counted", async () => {
+    const { service } = makeService([], {
+      prompt: () =>
+        Promise.resolve({
+          data: {
+            info: assistantInfo(
+              { input: 8, output: 1, reasoning: 0, cache: { read: 0, write: 0 } },
+              { name: "MessageAbortedError", data: { message: "Aborted" } },
+            ),
+          },
+        }),
+    })
+    const session = await Effect.runPromise(service.newSession({ cwd: "/workspace", mcpServers: [] }))
+    const result = await Effect.runPromise(
+      service.prompt({ sessionId: session.sessionId, prompt: [{ type: "text", text: "hello" }] }),
+    )
+    expect(result.stopReason).toBe("cancelled")
+    expect(result.usage).toMatchObject({ inputTokens: 8, outputTokens: 1 })
+  })
+
   // The flag is per turn, not per session: a cancelled turn must not make the
   // next one report cancelled too.
   it("clears the cancellation at the start of the next turn", async () => {
