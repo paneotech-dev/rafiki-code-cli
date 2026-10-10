@@ -323,6 +323,12 @@ export async function run(io: Io): Promise<Outcome> {
   const stop = (message: string): Outcome => ({ status: "stopped", message })
   const cancel = (message = "Stopped. Nothing else was changed."): Outcome => ({ status: "cancelled", message })
   const { exec } = io
+  // A path under the home folder is shown as ~/...
+  const show = (value: string) => {
+    const home = path.resolve(io.home)
+    return value === home || value.startsWith(home + path.sep) ? "~" + value.slice(home.length) : value
+  }
+  const files = (n: number) => (n === 1 ? "1 file" : `${n} files`)
 
   // 1. Tools.
   const git = await exec(["git", "--version"])
@@ -341,12 +347,12 @@ export async function run(io: Io): Promise<Outcome> {
   if (!root) {
     if (unsafeFolder(io.cwd, io.home))
       return stop(`${io.cwd} is your home folder or the top of a drive. Open the project's own folder first, then run this again.`)
-    if (!(await io.confirm(`${io.cwd} is not a git repository yet. Create one here?`))) return cancel()
+    if (!(await io.confirm(`${show(io.cwd)} is not a git repository yet. Create one here?`))) return cancel()
     const init = await exec(["git", "init"], { cwd: io.cwd })
     if (init.code !== 0) return stop(`git init failed: ${firstLine(init)}`)
     await exec(["git", "symbolic-ref", "HEAD", "refs/heads/main"], { cwd: io.cwd })
     root = path.resolve(io.cwd)
-    await io.say(`Created a git repository in ${root}.`)
+    await io.say(`Created a git repository in ${show(root)}.`)
   } else if (unsafeFolder(root, io.home)) {
     return stop(`The git repository here starts at ${root}, your home folder or the top of a drive. Open the project's own folder, with a repository of its own, then run this again.`)
   }
@@ -396,12 +402,12 @@ export async function run(io: Io): Promise<Outcome> {
     ]
     return stop(lines.join("\n"))
   }
-  await io.say(`No secrets found in ${scanned.files} files.`)
+  await io.say(`No secrets found in ${files(scanned.files)}.`)
 
   // 4. First commit.
   if (first) {
     if (scanned.files === 0) return stop("The folder has no files to put on GitHub yet.")
-    if (!(await io.confirm(`Commit the ${scanned.files} files in ${root} as the first commit ("Initial commit")?`))) return cancel()
+    if (!(await io.confirm(`Commit ${scanned.files === 1 ? "the file" : `the ${scanned.files} files`} in ${show(root)} as the first commit ("Initial commit")?`))) return cancel()
     const add = await exec(["git", "add", "-A"], { cwd: root })
     if (add.code !== 0) return stop(`git add failed: ${firstLine(add)}`)
     const commit = await exec(["git", "commit", "-q", "-m", "Initial commit"], { cwd: root })
@@ -434,7 +440,7 @@ export async function run(io: Io): Promise<Outcome> {
   let remote = origin.code === 0 ? origin.stdout.trim() : ""
   let created = false
   if (remote) {
-    await io.say(`This repository already has a remote: origin is ${remote}.`)
+    await io.say(`This repository already has a remote: origin is ${show(remote)}.`)
   } else {
     let name: string | undefined = suggestName(root)
     for (;;) {
@@ -456,7 +462,7 @@ export async function run(io: Io): Promise<Outcome> {
   }
 
   // 6. Push.
-  if (!(await io.confirm(`Push the branch ${current} to origin (${remote})?`))) return cancel(created ? "The repository was created on GitHub; nothing was pushed." : undefined)
+  if (!(await io.confirm(`Push the branch ${current} to origin (${show(remote)})?`))) return cancel(created ? "The repository was created on GitHub; nothing was pushed." : undefined)
   const push = await exec(["git", "push", "-u", "origin", current], { cwd: root })
   if (push.code !== 0) return stop(`git push failed: ${firstLine(push)}`)
   const view = await exec(["gh", "repo", "view", "--json", "url", "--jq", ".url"], { cwd: root })

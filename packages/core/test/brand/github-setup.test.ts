@@ -75,8 +75,8 @@ describe("the whole flow", () => {
     expect(outcome.status).toBe("done")
     expect(outcome.status === "done" && outcome.url).toBe("https://github.com/tester/My-Shop")
     expect(questions).toEqual([
-      `${project} is not a git repository yet. Create one here?`,
-      `Commit the 2 files in ${project} as the first commit ("Initial commit")?`,
+      "~/My Shop is not a git repository yet. Create one here?",
+      'Commit the 2 files in ~/My Shop as the first commit ("Initial commit")?',
       "Name of the new private repository on GitHub [My-Shop]",
       "Create the private repository tester/My-Shop on GitHub and add it as origin?",
       expect.stringMatching(/^Push the branch main to origin \(.*My-Shop\.git\)\?$/),
@@ -106,7 +106,7 @@ describe("the whole flow", () => {
     const { io: value, questions } = io()
     const outcome = await GithubSetup.run(value)
     expect(outcome.status).toBe("done")
-    expect(questions).toEqual([`Push the branch main to origin (${remote})?`])
+    expect(questions).toEqual(["Push the branch main to origin (~/remote.git)?"])
     expect(git(remote, "rev-parse", "main").status).toBe(0)
   })
 
