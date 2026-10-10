@@ -311,7 +311,9 @@ describe("help output", () => {
     const result = await help(["--help"])
     expect(result.exitCode).toBe(0)
     expect(result.stderr).toContain("rafikicode run [message..]")
-    expect(result.stderr).not.toContain("rafikicode github")
+    // `github` is the guided setup (rafiki/github-setup.ts), not the upstream GitHub Actions agent.
+    expect(result.stderr).toContain("rafikicode github              put this project on GitHub as a private repository")
+    expect(result.stderr).not.toContain("install the GitHub agent")
     expect(result.stderr).toContain("rafikicode [project]")
     expect(result.stderr).toContain(Brand.wordmark[1])
     expect(result.stderr).not.toMatch(upstreamWord)

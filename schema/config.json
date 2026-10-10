@@ -1239,7 +1239,7 @@
             },
             "prune": {
               "type": "boolean",
-              "description": "Enable pruning of old tool outputs (default: false)"
+              "description": "Replace old, large tool outputs with a short note to shorten long sessions (default: on for Rafiki tiers, off otherwise; RAFIKICODE_PRUNE overrides it)"
             },
             "tail_turns": {
               "minimum": 0,

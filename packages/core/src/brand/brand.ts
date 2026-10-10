@@ -324,6 +324,10 @@ export const Brand = {
     gatewayURL: "RAFIKICODE_GATEWAY_URL",
     // Which tiers carry a prompt cache marker: all, off, or tier names separated by commas.
     cacheMarkers: "RAFIKICODE_CACHE_MARKERS",
+    // Pruning of old tool output: 1, on or true turns it on, 0, off or false
+    // turns it off, for every model; it wins over compaction.prune in the
+    // config. Unset, Rafiki tiers prune and other providers do not.
+    prune: "RAFIKICODE_PRUNE",
     // Overrides the release API URL (mock release servers in tests).
     releaseAPI: "RAFIKICODE_RELEASE_API",
     // Overrides the release download base URL (mock release servers in tests).

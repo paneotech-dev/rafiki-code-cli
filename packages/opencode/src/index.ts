@@ -29,6 +29,7 @@ import { EOL } from "os"
 import { WebCommand } from "./cli/cmd/web"
 import { PrCommand } from "./cli/cmd/pr"
 import { GhCommand } from "./rafiki/gh"
+import { GithubCommand } from "./rafiki/github-setup"
 import { SessionCommand } from "./cli/cmd/session"
 import { DbCommand } from "./cli/cmd/db"
 import { PluginCommand } from "./cli/cmd/plug"
@@ -134,6 +135,7 @@ const cli = yargs(args)
   .command(ImportCommand)
   .command(PrCommand)
   .command(GhCommand)
+  .command(GithubCommand)
   .command(SessionCommand)
   .command(PluginCommand)
   .command(DbCommand)

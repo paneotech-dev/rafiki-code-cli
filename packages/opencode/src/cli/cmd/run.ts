@@ -27,6 +27,7 @@ import { createOpencodeClient, type OpencodeClient, type ToolPart } from "@openc
 import { FormatError, FormatUnknownError } from "../error"
 import * as RafikiGateway from "@/rafiki/gateway-errors"
 import * as RafikiPermission from "@/rafiki/permission-hint"
+import * as Publish from "@opencode-ai/core/brand/publish"
 import * as RafikiMissingKey from "@/rafiki/missing-key"
 import * as RafikiAttach from "@/rafiki/attach"
 import * as RafikiCost from "@/rafiki/cost"
@@ -66,6 +67,12 @@ type FilePart = {
 }
 
 const ATTACH_FILE_MAX_BYTES = 10 * 1024 * 1024
+
+// "permission": { "publish": "allow" } in the config this run reads.
+async function pushAllowedByConfig(client: OpencodeClient) {
+  const cfg = await client.config.get().catch(() => undefined)
+  return Publish.allowedByConfig(cfg?.data?.permission)
+}
 
 type Inline = {
   icon: string
@@ -251,6 +258,11 @@ export const RunCommand = effectCmd({
       .option("auto", {
         type: "boolean",
         describe: "auto-approve permissions that are not explicitly denied (dangerous!)",
+        default: false,
+      })
+      .option("allow-push", {
+        type: "boolean",
+        describe: "let this run publish code (git push, gh pr create, gh repo create, gh release); refused otherwise, even with --auto",
         default: false,
       })
       .option("yolo", {
@@ -849,6 +861,25 @@ export const RunCommand = effectCmd({
               const permission = event.properties
               if (!sessions.has(permission.sessionID)) continue
 
+              // Publishing code is refused unless this run allows it, --auto or not (core/brand/publish.ts).
+              if (permission.permission === Publish.PERMISSION) {
+                const allowed = args["allow-push"] || Publish.allowedByEnv() || (await pushAllowedByConfig(client))
+                if (!allowed) {
+                  const what = Array.isArray(permission.metadata?.publish) ? permission.metadata.publish.join(", ") : "publish"
+                  UI.println(
+                    UI.Style.TEXT_WARNING_BOLD + "!",
+                    UI.Style.TEXT_NORMAL + `refused to publish code: ${what} (${permission.patterns.join(", ")})`,
+                  )
+                  UI.println(UI.Style.TEXT_NORMAL + Publish.refusal(Brand.name))
+                  permissions.rejected(Publish.PERMISSION)
+                }
+                await client.permission.reply({
+                  requestID: permission.id,
+                  reply: allowed ? "once" : "reject",
+                })
+                continue
+              }
+
               if (auto) {
                 await client.permission.reply({
                   requestID: permission.id,
@@ -1072,6 +1103,8 @@ export async function runMini(input: MiniCommandInput) {
     yolo: false,
     "dangerously-skip-permissions": false,
     dangerouslySkipPermissions: false,
+    "allow-push": false,
+    allowPush: false,
     demo: input.demo ?? false,
   })
 }

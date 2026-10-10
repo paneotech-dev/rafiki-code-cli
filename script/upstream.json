@@ -138,6 +138,11 @@
       "why": "The built in configuration skill is the one from `brand/skill.ts` when the upstream skill is hidden."
     },
     {
+      "path": "packages/core/src/v1/config/config.ts",
+      "class": "text",
+      "why": "The `compaction.prune` description gives this product's default (on for Rafiki tiers)."
+    },
+    {
       "path": "packages/core/test/global.test.ts",
       "class": "test",
       "why": "The temporary directory name comes from the brand module."
@@ -260,12 +265,12 @@
     {
       "path": "packages/opencode/src/cli/cmd/run.ts",
       "class": "hook",
-      "why": "Exit codes and messages for gateway errors, a missing key and rejected permissions, the attach check, the cost line, the `--resume` alias and server file credentials, each a call into `src/rafiki/`; an answer on another tier is announced through `rafiki/served.ts`, and a run on Rafiki Max is checked against the key first (`rafiki/tier-check.ts`)."
+      "why": "Exit codes and messages for gateway errors, a missing key and rejected permissions, the attach check, the cost line, the `--resume` alias and server file credentials, each a call into `src/rafiki/`; an answer on another tier is announced through `rafiki/served.ts`, and a run on Rafiki Max is checked against the key first (`rafiki/tier-check.ts`). A command that publishes code is refused unless the run allows it (`--allow-push`, `RAFIKICODE_ALLOW_PUSH`, a `publish` permission in config), `--auto` or not (`core/brand/publish.ts`)."
     },
     {
       "path": "packages/opencode/src/cli/cmd/run/footer.permission.tsx",
       "class": "text",
-      "why": "Product name in the prompt."
+      "why": "Product name in the prompt. The \"publish\" question offers no \"Allow always\" option."
     },
     {
       "path": "packages/opencode/src/cli/cmd/run/footer.prompt.tsx",
@@ -274,8 +279,8 @@
     },
     {
       "path": "packages/opencode/src/cli/cmd/run/permission.shared.ts",
-      "class": "text",
-      "why": "Product name in the permission text."
+      "class": "logic",
+      "why": "Product name in the permission text. The \"publish\" question has its own text and no \"Allow always\" option."
     },
     {
       "path": "packages/opencode/src/cli/cmd/run/splash.ts",
@@ -370,7 +375,7 @@
     {
       "path": "packages/opencode/src/index.ts",
       "class": "hook",
-      "why": "Registers this product's commands, installs the startup guard, applies a staged update, restarts from a usable temporary directory, reports an unexpected error through `rafiki/startup.ts`, runs the folder checks before anything else is loaded (`rafiki/folders-early.ts`), and moves a start in a folder that is not a project to the default workspace (`rafiki/workspace.ts`)."
+      "why": "Registers this product's commands, installs the startup guard, applies a staged update, restarts from a usable temporary directory, reports an unexpected error through `rafiki/startup.ts`, runs the folder checks before anything else is loaded (`rafiki/folders-early.ts`), and moves a start in a folder that is not a project to the default workspace (`rafiki/workspace.ts`). It also registers `rafikicode github` (`rafiki/github-setup.ts`)."
     },
     {
       "path": "packages/opencode/src/installation/index.ts",
@@ -386,6 +391,11 @@
       "path": "packages/opencode/src/mcp/oauth-provider.ts",
       "class": "text",
       "why": "Client name and address given to an MCP server."
+    },
+    {
+      "path": "packages/opencode/src/permission/index.ts",
+      "class": "hook",
+      "why": "A request for the \"publish\" permission (`core/brand/publish.ts`) is asked every time: wildcard and shell allows and earlier \"always\" answers do not apply to it, and only a rule named \"publish\" can deny it."
     },
     {
       "path": "packages/opencode/src/plugin/install.ts",
@@ -428,6 +438,11 @@
       "why": "`BrandServe.listenerGuard` refuses requests from other origins."
     },
     {
+      "path": "packages/opencode/src/session/compaction.ts",
+      "class": "hook",
+      "why": "Pruning of old tool output follows the rule and the default of `rafiki/prune.ts` (on for Rafiki tiers, `RAFIKICODE_PRUNE`), and a replaced output is shown with its marker."
+    },
+    {
       "path": "packages/opencode/src/session/instruction.ts",
       "class": "hook",
       "why": "The house style is appended to the instructions."
@@ -441,6 +456,11 @@
       "path": "packages/opencode/src/session/llm/native-runtime.ts",
       "class": "hook",
       "why": "The native runtime is refused when it would send the key anywhere but the gateway (`BrandGuard.allowed`)."
+    },
+    {
+      "path": "packages/opencode/src/session/message-v2.ts",
+      "class": "hook",
+      "why": "A replaced old tool output is sent as the marker of `rafiki/prune.ts`, which names the call and how to run it again."
     },
     {
       "path": "packages/opencode/src/snapshot/index.ts",
@@ -460,7 +480,7 @@
     {
       "path": "packages/opencode/src/session/prompt.ts",
       "class": "hook",
-      "why": "The order of the system text (`rafiki/cache-prefix.ts`), continuation messages (`rafiki/resume.ts`) and the error for an empty answer cut by the length limit (`rafiki/reasoning.ts`)."
+      "why": "The order of the system text (`rafiki/cache-prefix.ts`), continuation messages (`rafiki/resume.ts`) and the error for an empty answer cut by the length limit (`rafiki/reasoning.ts`). Old tool output is pruned before the first request of a turn (`rafiki/prune.ts`)."
     },
     {
       "path": "packages/opencode/src/session/retry.ts",
@@ -491,6 +511,11 @@
       "path": "packages/opencode/src/tool/registry.ts",
       "class": "hook",
       "why": "Tool directories pass through `BrandTrust.codeDirs` (workspace trust)."
+    },
+    {
+      "path": "packages/opencode/src/tool/shell.ts",
+      "class": "hook",
+      "why": "Before a command that publishes code, the tool asks the \"publish\" question built by `rafiki/publish-guard.ts`."
     },
     {
       "path": "packages/opencode/test/acp/error.test.ts",
@@ -623,6 +648,11 @@
       "why": "Providers that are disabled by default here are enabled for the test."
     },
     {
+      "path": "packages/opencode/test/session/message-v2.test.ts",
+      "class": "test",
+      "why": "Expects the marker of `rafiki/prune.ts` for a replaced tool output."
+    },
+    {
       "path": "packages/opencode/test/session/prompt.test.ts",
       "class": "test",
       "why": "The test instance is given its configuration explicitly."
@@ -705,7 +735,7 @@
     {
       "path": "packages/tui/src/feature-plugins/builtins.ts",
       "class": "hook",
-      "why": "Registers the spend plugin (`feature-plugins/rafiki-cost.tsx`) and the History plugin (`feature-plugins/rafiki-history.tsx`)."
+      "why": "Registers the spend plugin (`feature-plugins/rafiki-cost.tsx`), the History plugin (`feature-plugins/rafiki-history.tsx`) and the GitHub setup (`feature-plugins/rafiki-github.tsx`)."
     },
     {
       "path": "packages/tui/src/feature-plugins/home/tips-view.tsx",
@@ -734,8 +764,8 @@
     },
     {
       "path": "packages/tui/src/routes/session/permission.tsx",
-      "class": "text",
-      "why": "Product name in the permission text."
+      "class": "logic",
+      "why": "Product name in the permission text. The \"publish\" question has its own text and no \"Allow always\" option."
     },
     {
       "path": "packages/tui/src/routes/session/subagent-footer.tsx",

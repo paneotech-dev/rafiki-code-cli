@@ -21,6 +21,7 @@ import { ChildProcess } from "effect/unstable/process"
 import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner"
 import { ShellPrompt, type Parameters } from "./shell/prompt"
 import { BashArity } from "@/permission/arity"
+import * as PublishGuard from "@/rafiki/publish-guard"
 
 export { Parameters } from "./shell/prompt"
 
@@ -624,6 +625,9 @@ export const ShellTool = Tool.define(
                   )
                   const scan = yield* collect(tree.rootNode, cwd, ps, shell, instanceCtx)
                   if (!containsPath(cwd, instanceCtx)) scan.dirs.add(cwd)
+                  // A command that publishes code asks first, every time (rafiki/publish-guard.ts).
+                  const publish = PublishGuard.request(params.command, scan.patterns, cwd)
+                  if (publish) yield* ctx.ask(publish)
                   yield* ask(ctx, scan, params)
                 }),
               )

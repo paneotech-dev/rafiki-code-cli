@@ -11,6 +11,7 @@ import { Agent } from "@/agent/agent"
 import { Plugin } from "@/plugin"
 import { Config } from "@/config/config"
 import { NotFoundError } from "@/storage/storage"
+import * as RafikiPrune from "@/rafiki/prune"
 
 import { Effect, Layer, Context } from "effect"
 import { InstanceState } from "@/effect/instance-state"
@@ -25,10 +26,9 @@ import { SessionCompactionEvent } from "@opencode-ai/schema/session-compaction-e
 
 export const Event = SessionCompactionEvent
 
-export const PRUNE_MINIMUM = 20_000
-export const PRUNE_PROTECT = 40_000
+export const PRUNE_MINIMUM = RafikiPrune.MINIMUM_TOKENS
+export const PRUNE_PROTECT = RafikiPrune.PROTECT_TOKENS
 const TOOL_OUTPUT_MAX_CHARS = 2_000
-const PRUNE_PROTECTED_TOOLS = ["skill"]
 const MIN_PRESERVE_RECENT_TOKENS = 2_000
 const MAX_PRESERVE_RECENT_TOKENS = 15_000
 type Turn = {
@@ -74,7 +74,7 @@ const serialize = (message: SessionV1.WithParts) => {
           (item) => `[Attached ${item.mime}: ${item.filename ?? "file"}]`,
         )
         const output = part.state.time.compacted
-          ? "[Old tool result content cleared]"
+          ? RafikiPrune.marker(part)
           : truncate([part.state.output, ...attachments].join("\n"))
         return [call, `[Tool result]: ${output}`]
       }
@@ -268,52 +268,32 @@ const layer = Layer.effect(
       }
     })
 
-    // goes backwards through parts until there are PRUNE_PROTECT tokens worth of tool
-    // calls, then erases output of older tool calls to free context space
+    // Replaces old, large tool outputs with a short marker (rafiki/prune.ts
+    // has the rule): the latest turn and the newest PRUNE_PROTECT tokens of
+    // output stay in full, errors and edits are never replaced, and nothing
+    // happens until more than PRUNE_MINIMUM tokens can be freed.
     const prune = Effect.fn("SessionCompaction.prune")(function* (input: { sessionID: SessionID }) {
       const cfg = yield* config.get()
-      if (!cfg.compaction?.prune) return
-      yield* Effect.logInfo("pruning")
-
       const msgs = yield* session
         .messages({ sessionID: input.sessionID })
         .pipe(Effect.catchIf(NotFoundError.isInstance, () => Effect.succeed(undefined)))
       if (!msgs) return
+      const lastUser = msgs.findLast((msg) => msg.info.role === "user")
+      const providerID = lastUser?.info.role === "user" ? lastUser.info.model?.providerID : undefined
+      if (!RafikiPrune.enabled({ configured: cfg.compaction?.prune, providerID })) return
+      yield* Effect.logInfo("pruning")
 
-      let total = 0
-      let pruned = 0
-      const toPrune: SessionV1.ToolPart[] = []
-      let turns = 0
-
-      loop: for (let msgIndex = msgs.length - 1; msgIndex >= 0; msgIndex--) {
-        const msg = msgs[msgIndex]
-        if (msg.info.role === "user") turns++
-        if (turns < 2) continue
-        if (msg.info.role === "assistant" && msg.info.summary) break loop
-        for (let partIndex = msg.parts.length - 1; partIndex >= 0; partIndex--) {
-          const part = msg.parts[partIndex]
-          if (part.type !== "tool") continue
-          if (part.state.status !== "completed") continue
-          if (PRUNE_PROTECTED_TOOLS.includes(part.tool)) continue
-          if (part.state.time.compacted) break loop
-          const estimate = Token.estimate(part.state.output)
-          total += estimate
-          if (total <= PRUNE_PROTECT) continue
-          pruned += estimate
-          toPrune.push(part)
+      const found = RafikiPrune.select(msgs, { protect: PRUNE_PROTECT, minimum: PRUNE_MINIMUM })
+      yield* Effect.logInfo("found", { pruned: found.pruned, total: found.total })
+      if (found.parts.length === 0) return
+      const now = Date.now()
+      for (const part of found.parts) {
+        if (part.state.status === "completed") {
+          part.state.time.compacted = now
+          yield* session.updatePart(part)
         }
       }
-
-      yield* Effect.logInfo("found", { pruned, total })
-      if (pruned > PRUNE_MINIMUM) {
-        for (const part of toPrune) {
-          if (part.state.status === "completed") {
-            part.state.time.compacted = Date.now()
-            yield* session.updatePart(part)
-          }
-        }
-        yield* Effect.logInfo("pruned", { count: toPrune.length })
-      }
+      yield* Effect.logInfo("pruned", { count: found.parts.length })
     })
 
     const processCompaction = Effect.fn("SessionCompaction.process")(function* (input: {

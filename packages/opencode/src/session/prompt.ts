@@ -1087,6 +1087,10 @@ const layer = Layer.effect(
         let structured: unknown
         let step = 0
         const session = yield* sessions.get(sessionID).pipe(Effect.orDie)
+        // Old tool output is pruned before the first request of a turn, so the
+        // turn already sends less (rafiki/prune.ts); a run that exits right
+        // after its turn would otherwise never see the forked prune below.
+        yield* compaction.prune({ sessionID }).pipe(Effect.ignore)
 
         while (true) {
           yield* status.set(sessionID, { type: "busy" })

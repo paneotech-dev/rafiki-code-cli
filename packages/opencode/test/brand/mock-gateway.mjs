@@ -60,6 +60,11 @@ export function createMockGateway(options = {}) {
     // { name, arguments }: the first turn of a conversation asks for this tool
     // call; once a tool result is in the messages the canned reply follows.
     toolCall: options.toolCall,
+    // A tool call on every turn instead of the first only: true asks for
+    // toolCall whenever the last message is the user's, a function
+    // (turn, messages) => { name, arguments } | undefined picks the call per
+    // turn (turn counts the user messages, from 1).
+    toolCallEach: options.toolCallEach,
     // true keeps every chat request body as received (bytes, parsed JSON and the session header) in `bodies`.
     bodies: options.bodies ?? false,
     prices: options.prices ?? MOCK_PRICES,
@@ -269,8 +274,15 @@ export function createMockGateway(options = {}) {
         check.key.spend = Math.round((check.key.spend + opts.cost) * 1e6) / 1e6
         headers["x-litellm-response-cost"] = String(opts.cost)
       }
-      if (opts.toolCall && !messages.some((m) => m && m.role === "tool")) {
-        const call = { id: "call_mock_1", type: "function", function: { name: opts.toolCall.name, arguments: JSON.stringify(opts.toolCall.arguments ?? {}) } }
+      let wanted = opts.toolCall && !opts.toolCallEach && !messages.some((m) => m && m.role === "tool") ? opts.toolCall : undefined
+      let callId = "call_mock_1"
+      if (opts.toolCallEach && messages[messages.length - 1]?.role === "user") {
+        const turn = messages.filter((m) => m && m.role === "user").length
+        wanted = typeof opts.toolCallEach === "function" ? opts.toolCallEach(turn, messages) : opts.toolCall
+        callId = `call_mock_${turn}`
+      }
+      if (wanted) {
+        const call = { id: callId, type: "function", function: { name: wanted.name, arguments: JSON.stringify(wanted.arguments ?? {}) } }
         if (body.stream !== true) {
           return json(res, 200, {
             id: "chatcmpl-mock-" + Date.now(),

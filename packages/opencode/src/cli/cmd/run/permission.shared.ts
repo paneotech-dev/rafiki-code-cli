@@ -29,6 +29,8 @@ export type PermissionBodyState = {
   selected: PermissionOption
   message: string
   submitting: boolean
+  // No "always": publishing code is asked every time (core/brand/publish.ts).
+  onceOnly?: boolean
 }
 
 export type PermissionInfo = {
@@ -68,19 +70,20 @@ function patterns(request: PermissionRequest): string[] {
   return request.patterns.filter((item): item is string => typeof item === "string")
 }
 
-export function createPermissionBodyState(requestID: string): PermissionBodyState {
+export function createPermissionBodyState(requestID: string, onceOnly = false): PermissionBodyState {
   return {
     requestID,
     stage: "permission",
     selected: "once",
     message: "",
     submitting: false,
+    ...(onceOnly ? { onceOnly } : {}),
   }
 }
 
-export function permissionOptions(stage: PermissionStage): PermissionOption[] {
+export function permissionOptions(stage: PermissionStage, onceOnly = false): PermissionOption[] {
   if (stage === "permission") {
-    return ["once", "always", "reject"]
+    return onceOnly ? ["once", "reject"] : ["once", "always", "reject"]
   }
 
   if (stage === "always") {
@@ -106,6 +109,16 @@ export function permissionInfo(request: PermissionRequest): PermissionInfo {
       icon: "←",
       title: `Access external directory ${toolPath(dir, { home: true })}`,
       lines: pats.map((item) => `- ${item}`),
+    }
+  }
+
+  if (request.permission === "publish") {
+    const meta = dict(request.metadata)
+    const what = Array.isArray(meta.publish) ? meta.publish.filter((item): item is string => typeof item === "string").join(", ") : ""
+    return {
+      icon: "↑",
+      title: what ? `Publish code: ${what}` : "Publish code",
+      lines: [`$ ${text(meta.command) || pats[0] || ""}`, "This sends code to GitHub or another remote. It is asked every time."],
     }
   }
 
@@ -152,7 +165,7 @@ export function permissionReply(requestID: string, reply: PermissionReply["reply
 }
 
 export function permissionShift(state: PermissionBodyState, dir: -1 | 1): PermissionBodyState {
-  const list = permissionOptions(state.stage)
+  const list = permissionOptions(state.stage, state.onceOnly)
   if (list.length === 0) {
     return state
   }

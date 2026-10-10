@@ -24,6 +24,8 @@ Last request sent 24,530 tokens
 
 The prompt row shows the same in short (`24.5K sent (2%)`). The tokens sent are everything the request carried (plain input, input read from the cache, input written to the cache), each counted once; the cached part is inside that figure. The share is of the window of the tier that answered.
 
+In a long session the tokens sent can drop from one turn to the next: old, large tool outputs are replaced with a short note once enough of them have piled up. See [Long sessions: old tool output](configuration.md#long-sessions-old-tool-output).
+
 ## Spend
 
 The right side of the prompt row shows the tier, what the key has spent since the session started, and the share of the key's budget used:

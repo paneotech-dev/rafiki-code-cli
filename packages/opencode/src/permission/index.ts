@@ -6,6 +6,7 @@ import { Deferred, Effect, Layer, Context } from "effect"
 import os from "os"
 import { PermissionV1 } from "@opencode-ai/core/v1/permission"
 import { EventV2Bridge } from "@/event-v2-bridge"
+import * as Publish from "@opencode-ai/core/brand/publish"
 
 export const Event = PermissionV1.Event
 
@@ -69,7 +70,21 @@ const layer = Layer.effect(
       const { ruleset, ...request } = input
       let needsAsk = false
 
-      for (const pattern of request.patterns) {
+      // Publishing code (core/brand/publish.ts) asks every time: a wildcard
+      // allow, an allowed shell and an earlier "always" do not answer it. Only
+      // a rule written for it by name can deny it; `rafikicode run` decides
+      // on its own whether a run may push (cli/cmd/run.ts).
+      if (request.permission === Publish.PERMISSION) {
+        const denied = ruleset.findLast((rule) => rule.permission === Publish.PERMISSION)?.action === "deny"
+        if (denied) {
+          return yield* new PermissionV1.DeniedError({
+            ruleset: ruleset.filter((rule) => rule.permission === Publish.PERMISSION),
+          })
+        }
+        needsAsk = true
+      }
+
+      for (const pattern of needsAsk ? [] : request.patterns) {
         const rule = evaluate(request.permission, pattern, ruleset, approved)
         yield* Effect.logInfo("evaluated", { permission: request.permission, pattern, action: rule })
         if (rule.action === "deny") {
@@ -140,7 +155,7 @@ const layer = Layer.effect(
       }
 
       yield* Deferred.succeed(existing.deferred, undefined)
-      if (input.reply === "once") return
+      if (input.reply === "once" || existing.info.permission === Publish.PERMISSION) return
 
       for (const pattern of existing.info.always) {
         approved.push({
@@ -152,7 +167,8 @@ const layer = Layer.effect(
 
       for (const [id, item] of pending.entries()) {
         if (item.info.sessionID !== existing.info.sessionID) continue
-        const ok = item.info.patterns.every(
+        if (item.info.permission === Publish.PERMISSION) continue
+        const ok =item.info.patterns.every(
           (pattern) => evaluate(item.info.permission, pattern, approved).action === "allow",
         )
         if (!ok) continue

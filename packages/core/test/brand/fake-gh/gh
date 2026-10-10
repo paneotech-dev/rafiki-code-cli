@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# A stand-in for the GitHub CLI in tests: never contacts GitHub. Repositories
+# it "creates" are bare repositories under $FAKE_GH_ROOT/remotes, and every
+# call is logged to $FAKE_GH_ROOT/calls.log.
+#   FAKE_GH_AUTH=0   gh auth status fails (not signed in)
+#   FAKE_GH_USER     the account name (default tester)
+set -u
+root="${FAKE_GH_ROOT:?FAKE_GH_ROOT is not set}"
+user="${FAKE_GH_USER:-tester}"
+mkdir -p "$root/remotes"
+printf '%s\n' "$*" >> "$root/calls.log"
+case "${1:-} ${2:-}" in
+  "--version "*) echo "gh version 2.99.0 (fake)"; exit 0 ;;
+  "auth status")
+    if [ "${FAKE_GH_AUTH:-1}" = "0" ]; then
+      echo "You are not logged into any GitHub hosts. To log in, run: gh auth login" >&2
+      exit 1
+    fi
+    echo "github.com"; echo "  Logged in to github.com account $user (keyring)"; exit 0 ;;
+  "api user") echo "$user"; exit 0 ;;
+  "repo create")
+    name="$3"; shift 3
+    source="."; remote="origin"
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --source) source="$2"; shift 2 ;;
+        --source=*) source="${1#--source=}"; shift ;;
+        --remote) remote="$2"; shift 2 ;;
+        --remote=*) remote="${1#--remote=}"; shift ;;
+        *) shift ;;
+      esac
+    done
+    if [ -e "$root/remotes/$name.git" ]; then
+      echo "GraphQL: Name already exists on this account (createRepository)" >&2
+      exit 1
+    fi
+    git init -q --bare "$root/remotes/$name.git" || exit 1
+    git -C "$source" remote add "$remote" "$root/remotes/$name.git" || exit 1
+    echo "https://github.com/$user/$name"
+    exit 0 ;;
+  "repo view")
+    url="$(git remote get-url origin 2>/dev/null)"
+    name="$(basename "$url" .git)"
+    case "$*" in
+      *defaultBranchRef*) echo "main" ;;
+      *) echo "https://github.com/$user/$name" ;;
+    esac
+    exit 0 ;;
+  "pr create")
+    url="$(git remote get-url origin 2>/dev/null)"
+    echo "https://github.com/$user/$(basename "$url" .git)/pull/1"
+    exit 0 ;;
+esac
+echo "fake gh: unsupported call: $*" >&2
+exit 2
