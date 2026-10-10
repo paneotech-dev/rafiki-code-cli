@@ -73,20 +73,20 @@ counted with `git diff --numstat -M` against the upstream base.
 
 <!-- upstream-files:start -->
 
-Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 182. Changed lines: 6601 (3794 added, 2807 removed).
+Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 183. Changed lines: 6608 (3801 added, 2807 removed).
 
 | Class | Files | Added | Removed |
 | --- | ---: | ---: | ---: |
-| Source: a call into this fork's modules | 38 | 450 | 157 |
+| Source: a call into this fork's modules | 39 | 454 | 157 |
 | Source: product name, file names and wording | 43 | 217 | 192 |
-| Source: behaviour changed in place | 14 | 562 | 221 |
+| Source: behaviour changed in place | 14 | 565 | 221 |
 | Tests of upstream, adapted | 33 | 554 | 177 |
 | Generated files | 3 | 366 | 181 |
 | Package identity and packaging | 9 | 20 | 479 |
 | Documentation | 23 | 197 | 1182 |
 | Repository tooling and workflows | 6 | 23 | 8 |
 | Editor extension | 13 | 1405 | 210 |
-| Total | 182 | 3794 | 2807 |
+| Total | 183 | 3801 | 2807 |
 
 ### Source: a call into this fork's modules
 
@@ -130,7 +130,8 @@ On a conflict: Take upstream's side of the conflict, then put the call back at t
 | `packages/opencode/src/session/system.ts` | 6 | 1 | System prompts pass through `Brand.prompt`; the date line leaves the environment block because `rafiki/cache-prefix.ts` places it after the stable part; the gateway provider's prompt starts with `Brand.identity`. |
 | `packages/opencode/src/tool/registry.ts` | 2 | 1 | Tool directories pass through `BrandTrust.codeDirs` (workspace trust). |
 | `packages/tui/src/component/dialog-model.tsx` | 24 | 4 | Tiers that are not listed are hidden (`Brand.provider.listed`); each tier states its price in credits, and Rafiki Max is confirmed once per session and checked against the key (`component/tier-choice.tsx`). |
-| `packages/tui/src/feature-plugins/builtins.ts` | 2 | 0 | Registers the spend plugin (`feature-plugins/rafiki-cost.tsx`). |
+| `packages/tui/src/config/keybind.ts` | 2 | 0 | The key that opens the History panel (`recent_open`, `<leader>o`, `feature-plugins/rafiki-history.tsx`). |
+| `packages/tui/src/feature-plugins/builtins.ts` | 4 | 0 | Registers the spend plugin (`feature-plugins/rafiki-cost.tsx`) and the History plugin (`feature-plugins/rafiki-history.tsx`). |
 | `packages/tui/src/routes/session/subagent-footer.tsx` | 6 | 14 | The context figure is what the last request sent (`core/brand/context.ts`); the amount from the model price table is not shown. |
 
 ### Source: product name, file names and wording
@@ -195,7 +196,7 @@ On a conflict: Merge by hand and read both sides. These are the files to thin ne
 | `packages/opencode/src/acp/service.ts` | 66 | 23 | Names and the sign in method of this product, trust warnings sent to the client, and the cancellation fix: a cancelled turn answers `cancelled`, and `usage` is omitted when there is no token accounting. The fix is not specific to this product. |
 | `packages/opencode/src/acp/session.ts` | 29 | 0 | The per turn cancellation flag used by the fix in `acp/service.ts`. |
 | `packages/opencode/src/acp/usage.ts` | 29 | 11 | Token accounting may be absent on a message; part of the fix in `acp/service.ts`. |
-| `packages/opencode/src/cli/cmd/tui.ts` | 66 | 10 | Events raised before the interface subscribes are buffered and replayed, the terminal is checked before the renderer loads, trust warnings become notices, and a refused listener stops the start. The buffering is not specific to this product. |
+| `packages/opencode/src/cli/cmd/tui.ts` | 69 | 10 | Events raised before the interface subscribes are buffered and replayed, the terminal is checked before the renderer loads, trust warnings become notices, and a refused listener stops the start. The buffering is not specific to this product. After the interface closes, a conversation or folder picked in the History panel is opened by starting the program again there (`rafiki/history.ts`). |
 | `packages/opencode/src/cli/error.ts` | 37 | 5 | Configuration errors end with three lines that say what to do, and messages name this product's commands. |
 | `packages/opencode/src/config/parse.ts` | 38 | 0 | `normalizeLoaded` and `issuesOf` live beside the decoder so that `doctor` validates a file the way a session does, without loading the configuration layer. |
 | `packages/opencode/src/installation/index.ts` | 59 | 111 | The update source, the install method detection and the upgrade commands are this product's (`rafiki/update.ts`); upstream's installer and package addresses are removed. |

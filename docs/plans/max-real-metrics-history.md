@@ -23,3 +23,15 @@ Branch `feature/max-real-metrics-history`, based on `review/cli-integration-2026
 
 - The gateway may count a request a moment after answering it. The interface reads the key again about 20 seconds after an answer; `run` reads it up to three times a second and a half apart and says so when the spend has still not moved.
 - "This session" is a difference of two readings of the key: other use of the same key in the meantime is included, and the texts say "on this key".
+
+## History
+
+- The list is the session list the program already keeps (`GET /experimental/session`, the one behind the session commands), across folders, top level and not archived, newest activity first. No store is added. Projects are the folders of those sessions.
+- The client names its folder on every request and that route then narrows the list to it, so the panel asks with an empty folder.
+- It is read the first time the sidebar section or the panel is shown, and again two seconds after session updates settle; never at startup.
+- A conversation of the current folder opens in place. The interface runs in one folder, so a conversation of another folder, or a folder, ends it and starts the program again there (`--session` for a conversation).
+- Spend per conversation is not shown: the gateway counts spend per key, not per conversation, and nothing records it per session.
+
+## Builder projects
+
+Not listed. The builder's orchestrator accepts only a service token signed by the Console or the builder web (issuers `rafiki-console` and `rafiki-code-web`, a shared secret), and it has no route that lists an owner's sessions (only `GET /v1/sessions/{id}` and the routes under it). To list builds, the platform would need an owner scoped `GET /v1/sessions` (newest first, title, last activity, the address of the published app) and a Console route a Rafiki Code key may call (for example `GET /api/v1/builder/sessions`, authenticated like `/api/v1/me`) that signs a service token for the key's owner and returns that list.

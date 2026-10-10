@@ -2,6 +2,7 @@ import type { TuiPlugin, TuiPluginModule } from "@opencode-ai/plugin/tui"
 import HomeFooter from "./home/footer"
 import HomeTips from "./home/tips"
 import RafikiCost from "./rafiki-cost"
+import RafikiHistory from "./rafiki-history"
 import SidebarContext from "./sidebar/context"
 import SidebarFiles from "./sidebar/files"
 import SidebarFooter from "./sidebar/footer"
@@ -25,6 +26,7 @@ export function createBuiltinPlugins(options: { experimentalEventSystem: boolean
     HomeTips,
     SidebarContext,
     RafikiCost,
+    RafikiHistory,
     SidebarMcp,
     SidebarLsp,
     SidebarTodo,

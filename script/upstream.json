@@ -295,7 +295,7 @@
     {
       "path": "packages/opencode/src/cli/cmd/tui.ts",
       "class": "logic",
-      "why": "Events raised before the interface subscribes are buffered and replayed, the terminal is checked before the renderer loads, trust warnings become notices, and a refused listener stops the start. The buffering is not specific to this product."
+      "why": "Events raised before the interface subscribes are buffered and replayed, the terminal is checked before the renderer loads, trust warnings become notices, and a refused listener stops the start. The buffering is not specific to this product. After the interface closes, a conversation or folder picked in the History panel is opened by starting the program again there (`rafiki/history.ts`)."
     },
     {
       "path": "packages/opencode/src/cli/cmd/upgrade.ts",
@@ -698,9 +698,14 @@
       "why": "The default theme name and the project directory names come from the brand module."
     },
     {
+      "path": "packages/tui/src/config/keybind.ts",
+      "class": "hook",
+      "why": "The key that opens the History panel (`recent_open`, `<leader>o`, `feature-plugins/rafiki-history.tsx`)."
+    },
+    {
       "path": "packages/tui/src/feature-plugins/builtins.ts",
       "class": "hook",
-      "why": "Registers the spend plugin (`feature-plugins/rafiki-cost.tsx`)."
+      "why": "Registers the spend plugin (`feature-plugins/rafiki-cost.tsx`) and the History plugin (`feature-plugins/rafiki-history.tsx`)."
     },
     {
       "path": "packages/tui/src/feature-plugins/home/tips-view.tsx",

@@ -18,6 +18,7 @@ import { validateSession } from "../tui/validate-session"
 import { win32InstallCtrlCGuard } from "@opencode-ai/tui/terminal-win32"
 import { installTrustNotices } from "@/rafiki/notice"
 import * as Startup from "@/rafiki/startup"
+import * as RafikiHistory from "@/rafiki/history"
 
 declare global {
   const OPENCODE_WORKER_PATH: string
@@ -359,6 +360,8 @@ export const TuiThreadCommand = cmd({
         unguard?.()
       } catch {}
     }
+    // A conversation or project of another folder picked in the History panel.
+    RafikiHistory.reopen()
     process.exit()
   },
 })
