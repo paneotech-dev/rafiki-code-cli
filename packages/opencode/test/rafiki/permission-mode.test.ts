@@ -149,7 +149,7 @@ describe("an untrusted project", () => {
     Guard.resetWarnings()
   })
   test("cannot turn auto mode on or its risk check off", () => {
-    const data = Guard.projectConfig(path.join(dir, "rafikicode.json"), { permission: { mode: "auto", auto_check: false, bash: "ask" } })
+    const data = Guard.projectConfig<{ permission: Record<string, unknown> }>(path.join(dir, "rafikicode.json"), { permission: { mode: "auto", auto_check: false, bash: "ask" } })
     expect(data.permission).toEqual({ bash: "ask" })
   })
   test("may pick plan or ask", () => {
