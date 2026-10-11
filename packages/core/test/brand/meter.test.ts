@@ -101,3 +101,51 @@ describe("texts", () => {
     expect(Meter.usd(Number.NaN)).toBe("?")
   })
 })
+
+describe("an account whose billing is not enforced", () => {
+  const at = new Date(2026, 9, 10, 12, 4, 31).getTime()
+  const base = Meter.update(Meter.update(Meter.empty(), { key: key(1.2), at: 1 }), { key: key(1.2125, 25, at), at })
+  const internal = Meter.update(base, { balance: { usd: 11.01, enforced: false }, at })
+  const customer = Meter.update(base, { balance: { usd: 11.01, enforced: true }, at })
+  const older = Meter.update(base, { balance: { usd: 11.01 }, at })
+
+  test("the wallet is kept with whether billing is enforced; a figure alone leaves it unknown", () => {
+    expect(internal.enforced).toBe(false)
+    expect(internal.balance).toEqual({ usd: 11.01, at })
+    expect(customer.enforced).toBe(true)
+    expect(older.enforced).toBeUndefined()
+    expect(Meter.update(base, { balance: 11.01, at }).enforced).toBeUndefined()
+    // A later reading without the field keeps what the Console said last.
+    expect(Meter.update(internal, { failed: true, at }).enforced).toBe(false)
+  })
+
+  test("the sidebar says so instead of a balance", () => {
+    expect(Meter.lines(internal)).toEqual([
+      { label: "This session", value: "0.0125 USD" },
+      { label: "Key", value: "1.21 of 25.00 USD (4%)" },
+      { label: "Credits", value: "not enforced (internal account)" },
+    ])
+    expect(Meter.lines(internal).map((row) => row.value).join(" ")).not.toContain("11.01")
+    // A billed account and an older Console keep the balance.
+    expect(Meter.lines(customer).at(-1)).toEqual({ label: "Credits left", value: "11.01 USD" })
+    expect(Meter.lines(older).at(-1)).toEqual({ label: "Credits left", value: "11.01 USD" })
+  })
+
+  test("the prompt row says so when it has the room, and drops it first", () => {
+    expect(Meter.statusLine({ tier: "fast", state: internal })).toBe(
+      "fast · 0.0125 USD this session · key budget 4% used · Credits: not enforced (internal account)",
+    )
+    expect(Meter.statusLine({ tier: "fast", state: internal }, 60)).toBe("fast · 0.0125 USD this session · key budget 4% used")
+    expect(Meter.statusLine({ tier: "fast", state: customer })).toBe("fast · 0.0125 USD this session · key budget 4% used")
+    expect(Meter.statusLine({ tier: "fast", state: older })).toBe("fast · 0.0125 USD this session · key budget 4% used")
+  })
+
+  test("the run line drops the credits figure the same way", () => {
+    const line = (state: Meter.State) => Meter.runLine({ path: "tier fast", requests: 2, sent: 49_060, received: 824, state })
+    expect(line(internal)).toBe(
+      "Task: tier fast · 2 requests, 49,060 tokens sent and 824 received in all · 0.0125 USD spent on this key during the task · key 1.21 of 25.00 USD (4%) · credits not enforced (internal account)",
+    )
+    expect(line(customer)).toEndWith(" · 11.01 USD of credits left")
+    expect(line(older)).toEndWith(" · 11.01 USD of credits left")
+  })
+})

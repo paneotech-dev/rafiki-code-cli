@@ -1,7 +1,9 @@
 // Spend of the session on screen, from the gateway's own count: the status
 // line on the prompt row (tier, spent this session, share of the key budget)
 // and a Spend block in the sidebar (tier path, spent this session, key spent
-// and budget, credits left, and when the figures were read). The figures and
+// and budget, credits left, and when the figures were read). An account whose
+// billing is not enforced sees "Credits: not enforced (internal account)" in
+// place of the balance, which falls but stops nothing. The figures and
 // the wording come from the brand layer (core/brand/meter.ts).
 //
 // The key's spend and budget are read from the gateway (/key/info) and the
@@ -46,11 +48,11 @@ export const FOLLOW_UP_MS = 20_000
 const HISTORY = 50
 
 type Read = () => Promise<Account.KeyInfoResult>
-type Balance = () => Promise<number | undefined>
+type Balance = () => Promise<number | Account.Wallet | undefined>
 
 function defaultBalance() {
   const from = Account.source()
-  return from ? Account.balance(from) : Promise.resolve(undefined)
+  return from ? Account.wallet(from) : Promise.resolve(undefined)
 }
 
 export type MeterTracker = ReturnType<typeof createMeterTracker>

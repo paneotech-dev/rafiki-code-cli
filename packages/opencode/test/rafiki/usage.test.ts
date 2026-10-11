@@ -122,6 +122,26 @@ describe("the report", () => {
     expect(lines.join("\n")).not.toContain("By day")
   })
 
+  test("not enforced: one line at the top; enforced or not said: the report as it was", () => {
+    const lines = Usage.render(mockUsage(30), { ...input, enforced: false })
+    expect(lines.slice(0, 3)).toEqual([
+      Usage.NOT_ENFORCED_LINE,
+      "",
+      "Usage of your Rafiki AI account, last 30 days (since 2026-09-02). Amounts are USD charged.",
+    ])
+    expect(lines.filter((line) => line.includes("not enforced"))).toHaveLength(1)
+    expect(Usage.render(mockUsage(30), { ...input, enforced: true })).toEqual(Usage.render(mockUsage(30), input))
+  })
+
+  test("whether billing is enforced comes from the account route, and is unknown when it cannot be read", async () => {
+    let client = await mock({ billingEnforced: false })
+    expect(await Usage.enforced(client, KEY)).toBe(false)
+    await console_!.close()
+    client = await mock()
+    expect(await Usage.enforced(client, KEY)).toBeUndefined()
+    expect(await Usage.enforced({ consoleURL: "http://127.0.0.1:9", fetch: async () => Promise.reject(new Error("down")) }, KEY)).toBeUndefined()
+  })
+
   test("no usage in the window", () => {
     expect(Usage.render({ object: "usage", period: { days: 1 }, totals: { calls: 0, cost_usd: 0 }, by_model: [], by_day: [] }, { ...input, days: 1 })).toEqual([
       "Usage of your Rafiki AI account, last 1 day. Amounts are USD charged.",
@@ -159,7 +179,27 @@ describe("rafikicode usage", () => {
     expect(result.stdout).toContain("Usage of your Rafiki AI account, last 30 days (since 2026-09-02). Amounts are USD charged.")
     expect(result.stdout).toContain("  pro         3         40,000           6,000    0.2000")
     expect(result.stdout).toContain("  2026-10-01       8   0.0050   0.2000        -    0.2050")
-    expect(console_!.requests.at(-1)).toMatchObject({ path: "/api/v1/usage", days: 30 })
+    expect(console_!.requests.filter((r: any) => r.path === "/api/v1/usage").at(-1)).toMatchObject({ path: "/api/v1/usage", days: 30 })
+    expect(result.stdout).not.toContain("not enforced")
+  }, 60_000)
+
+  test("an account whose billing is not enforced is told so once, at the top", async () => {
+    await mock({ billingEnforced: false })
+    const result = await run([])
+    expect(result.exitCode).toBe(0)
+    const lines = result.stdout.split("\n")
+    expect(lines[0]).toBe(Usage.NOT_ENFORCED_LINE)
+    expect(lines[0]).toBe("Credits: not enforced (internal account). Usage is recorded, but work does not stop when the balance reaches zero.")
+    expect(lines[2]).toStartWith("Usage of your Rafiki AI account, last 30 days")
+    expect(result.stdout.split("not enforced").length - 1).toBe(1)
+  }, 60_000)
+
+  test("a billed account gets the report as before", async () => {
+    await mock({ billingEnforced: true })
+    const result = await run([])
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout.split("\n")[0]).toStartWith("Usage of your Rafiki AI account")
+    expect(result.stdout).not.toContain("not enforced")
   }, 60_000)
 
   test("--days and --json pass the window through and print the console's answer", async () => {

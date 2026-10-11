@@ -169,7 +169,9 @@ export interface MeResponse {
   object?: "me"
   owner: Owner
   key?: { id?: string; alias?: string; name?: string; kind?: string; created_at?: string; expires_at?: string }
-  wallet?: { balance_usd?: number; credited_usd?: number; spent_usd?: number }
+  // billing_enforced is false for an organisation whose work does not stop
+  // at zero (internal and staff accounts); absent on an older Console.
+  wallet?: { balance_usd?: number; credited_usd?: number; spent_usd?: number; billing_enforced?: boolean }
   limits?: Limits
   tiers?: string[]
 }

@@ -30,7 +30,7 @@ afterEach(() => {
   for (const tracker of trackers.splice(0)) tracker.dispose()
 })
 
-function harness(input: { replies: (Account.KeyInfoResult | Error)[]; balance?: number; now?: () => number }) {
+function harness(input: { replies: (Account.KeyInfoResult | Error)[]; balance?: number | Account.Wallet; now?: () => number }) {
   const handlers = new Map<string, (event: any) => void>()
   const messages: unknown[] = []
   let reads = 0
@@ -97,6 +97,28 @@ describe("the spend plugin", () => {
     // The follow up reading for a request the gateway counts late.
     await wait(40)
     expect(reads()).toBe(3)
+  })
+
+  test("an account whose billing is not enforced: the sidebar and the prompt row say so, no balance", async () => {
+    const { tracker, messages } = harness({ replies: [info(1.2), info(1.2125)], balance: { usd: 11.01, enforced: false } })
+    messages.push(assistant("a1", "u1", "rafiki-fast"))
+    await tracker.open("ses_root")
+    await tracker.refresh()
+    const value = view(tracker, "ses_root", "rafiki-fast")
+    expect(Meter.lines(value.state)).toEqual([
+      { label: "This session", value: "0.0125 USD" },
+      { label: "Key", value: "1.21 of 25.00 USD (4%)" },
+      { label: "Credits", value: "not enforced (internal account)" },
+    ])
+    expect(statusLine(value)).toBe("fast · 0.0125 USD this session · key budget 4% used · Credits: not enforced (internal account)")
+    expect(statusLine(value, room(170))).toBe("fast · 0.0125 USD this session · key budget 4% used")
+  })
+
+  test("a Console that does not say whether billing is enforced keeps the balance", async () => {
+    const { tracker, messages } = harness({ replies: [info(1.2)], balance: { usd: 11.01 } })
+    messages.push(assistant("a1", "u1", "rafiki-fast"))
+    await tracker.open("ses_root")
+    expect(Meter.lines(tracker.state("ses_root")).at(-1)).toEqual({ label: "Credits left", value: "11.01 USD" })
   })
 
   test("a session created after the interface started counts from the reading before it was created", async () => {

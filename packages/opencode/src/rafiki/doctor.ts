@@ -7,6 +7,7 @@ import path from "path"
 import { parse as parseJsonc, printParseErrorCode, type ParseError } from "jsonc-parser"
 import { Brand } from "@opencode-ai/core/brand/brand"
 import * as Credentials from "@opencode-ai/core/brand/credentials"
+import * as Meter from "@opencode-ai/core/brand/meter"
 import * as Trust from "@opencode-ai/core/brand/trust"
 import { which } from "@opencode-ai/core/util/which"
 import { InstallationChannel, InstallationVersion } from "@opencode-ai/core/installation/version"
@@ -709,7 +710,12 @@ export async function checkConsole(
     const data = await body(response)
     const owner = data?.owner
     const who = owner ? [owner.name, owner.email].filter(Boolean).join(" ") || owner.id : undefined
-    const credits = data?.wallet?.balance_usd != null ? `, credits ${money(data.wallet.balance_usd)} USD available` : ""
+    const credits =
+      data?.wallet?.billing_enforced === false
+        ? `, credits ${Meter.NOT_ENFORCED}`
+        : data?.wallet?.balance_usd != null
+          ? `, credits ${money(data.wallet.balance_usd)} USD available`
+          : ""
     return ok("console", `${consoleURL}${who ? `, account ${who}` : ""}${credits}`)
   }
   if (response.status === 401) {

@@ -6,6 +6,7 @@ import { Brand } from "@opencode-ai/core/brand/brand"
 import * as Credentials from "@opencode-ai/core/brand/credentials"
 import * as Trust from "@opencode-ai/core/brand/trust"
 import * as Account from "@opencode-ai/core/brand/account"
+import * as Meter from "@opencode-ai/core/brand/meter"
 import * as Tier from "@opencode-ai/core/brand/tier"
 import { InstallationVersion } from "@opencode-ai/core/installation/version"
 import { effectCmd, fail } from "@/cli/effect-cmd"
@@ -393,7 +394,8 @@ export const WhoamiCommand = effectCmd({
             `Key: ${remote.key.alias ?? "(no alias)"}${remote.key.name ? ` "${remote.key.name}"` : ""}${remote.key.kind ? ` (${remote.key.kind})` : ""}${remote.key.expires_at ? `, expires ${remote.key.expires_at}` : ""}`,
           )
         }
-        if (remote.wallet?.balance_usd != null) UI.println(`Credits: ${remote.wallet.balance_usd} USD available`)
+        if (remote.wallet?.billing_enforced === false) UI.println(`Credits: ${Meter.NOT_ENFORCED}`)
+        else if (remote.wallet?.balance_usd != null) UI.println(`Credits: ${remote.wallet.balance_usd} USD available`)
         if (remote.limits?.max_budget_usd != null) {
           UI.println(`Key budget: ${remote.limits.spend_usd ?? 0} of ${remote.limits.max_budget_usd} USD used`)
         }

@@ -18,7 +18,9 @@
 // window's totals, the per model split and the per day and per tier split),
 // "window" (what a console without the per day split serves: no by_day),
 // "absent" (404), or an object to send as is. The anyKey option accepts any
-// bearer token as a server key, for tests that skip the device flow.
+// bearer token as a server key, for tests that skip the device flow. The
+// billingEnforced option adds wallet.billing_enforced to GET /api/v1/me;
+// left out, the field is absent, as from a Console older than it.
 import http from "node:http"
 import fs from "node:fs"
 import crypto from "node:crypto"
@@ -131,6 +133,7 @@ export function createMockConsole(options = {}) {
     usage: options.usage ?? "daily",
     anyKey: options.anyKey ?? false,
     balance: options.balance ?? 12.4,
+    billingEnforced: options.billingEnforced,
     // Injectable clock so in-process tests can drive polling without waiting.
     now: options.now ?? (() => Date.now()),
   }
@@ -319,7 +322,12 @@ export function createMockConsole(options = {}) {
           created_at: new Date(k.created).toISOString(),
           expires_at: new Date(k.created + SESSION_TTL * 1000).toISOString(),
         },
-        wallet: { balance_usd: opts.balance, credited_usd: 20, spent_usd: 7.6 },
+        wallet: {
+          balance_usd: opts.balance,
+          credited_usd: 20,
+          spent_usd: 7.6,
+          ...(typeof opts.billingEnforced === "boolean" ? { billing_enforced: opts.billingEnforced } : {}),
+        },
         limits: { max_budget_usd: 2.5, spend_usd: 0.31, budget_duration: null, rpm_limit: 60, tpm_limit: 200000 },
         tiers: k.tiers,
       })
