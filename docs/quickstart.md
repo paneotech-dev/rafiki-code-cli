@@ -189,7 +189,7 @@ While a task runs the prompt row shows the tier, what your key has spent in this
 
 In the terminal interface the sidebar has a `History` section: your latest conversations in every folder (title, folder, tier and when you last worked on it) and the folders you worked in, newest first. Click one, or press `ctrl+x o` for the full list and pick one with the arrow keys and Enter (type to search). A conversation of the folder you are in opens at once; one of another folder, or a folder, starts the interface again there, with the conversation open or a new session. Click `History` to fold the section. From a shell, `rafikicode --resume` reopens the last session and `rafikicode <folder> --session <id>` a given one.
 
-Projects made in the builder at code.rafikiai.io are not listed: the builder has no way yet for a Rafiki Code key to list them.
+Signed in with `rafikicode login` or a server key, the section and the list also show `Builds`: your latest five projects from the builder at code.rafikiai.io, with their title, status (open, stopped, published) and when you last worked on them. Picking one opens its page in the builder in your browser; on a machine without a browser (a server, or over ssh) the interface shows the address to open elsewhere. Builder projects are not resumed in the terminal. When the Console does not list them, the group is simply not shown.
 
 ## 5. Tell it about your project
 

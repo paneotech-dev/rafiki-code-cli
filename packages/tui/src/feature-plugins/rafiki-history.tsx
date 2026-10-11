@@ -8,9 +8,18 @@
 // one the session commands read), loaded when the section is first drawn or
 // the panel opened, never at startup. Picking a conversation of this folder
 // opens it here; one of another folder, or a project, restarts the interface
-// in that folder (core/brand/history.ts, rafiki/history.ts). Builder projects
-// of code.rafikiai.io are not listed: no route lists them for a Rafiki Code key.
+// in that folder (core/brand/history.ts, rafiki/history.ts).
+//
+// Builds: the latest builder projects of code.rafikiai.io, from the Console
+// (GET /api/v1/builder/sessions with the key in use), read on their own the
+// first time a view asks, so a slow or missing answer never holds the rest.
+// When the Console does not list them (a 404, a refusal, no answer, no key)
+// the group is not shown. Picking one opens its builder page in the browser,
+// or shows the address when there is no browser; the terminal does not
+// resume builder sessions.
+import * as Account from "@opencode-ai/core/brand/account"
 import * as History from "@opencode-ai/core/brand/history"
+import { openUrl } from "@opencode-ai/core/open"
 import type { TuiPlugin, TuiPluginApi } from "@opencode-ai/plugin/tui"
 import { createMemo, createSignal, For, onMount, Show, untrack } from "solid-js"
 import { useExit } from "../context/exit"
@@ -24,6 +33,8 @@ export const COMMAND = "recent.open"
 // Conversations and projects the sidebar section shows.
 const SIDEBAR_CONVERSATIONS = 5
 const SIDEBAR_PROJECTS = 3
+// Builder projects the group lists, in the sidebar and in the panel.
+export const BUILDS = 5
 // Room for a title in the sidebar.
 const WIDTH = 38
 
@@ -42,12 +53,27 @@ export async function load(api: TuiPluginApi, limit = 60): Promise<Loaded> {
   return { conversations, projects: History.projects(conversations) }
 }
 
+// The builder projects of the key in use, or undefined when there are none
+// to show (no key, or the Console does not list them).
+export async function loadBuilds(limit = BUILDS): Promise<History.Build[] | undefined> {
+  const source = Account.source()
+  if (!source) return undefined
+  return History.builds(await Account.builderProjects(source, limit), limit)
+}
+
 // The list as signals, kept by the plugin for every view: read the first
 // time a view asks for it (never at startup), and again a moment after
 // sessions change, once the updates of a streaming answer have settled.
-export function createHistory(api: TuiPluginApi, limit = 60, settleMs = 2_000) {
+// Builds are read apart, when a view first asks and when the panel opens.
+export function createHistory(
+  api: TuiPluginApi,
+  limit = 60,
+  settleMs = 2_000,
+  readBuilds: () => Promise<History.Build[] | undefined> = () => loadBuilds(),
+) {
   const [data, setData] = createSignal<Loaded>()
   const [loading, setLoading] = createSignal(true)
+  const [builds, setBuilds] = createSignal<History.Build[]>()
   let started = false
   let timer: ReturnType<typeof setTimeout> | undefined
   const refresh = () =>
@@ -55,23 +81,50 @@ export function createHistory(api: TuiPluginApi, limit = 60, settleMs = 2_000) {
       setData(value)
       setLoading(false)
     })
+  // Never throws, never waited on by the rest of the list.
+  const refreshBuilds = () =>
+    readBuilds()
+      .catch(() => undefined)
+      .then((value) => setBuilds(value && value.length > 0 ? value : undefined))
   function ensure() {
     if (started) return
     started = true
     void refresh()
+    void refreshBuilds()
   }
   api.event?.on("session.updated", () => {
     if (!started) return
     if (timer) clearTimeout(timer)
     timer = setTimeout(() => void refresh(), settleMs)
   })
-  return { data, loading, refresh, ensure }
+  return { data, loading, refresh, ensure, builds, refreshBuilds }
 }
 
 export type HistoryStore = ReturnType<typeof createHistory>
 
 // What picking an entry does.
-export type Target = { type: "conversation"; item: History.Conversation } | { type: "project"; item: History.Project }
+export type Target =
+  | { type: "conversation"; item: History.Conversation }
+  | { type: "project"; item: History.Project }
+  | { type: "build"; item: History.Build }
+
+// A builder project opens in the browser; without one, or when the browser
+// cannot be started, its address is shown to copy.
+export async function openBuild(
+  api: Pick<TuiPluginApi, "ui">,
+  item: History.Build,
+  input: { browser?: boolean; open?: (url: string) => Promise<unknown> } = {},
+) {
+  const showAddress = () =>
+    api.ui.toast({ variant: "info", title: item.title, message: `Open in a browser: ${item.url}`, duration: 30_000 })
+  if (!(input.browser ?? History.browserAvailable())) return showAddress()
+  const opened = await (input.open ?? openUrl)(item.url).then(
+    () => true,
+    () => false,
+  )
+  if (!opened) return showAddress()
+  api.ui.toast({ variant: "info", message: `Opening ${item.title} in the browser: ${item.url}` })
+}
 
 export function useOpen(api: TuiPluginApi) {
   const route = useRoute()
@@ -79,6 +132,7 @@ export function useOpen(api: TuiPluginApi) {
   const dialog = useDialog()
   return (target: Target) => {
     dialog.clear()
+    if (target.type === "build") return void openBuild(api, target.item)
     const here = api.state.path.directory
     const directory = target.item.directory
     if (directory === here) {
@@ -97,8 +151,11 @@ function tierText(item: History.Conversation) {
 
 export function HistoryDialog(props: { api: TuiPluginApi; store: HistoryStore }) {
   const open = useOpen(props.api)
-  const { data, loading } = props.store
-  onMount(() => void props.store.refresh())
+  const { data, loading, builds } = props.store
+  onMount(() => {
+    void props.store.refresh()
+    void props.store.refreshBuilds()
+  })
   const options = createMemo(() => {
     const value = data()
     if (!value) return []
@@ -118,12 +175,19 @@ export function HistoryDialog(props: { api: TuiPluginApi; store: HistoryStore })
         footer: History.ago(item.updated, now),
         category: "Recent projects",
       })),
+      ...(builds() ?? []).map((item) => ({
+        title: item.title,
+        value: { type: "build", item } as Target,
+        description: History.buildStatus(item),
+        footer: `builder · ${History.ago(item.updated, now)}`,
+        category: "Builds",
+      })),
     ]
   })
   return (
     <DialogSelect<Target>
       title={loading() ? "History (loading)" : options().length ? "History" : "History (nothing yet)"}
-      placeholder="Search conversations and projects"
+      placeholder="Search conversations, projects and builds"
       options={options()}
       onSelect={(option) => open(option.value)}
     />
@@ -146,6 +210,7 @@ function Sidebar(props: { api: TuiPluginApi; store: HistoryStore; session_id: st
   const projects = createMemo(() =>
     (data()?.projects ?? []).filter((item) => item.directory !== props.api.state.path.directory).slice(0, SIDEBAR_PROJECTS),
   )
+  const builds = createMemo(() => (props.store.builds() ?? []).slice(0, BUILDS))
   const shortcut = createMemo(() => {
     const binding = props.api.tuiConfig.keybinds.get(COMMAND)[0]
     return binding ? props.api.keys.formatSequence(Array.from(props.api.keymap.parseKeySequence(binding.key))) : ""
@@ -156,7 +221,7 @@ function Sidebar(props: { api: TuiPluginApi; store: HistoryStore; session_id: st
     props.api.kv.set("history_sidebar_open", next)
   }
   return (
-    <Show when={conversations().length > 0 || projects().length > 0}>
+    <Show when={conversations().length > 0 || projects().length > 0 || builds().length > 0}>
       <box>
         <box flexDirection="row" gap={1} onMouseDown={toggle}>
           <text fg={theme().text}>{open() ? "▼" : "▶"}</text>
@@ -189,6 +254,21 @@ function Sidebar(props: { api: TuiPluginApi; store: HistoryStore; session_id: st
               )}
             </For>
           </Show>
+          <Show when={builds().length > 0}>
+            <text fg={theme().textMuted}>Builds</text>
+            <For each={builds()}>
+              {(item) => (
+                <box onMouseUp={() => choose({ type: "build", item })}>
+                  <text fg={theme().text} wrapMode="none">
+                    {History.clip(item.title, WIDTH)}
+                  </text>
+                  <text fg={theme().textMuted} wrapMode="none">
+                    {History.clip(`${History.buildStatus(item)} · ${History.ago(item.updated)}`, WIDTH)}
+                  </text>
+                </box>
+              )}
+            </For>
+          </Show>
           <box onMouseUp={() => showHistory(props.api, props.store)}>
             <text fg={theme().textMuted}>
               {shortcut() ? `${shortcut()} ` : ""}all history
@@ -206,7 +286,7 @@ const tui: TuiPlugin = async (api) => {
     commands: [
       {
         name: COMMAND,
-        title: "History: recent conversations and projects",
+        title: "History: recent conversations, projects and builds",
         category: "Session",
         namespace: "palette",
         run() {

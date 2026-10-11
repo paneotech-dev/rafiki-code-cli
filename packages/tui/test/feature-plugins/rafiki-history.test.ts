@@ -5,7 +5,7 @@
 import { describe, expect, test } from "bun:test"
 import type { TuiPluginApi } from "@opencode-ai/plugin/tui"
 import { createBuiltinPlugins } from "../../src/feature-plugins/builtins"
-import { createHistory, load } from "../../src/feature-plugins/rafiki-history"
+import { createHistory, load, openBuild } from "../../src/feature-plugins/rafiki-history"
 import { createTuiPluginApi } from "../fixture/tui-plugin"
 
 const session = (id: string, directory: string, updated: number, model?: string) => ({
@@ -79,5 +79,65 @@ describe("the history plugin", () => {
     emit("session.updated")
     await wait(40)
     expect(queries).toHaveLength(2)
+  })
+})
+
+describe("builds", () => {
+  const build = (n: number) => ({
+    id: `ses_7d2f9a1e-0000-4000-8000-00000000000${n}`,
+    title: `Salon ${n}`,
+    status: "stopped",
+    updated: n,
+    url: `https://code.rafikiai.io/build?session=ses_7d2f9a1e-0000-4000-8000-00000000000${n}`,
+  })
+
+  test("read on their own when a view first asks, never before, and hidden when the Console lists none", async () => {
+    const { api, queries } = harness([session("a", "/w", 1)])
+    let reads = 0
+    let answer: unknown = [build(1)]
+    const store = createHistory(api, 10, 10, async () => {
+      reads++
+      if (answer instanceof Error) throw answer
+      return answer as never
+    })
+    await wait(5)
+    expect(reads).toBe(0)
+    store.ensure()
+    await wait(5)
+    expect(reads).toBe(1)
+    expect(queries).toHaveLength(1)
+    expect(store.builds()?.map((item) => item.title)).toEqual(["Salon 1"])
+    answer = undefined
+    await store.refreshBuilds()
+    expect(store.builds()).toBeUndefined()
+    answer = new Error("404")
+    await store.refreshBuilds()
+    expect(store.builds()).toBeUndefined()
+    answer = []
+    await store.refreshBuilds()
+    expect(store.builds()).toBeUndefined()
+  })
+
+  test("a slow builds answer does not hold the conversations", async () => {
+    const { api } = harness([session("a", "/w", 1)])
+    const store = createHistory(api, 10, 10, () => new Promise(() => {}))
+    store.ensure()
+    await wait(5)
+    expect(store.data()?.conversations).toHaveLength(1)
+    expect(store.builds()).toBeUndefined()
+  })
+
+  test("opens the builder page in the browser, or shows its address", async () => {
+    const toasts: { message: string }[] = []
+    const api = { ui: { toast: (input: { message: string }) => toasts.push(input) } } as never
+    const opened: string[] = []
+    await openBuild(api, build(1), { browser: true, open: async (url) => opened.push(url) })
+    expect(opened).toEqual([build(1).url])
+    expect(toasts.at(-1)?.message).toContain("in the browser")
+    await openBuild(api, build(2), { browser: false, open: async (url) => opened.push(url) })
+    expect(opened).toHaveLength(1)
+    expect(toasts.at(-1)?.message).toBe(`Open in a browser: ${build(2).url}`)
+    await openBuild(api, build(3), { browser: true, open: async () => Promise.reject(new Error("no xdg-open")) })
+    expect(toasts.at(-1)?.message).toBe(`Open in a browser: ${build(3).url}`)
   })
 })

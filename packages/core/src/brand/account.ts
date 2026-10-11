@@ -63,6 +63,14 @@ export async function balance(source: Pick<Source, "key" | "consoleURL">, f?: Fe
   return typeof value === "number" && Number.isFinite(value) ? value : undefined
 }
 
+// The key's member's builder projects (GET <console>/api/v1/builder/sessions),
+// the raw page for brand/history.ts to read, or undefined when the Console
+// does not list them (404 on a Console without the route or the builder
+// link, 403 for a key that may not), fails or does not answer.
+export async function builderProjects(source: Pick<Source, "key" | "consoleURL">, limit = 5, f?: Fetch, timeoutMs = TIMEOUT_MS) {
+  return get(source.consoleURL.replace(/\/+$/, "") + `/api/v1/builder/sessions?limit=${limit}`, source.key, f, timeoutMs)
+}
+
 // The credential this process uses and where it may be sent, or undefined
 // when there is none (not signed in, an unsafe credential file, a stored
 // browser sign-in under CI).
