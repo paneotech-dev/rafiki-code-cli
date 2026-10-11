@@ -1051,5 +1051,91 @@ first_loader=$(printf '%s\n' "$out" | grep -n "Error loading shared library" | c
     && [ "$(printf '%s\n' "$out" | grep -c "Error loading shared library")" -le 3 ] \
     && grep -q "^error: the C++ runtime (libstdc++, libgcc) is missing" "$h/.rafikicode/install.log"; check $? "a missing C++ runtime: the remedy first, the loader output cut short, the cause in install.log"
 
+# --- A login shell that never reaches ~/.bashrc (a cPanel host, 11 Oct 2026) ---
+#
+# The host's ~/.bashrc returned early when the shell was not interactive, its
+# ~/.bash_profile did not source ~/.bashrc, and the PATH line was only in
+# ~/.bashrc: "rafikicode runs in a new login shell" passed (by its full path)
+# while "a new login shell does not find this rafikicode" failed.
+guard_bashrc='[ -z "$PS1" ] && return
+alias ll="ls -l"
+'
+login_sees() { env -i HOME="$1" PATH=/usr/bin:/bin TERM=dumb "${3:-$BASH_BIN}" $2 'command -v rafikicode' </dev/null 2>/dev/null | sed '$!d'; }
+
+# Early return at the top of ~/.bashrc, and a ~/.bash_profile that does not source it.
+h=$(fresh_home home-guard)
+printf '%s' "$guard_bashrc" > "$h/.bashrc"
+printf 'PATH=$PATH:$HOME/bin\nexport PATH\n' > "$h/.bash_profile"
+out=$(env HOME="$h" SHELL=/bin/bash PATH="$safe_path" RAFIKICODE_INSTALL_DIR="$h/.rafikicode/bin" \
+    "$BASH_BIN" "$INSTALLER" --no-login 2>&1 | plain) && rc=0 || rc=$?
+line="export PATH=$h/.rafikicode/bin:\$PATH"
+guard_at=$(grep -n 'PS1' "$h/.bashrc" | cut -d: -f1)
+line_at=$(grep -nFx "$line" "$h/.bashrc" | cut -d: -f1)
+[ "$rc" = "0" ] && grep -Fxq "$line" "$h/.bash_profile" && [ ! -e "$h/.profile" ] \
+    && [ -n "$line_at" ] && [ "$line_at" -lt "$guard_at" ] && [ "$(grep -cFx "$line" "$h/.bashrc")" = "1" ] \
+    && [ "$(login_sees "$h" -lc)" = "$h/.rafikicode/bin/rafikicode" ] \
+    && [ "$(login_sees "$h" -lic)" = "$h/.rafikicode/bin/rafikicode" ] \
+    && [[ "$out" != *"FAIL"* ]] && [[ "$out" == *"Ready."* ]]; check $? "an early return in ~/.bashrc: the line goes above it and into ~/.bash_profile, bash -lc and bash -lic find it"
+
+# The owner's state: an older install left the line below the guard, the
+# install folder is already on this shell's PATH, and ~/.bash_profile has no
+# line. Being on PATH here is not enough: the login file is written, and the
+# dead line is moved above the guard, not copied.
+h=$(fresh_home home-guard-rerun)
+printf '%s\n# rafikicode\nexport PATH=%s/.rafikicode/bin:$PATH\n' "$guard_bashrc" "$h" > "$h/.bashrc"
+printf '# .bash_profile\nPATH=$PATH:$HOME/bin\n' > "$h/.bash_profile"
+mkdir -p "$h/.rafikicode/bin"
+out=$(env HOME="$h" SHELL=/bin/bash PATH="$h/.rafikicode/bin:$safe_path" RAFIKICODE_INSTALL_DIR="$h/.rafikicode/bin" \
+    "$BASH_BIN" "$INSTALLER" --no-login 2>&1 | plain) && rc=0 || rc=$?
+line="export PATH=$h/.rafikicode/bin:\$PATH"
+[ "$rc" = "0" ] && grep -Fxq "$line" "$h/.bash_profile" && [ "$(grep -cFx "$line" "$h/.bashrc")" = "1" ] \
+    && [ "$(grep -nFx "$line" "$h/.bashrc" | cut -d: -f1)" -lt "$(grep -n 'PS1' "$h/.bashrc" | cut -d: -f1)" ] \
+    && [ "$(grep -cFx '# rafikicode' "$h/.bashrc")" = "0" ] \
+    && [[ "$out" == *"Moved the PATH entry above the early return in $h/.bashrc"* ]] \
+    && [[ "$out" != *"is already on your PATH"* ]] && [[ "$out" != *"FAIL"* ]] && [[ "$out" == *"Ready."* ]]; check $? "already on this shell's PATH but not a login shell's: the login file is written and the dead line moved"
+
+# Each early-return spelling is recognised.
+for guard in '[ -z "$PS1" ] && return' '[[ $- != *i* ]] && return' $'case $- in\n    *i*) ;;\n      *) return;;\nesac' $'if [ -z "$PS1" ]; then\n    return\nfi' '[ -n "$PS1" ] || return 0'; do
+    h=$(fresh_home home-guard-spelling)
+    printf '# ~/.bashrc\n%s\nalias ll="ls -l"\n' "$guard" > "$h/.bashrc"
+    : > "$h/.bash_profile"
+    env HOME="$h" SHELL=/bin/bash PATH="$safe_path" RAFIKICODE_INSTALL_DIR="$h/.rafikicode/bin" \
+        "$BASH_BIN" "$INSTALLER" --no-login >/dev/null 2>&1 && rc=0 || rc=$?
+    [ "$rc" = "0" ] && [ "$(env -i HOME="$h" PATH=/usr/bin:/bin "$BASH_BIN" -c '. ~/.bashrc; command -v rafikicode' 2>/dev/null)" = "$h/.rafikicode/bin/rafikicode" ]; check $? "the early return is found: $(printf '%s' "$guard" | head -n 1)"
+done
+
+# A ~/.bashrc with no early return keeps the line appended at the end, as before.
+h=$(fresh_home home-noguard)
+printf 'alias ll="ls -l"\n' > "$h/.bashrc"
+env HOME="$h" SHELL=/bin/bash PATH="$safe_path" RAFIKICODE_INSTALL_DIR="$h/.rafikicode/bin" \
+    "$BASH_BIN" "$INSTALLER" --no-login >/dev/null 2>&1 && rc=0 || rc=$?
+[ "$rc" = "0" ] && [ "$(sed -n 1p "$h/.bashrc")" = 'alias ll="ls -l"' ] && [ "$(tail -n 1 "$h/.bashrc")" = "export PATH=$h/.rafikicode/bin:\$PATH" ]; check $? "no early return: the line is appended, the file's own lines stay first"
+
+# cPanel's jailshell: SHELL is a program that is not on PATH by its name, and
+# bash underneath. The login check runs SHELL itself, and the bash files are used.
+h=$(fresh_home home-jailshell)
+mkdir -p "$WORK/cpanel/bin"
+ln -sf "$BASH_BIN" "$WORK/cpanel/bin/jailshell"
+printf '%s' "$guard_bashrc" > "$h/.bashrc"
+printf 'if [ -f ~/.bashrc ]; then . ~/.bashrc; fi\nPATH=$PATH:$HOME/.local/bin:$HOME/bin\nexport PATH\n' > "$h/.bash_profile"
+out=$(env HOME="$h" SHELL="$WORK/cpanel/bin/jailshell" PATH="$h/.rafikicode/bin:$safe_path" RAFIKICODE_INSTALL_DIR="$h/.rafikicode/bin" \
+    "$BASH_BIN" "$INSTALLER" --no-login 2>&1 | plain) && rc=0 || rc=$?
+line="export PATH=$h/.rafikicode/bin:\$PATH"
+[ "$rc" = "0" ] && grep -Fxq "$line" "$h/.bash_profile" && [ ! -e "$h/.profile" ] \
+    && [ "$(login_sees "$h" -lic "$WORK/cpanel/bin/jailshell")" = "$h/.rafikicode/bin/rafikicode" ] \
+    && [[ "$out" != *"FAIL"* ]] && [[ "$out" == *"Ready."* ]]; check $? "jailshell: ~/.bash_profile carries the line and the check runs the login shell itself"
+
+# When the check still fails (here a ~/.bash_profile that returns before
+# anything else, which no installer line can get ahead of by appending), it
+# names the file and the exact line to put in it.
+h=$(fresh_home home-unfixable)
+printf 'return 0\n' > "$h/.bash_profile"
+: > "$h/.bashrc"
+out=$(env HOME="$h" SHELL=/bin/bash PATH="$safe_path" RAFIKICODE_INSTALL_DIR="$h/.rafikicode/bin" \
+    "$BASH_BIN" "$INSTALLER" --no-login 2>&1 | plain) && rc=0 || rc=$?
+[[ "$out" == *"FAIL  a new login shell does not find this rafikicode"* ]] \
+    && [[ "$out" == *"Add this line to $h/.bash_profile, above any line that says return:"* ]] \
+    && [[ "$out" == *"export PATH=$h/.rafikicode/bin:\$PATH"* ]]; check $? "a check that still fails prints the file and the exact line to add"
+
 echo "install tests: ${pass} passed, ${fail} failed"
 [ "$fail" = "0" ]

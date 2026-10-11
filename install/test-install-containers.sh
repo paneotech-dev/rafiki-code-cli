@@ -242,6 +242,64 @@ if cell user-busybox-wget "$alpine_bbwget" "" "$(as_user)"; then
     [ "$rc" = 0 ] && [[ "$out" == *"downloads use wget"* ]] && [[ "$out" != *"firewall"* ]] && [[ "$out" == *"Ready."* ]]; check $? "user-busybox-wget: BusyBox wget installs it"
 fi
 
+# --- Login shells that never reach the PATH line in ~/.bashrc -----------------
+# As on a cPanel host (11 Oct 2026): ~/.bashrc returns early unless the shell is
+# interactive, and ~/.bash_profile does not source it, or the account's shell is
+# jailshell. Each case runs as a normal user and then asks a real login, both as
+# `ssh host cmd` (su -, not interactive) and as someone typing after ssh
+# (bash -lic with a clean environment), where rafikicode is.
+cat > "$WORK/login-case.sh" <<'CASEEOF'
+#!/bin/sh
+# login-case.sh SHELL BASHRC_GUARD SOURCES_BASHRC RERUN
+set -e
+sh_path=$1 guard=$2 sources=$3 rerun=$4
+if [ "$sh_path" != /bin/bash ]; then
+    mkdir -p "$(dirname "$sh_path")" && ln -sf /bin/bash "$sh_path" && echo "$sh_path" >> /etc/shells
+fi
+useradd -m -s "$sh_path" tester
+h=/home/tester
+rm -f $h/.profile $h/.bash_profile $h/.bashrc $h/.bash_login
+case "$guard" in
+    ps1) printf '[ -z "$PS1" ] && return\nalias ll="ls -l"\n' > $h/.bashrc ;;
+    case) printf '# ~/.bashrc\ncase $- in\n    *i*) ;;\n      *) return;;\nesac\nalias ll="ls -l"\n' > $h/.bashrc ;;
+esac
+if [ "$sources" = yes ]; then
+    printf '# .bash_profile\nif [ -f ~/.bashrc ]; then\n    . ~/.bashrc\nfi\nPATH=$PATH:$HOME/.local/bin:$HOME/bin\nexport PATH\n' > $h/.bash_profile
+else
+    printf '# .bash_profile\nPATH=$PATH:$HOME/bin\nexport PATH\n' > $h/.bash_profile
+fi
+chown -R tester: $h
+run() { su - tester -c "$1 cat /i/install.sh | $ENVS bash -s -- --no-login"; }
+run ""
+if [ "$rerun" = yes ]; then
+    # The owner's second run: the folder is already on this shell's PATH.
+    rm -f $h/.rafikicode/bin/rafikicode
+    run "PATH=$h/.rafikicode/bin:\$PATH"
+fi
+echo "--- ssh host cmd ---"
+su - tester -c 'command -v rafikicode; rafikicode --version'
+echo "--- ssh login ---"
+su tester -c "cd; env -i HOME=$h USER=tester PATH=/usr/bin:/bin TERM=dumb $sh_path -lic 'command -v rafikicode' </dev/null 2>/dev/null"
+echo "--- files ---"
+grep -c 'rafikicode/bin' $h/.bash_profile
+CASEEOF
+for spec in "guard-no-source:/bin/bash:ps1:no:no:$debian_curl" "guard-case-ubuntu:/bin/bash:case:no:no:$ubuntu_curl" \
+    "jailshell:/usr/local/cpanel/bin/jailshell:ps1:yes:yes:$fedora" "jailshell-no-source:/usr/local/cpanel/bin/jailshell:ps1:no:yes:$debian_curl"; do
+    IFS=: read -r cid csh cguard csrc crerun cimg <<SPECEOF
+$spec
+SPECEOF
+    id="login-$cid"
+    if cell "$id" "$cimg" "-v $WORK/login-case.sh:/i/login-case.sh:ro" "ENVS='$ENVS' sh /i/login-case.sh $csh $cguard $csrc $crerun"; then
+        cmd_part=${out##*--- ssh host cmd ---}; cmd_part=${cmd_part%%--- ssh login ---*}
+        login_part=${out##*--- ssh login ---}; login_part=${login_part%%--- files ---*}
+        files_part=${out##*--- files ---}
+        [ "$rc" = 0 ] && [[ "$out" == *"Ready."* ]] && [[ "$out" != *"FAIL"* ]] \
+            && [[ "$cmd_part" == *"/home/tester/.rafikicode/bin/rafikicode"* ]] && [[ "$cmd_part" == *$'\n1.2.3'* ]] \
+            && [[ "$login_part" == *"/home/tester/.rafikicode/bin/rafikicode"* ]] \
+            && [[ "$files_part" == *$'\n1'* ]]; check $? "$id: ssh host cmd and an ssh login both find it, the check is green"
+    fi
+done
+
 # A real binary built from this branch, when one is given: under a read only
 # /tmp with no TMPDIR, --version and the folder check work.
 if [ -n "${RAFIKICODE_CONTAINER_BINARY:-}" ] && [ -x "$RAFIKICODE_CONTAINER_BINARY" ]; then
