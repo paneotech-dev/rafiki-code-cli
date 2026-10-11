@@ -173,7 +173,7 @@ Every request goes through the Rafiki AI gateway under a tier name:
 
 A request on `rafiki-pro` uses four times the credits of the same request on `rafiki-fast`, and one on `rafiki-max` fifteen times. In the terminal interface the model dialog (`/models`) shows each tier with its rate; the first time a session switches to `rafiki-max` it asks you to confirm, and a new session starts on `rafiki-fast` (or the model in your configuration), never on `rafiki-max` by itself.
 
-When you sign in, the approval page lets you tick the tiers the key may use. If you picked `rafiki-max` and the key was approved without it, the interface and `rafikicode run` say so before sending anything: run `rafikicode login` again and tick Max.
+When you sign in, the approval page lets you tick the tiers the key may use; all three are ticked unless you untick one. If you pick `rafiki-max` and the key was approved without it, the interface offers to sign in again on the spot: choose "Sign in again now" (or press `y`), approve in the browser, and the switch to Rafiki Max goes ahead with the new key. `rafikicode run` stops before sending anything and names the one command that fixes it, `rafikicode login`.
 
 Pick a tier for one run with `-m` (or `--model`):
 

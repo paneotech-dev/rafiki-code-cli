@@ -41,6 +41,7 @@ Every top-level key the CLI honors, with the meaning from the configuration sche
 | `model` | default model in `provider/model` form, for example `rafiki/rafiki-pro` |
 | `default_agent` | default primary agent when a session does not pick one |
 | `autoupdate` | `true`, `false` or `"notify"`, see above |
+| `channel` | update channel, `"stable"` or `"pre"` (pre-releases too). Unset, a copy installed from a pre-release follows `"pre"` and any other copy `"stable"`. `RAFIKICODE_UPDATE_CHANNEL` wins over it. See [Update channels](./install.md#update-channels) |
 | `share` | `"manual"`, `"auto"` or `"disabled"`: whether sessions may be shared through the share service |
 | `shell` | default shell for the terminal and the shell tool |
 | `username` | name displayed in conversations |
@@ -71,6 +72,7 @@ The structure of the nested keys (`permission`, `agent`, `mcp`, and so on) is un
 
 | variable | purpose |
 |---|---|
+| `RAFIKICODE_UPDATE_CHANNEL` | `stable` or `pre`: the update channel for this process, over the `channel` setting. See [Update channels](./install.md#update-channels) |
 | `RAFIKICODE_API_KEY` | API key for headless and CI use, created in the Rafiki AI console with the Rafiki Code option ticked. Takes precedence over the stored sign in |
 | `RAFIKICODE_GATEWAY_URL` | override the gateway base URL (local test servers). Default `https://gateway.rafikiai.io/v1`. Must be https; plain http is accepted only for `127.0.0.1`, `[::1]` or `localhost`. Any other value is not used, a warning is printed and the key is not sent there. The same rule applies to the gateway URL the console returns at sign in and to a `baseURL` in your own configuration |
 | `RAFIKICODE_CACHE_MARKERS` | which tiers carry a prompt cache marker (a field that tells the model provider where the repeated start of a request ends, so it can reuse it at a lower price): `all`, `off`, or tier names separated by commas. Unset, the CLI marks the tiers that need one. Every request starts with the same text in the same order on every tier either way; today's date is sent after that text, in a message of its own |

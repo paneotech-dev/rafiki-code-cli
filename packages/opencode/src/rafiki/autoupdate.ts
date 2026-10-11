@@ -3,7 +3,8 @@
 // What it does, in the order a user meets it:
 //
 //   1. Once a day at most, when the terminal interface starts, check() asks the
-//      release page of this repository for the newest version. The time of the
+//      release page of this repository for the newest version of the update
+//      channel this copy follows (stable, or pre-releases included). The time of the
 //      check is written before the request is made, so a machine that is
 //      offline, or a release page that does not answer, is asked again the next
 //      day and not at every start.
@@ -97,7 +98,8 @@ export interface CheckInput {
   dir: string
   now: () => number
   env?: Record<string, string | undefined>
-  // Newest published version, without the leading v.
+  // Newest published version of the channel this copy follows, without the
+  // leading v (RafikiUpdate.channel and latestOf).
   latest: () => Promise<string>
   // How this copy was installed: "curl" is the installer script.
   method: () => Promise<string>
@@ -325,7 +327,12 @@ export async function check(input: CheckInput): Promise<CheckOutcome> {
 
   const method = await input.method().catch(() => "unknown")
   if (method !== "curl") {
-    input.notify({ kind: "manual", version: latest, command: Brand.upgradeCommand(method) })
+    // A pre-release (the "pre" channel) is published only through the
+    // installer script, so the package manager's command would not reach it.
+    const command = RafikiUpdate.isPrerelease(latest)
+      ? Brand.release.installCommand(latest, input.platform ?? process.platform)
+      : Brand.upgradeCommand(method)
+    input.notify({ kind: "manual", version: latest, command })
     return "manual"
   }
   const installDir = path.dirname(input.execPath)
@@ -474,7 +481,9 @@ export async function upgrade(): Promise<CheckOutcome> {
     release: isRelease(),
     dir: stateDir(),
     now: Date.now,
-    latest: () => RafikiUpdate.latest(),
+    // The channel: RAFIKICODE_UPDATE_CHANNEL, the `channel` setting, or "pre"
+    // for a copy that is itself a pre-release.
+    latest: () => RafikiUpdate.latestOf(RafikiUpdate.channel()),
     method: () => Installation.method(),
     execPath: process.execPath,
     notify(notice) {

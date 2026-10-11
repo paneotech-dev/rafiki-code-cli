@@ -2,10 +2,12 @@
 // its price in credits (core/brand/tier.ts). Before a session moves to Rafiki
 // Max the interface asks once, never switching silently, and first asks the
 // gateway whether the key in use may call it (/key/info): a key approved
-// without the tier gets a message saying so and how to fix it, instead of a
-// refusal from the gateway on the next request.
+// without the tier is offered a new sign-in on the spot (dialog-tier-signin.tsx),
+// after which the configuration is read again and the switch is retried,
+// instead of a refusal from the gateway on the next request.
 import * as Account from "@opencode-ai/core/brand/account"
 import * as Tier from "@opencode-ai/core/brand/tier"
+import { Brand } from "@opencode-ai/core/brand/brand"
 import { DialogAlert } from "../ui/dialog-alert"
 import { DialogConfirm } from "../ui/dialog-confirm"
 import type { DialogContext } from "../ui/dialog"
@@ -39,11 +41,36 @@ export async function confirmChoice(input: {
   modelID: string
   key: string
   read?: () => Promise<Account.KeyInfoResult>
+  // Signs in again inside the interface; resolves true once a new key is
+  // stored. Without it, the message names the command instead.
+  signIn?: (modelID: string) => Promise<boolean>
+  // Makes the running server read the new key (configuration and providers).
+  reload?: () => Promise<void>
+  env?: Record<string, string | undefined>
 }): Promise<boolean> {
   if (!Tier.needsConfirm(input.providerID, input.modelID)) return true
   if ((await keyAllows(input.modelID, input.read)) === "denied") {
-    await DialogAlert.show(input.dialog, `${Tier.label(input.modelID)} is not on this key`, Tier.notOnKeyMessage(input.modelID))
-    return false
+    const title = `${Tier.label(input.modelID)} is not on this key`
+    // A key from the environment is not the stored sign-in, so a new sign-in
+    // would not replace it.
+    if ((input.env ?? process.env)[Brand.env.apiKey]) {
+      await DialogAlert.show(input.dialog, title, Tier.serverKeyMessage(input.modelID))
+      return false
+    }
+    if (!input.signIn) {
+      await DialogAlert.show(input.dialog, title, Tier.notOnKeyMessage(input.modelID))
+      return false
+    }
+    if (!(await input.signIn(input.modelID))) return false
+    await input.reload?.()
+    if ((await keyAllows(input.modelID, input.read)) === "denied") {
+      await DialogAlert.show(
+        input.dialog,
+        title,
+        `The new key was approved without ${Tier.label(input.modelID)} too. ${Tier.notOnKeyMessage(input.modelID)}`,
+      )
+      return false
+    }
   }
   if (isConfirmed(input.key)) return true
   const answer = await DialogConfirm.show(input.dialog, Tier.confirmTitle(input.modelID), Tier.confirmMessage(input.modelID))

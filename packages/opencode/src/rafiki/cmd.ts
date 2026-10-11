@@ -5,6 +5,8 @@ import { Effect } from "effect"
 import { Brand } from "@opencode-ai/core/brand/brand"
 import * as Credentials from "@opencode-ai/core/brand/credentials"
 import * as Trust from "@opencode-ai/core/brand/trust"
+import * as Account from "@opencode-ai/core/brand/account"
+import * as Tier from "@opencode-ai/core/brand/tier"
 import { InstallationVersion } from "@opencode-ai/core/installation/version"
 import { effectCmd, fail } from "@/cli/effect-cmd"
 import { cmd } from "@/cli/cmd/cmd"
@@ -138,7 +140,16 @@ export const LoginCommand = effectCmd({
     const reason = DeviceFlow.headless()
     if (reason) return yield* fail(DeviceFlow.headlessMessage(reason), Contract.EXIT.usage)
 
-    if (existing && DeviceFlow.shouldRefresh(existing)) {
+    // Rotating keeps the key's tiers, so a key approved without Max is not
+    // rotated but replaced by a new sign-in: `login` is the one command the
+    // messages about a missing tier name (core/brand/tier.ts).
+    const lacksTier =
+      existing && DeviceFlow.shouldRefresh(existing)
+        ? yield* Effect.promise(() => Account.keyInfo({ timeoutMs: 4_000 })).pipe(
+            Effect.map((result) => result.ok && Tier.allows(result.info.models, Tier.CONFIRM) === false),
+          )
+        : false
+    if (existing && !lacksTier && DeviceFlow.shouldRefresh(existing)) {
       const c = DeviceFlow.client({ consoleURL: Brand.consoleFor(existing.console_url) })
       const rotated = yield* Effect.tryPromise(() => DeviceFlow.refresh(c, existing.key)).pipe(
         Effect.map((token) => store(token, existing)),

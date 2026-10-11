@@ -9,7 +9,11 @@ import path from "path"
 import os from "os"
 import { createHash } from "crypto"
 import { spawn } from "child_process"
+import semver from "semver"
+import { parse as parseJsonc } from "jsonc-parser"
 import { Brand } from "@opencode-ai/core/brand/brand"
+import { Global } from "@opencode-ai/core/global"
+import { InstallationVersion } from "@opencode-ai/core/installation/version"
 import * as Contract from "./contract"
 import { compiled } from "./exec-tmp"
 
@@ -132,6 +136,109 @@ export namespace RafikiUpdate {
     if (!location) return undefined
     const match = /\/tag\/v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/.exec(new URL(location, url).pathname)
     return match?.[1]
+  }
+
+  // Update channels. "stable" follows the release GitHub marks as latest, which
+  // is never a pre-release. "pre" follows the newest release of all, pre-releases
+  // included, compared by semver (0.1.10-rc.7 < 0.1.10-rc.8 < 0.1.10).
+  export type Channel = "stable" | "pre"
+  export const CHANNELS: readonly Channel[] = ["stable", "pre"]
+
+  export function isChannel(value: unknown): value is Channel {
+    return typeof value === "string" && (CHANNELS as readonly string[]).includes(value)
+  }
+
+  export function isPrerelease(version: string) {
+    const valid = semver.valid(version)
+    return valid !== null && semver.prerelease(valid) !== null
+  }
+
+  // The `channel` value of the global configuration files, read directly and
+  // synchronously like `autoupdate` in rafiki/autoupdate.ts (later files win).
+  export function configuredChannel(configDir: string = Global.Path.config): Channel | undefined {
+    let value: unknown
+    for (const name of Brand.globalFiles) {
+      let text: string
+      try {
+        text = fsSync.readFileSync(path.join(configDir, name), "utf8")
+      } catch {
+        continue
+      }
+      const parsed = parseJsonc(text) as unknown
+      if (parsed && typeof parsed === "object" && "channel" in parsed) value = parsed.channel
+    }
+    return isChannel(value) ? value : undefined
+  }
+
+  // The channel this copy follows: RAFIKICODE_UPDATE_CHANNEL, then the
+  // `channel` setting, then the version it is. A copy installed from a
+  // pre-release follows pre-releases, so that testers keep receiving them; a
+  // stable copy stays on stable releases.
+  export function channel(
+    input: { env?: Record<string, string | undefined>; configDir?: string; current?: string } = {},
+  ): Channel {
+    const env = input.env ?? process.env
+    const fromEnv = env[Brand.env.updateChannel]?.trim().toLowerCase()
+    if (isChannel(fromEnv)) return fromEnv
+    const fromConfig = configuredChannel(input.configDir)
+    if (fromConfig) return fromConfig
+    return isPrerelease(input.current ?? InstallationVersion) ? "pre" : "stable"
+  }
+
+  // The newest version among tag names, pre-releases included, or undefined.
+  export function newestOf(tags: readonly string[]): string | undefined {
+    const versions = tags.map((tag) => semver.valid(tag.replace(/^v/, ""))).filter((v): v is string => v !== null)
+    return versions.sort(semver.rcompare)[0]
+  }
+
+  // Every published version, pre-releases included, newest first in no
+  // particular guarantee (callers sort). The releases API lists them; when it
+  // answers anything else (a 403 or 429 once the 60 requests an hour of an
+  // address are spent, which a shared host meets first), the release page is
+  // read instead, as the installers do: it is not rate limited and links every
+  // published release by its tag. Drafts are never listed to an anonymous
+  // reader by either.
+  export async function releases(opts: Pick<Options, "fetch"> = {}): Promise<string[]> {
+    const f = opts.fetch ?? fetch
+    const url = `${Brand.release.api()}/releases?per_page=50`
+    const fromApi = await get(f, url, { Accept: "application/vnd.github+json", "User-Agent": Brand.name })
+      .then(async (res) => {
+        if (!res.ok) return undefined
+        const data = (await res.json()) as unknown
+        if (!Array.isArray(data)) return undefined
+        return data
+          .filter((item) => item && typeof item === "object" && !item.draft && typeof item.tag_name === "string")
+          .map((item) => String(item.tag_name).replace(/^v/, ""))
+      })
+      .catch(() => undefined)
+    if (fromApi && fromApi.length > 0) return fromApi
+    const fromPage = await releasesFromPage(f).catch(() => [])
+    if (fromPage.length > 0) return fromPage
+    throw new UpdateError(`Could not read the list of releases from ${url} or ${Brand.release.base()}`)
+  }
+
+  // Tags linked from the release page (<base>, its first page: the newest releases).
+  export async function releasesFromPage(f: typeof fetch = fetch): Promise<string[]> {
+    const res = await get(f, Brand.release.base(), { "User-Agent": Brand.name, Accept: "text/html" })
+    if (!res.ok) return []
+    const html = await res.text()
+    const found = new Set<string>()
+    for (const match of html.matchAll(/\/releases\/tag\/v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)["'?#/]/g)) found.add(match[1]!)
+    return [...found]
+  }
+
+  // Newest pre-release or release, without the leading v.
+  export async function newest(opts: Pick<Options, "fetch"> = {}): Promise<string> {
+    const version = newestOf(await releases(opts))
+    if (!version) throw new UpdateError(`No release with a version number was found at ${Brand.release.base()}`)
+    return version
+  }
+
+  // The newest version of a channel.
+  export async function latestOf(which: Channel, opts: Pick<Options, "fetch"> = {}): Promise<string> {
+    if (which === "stable") return latest(opts)
+    // The list can fail where the redirect does not; stable is still an answer.
+    return newest(opts).catch(() => latest(opts))
   }
 
   // Asset file name for this machine, matching what script/build.ts produces.

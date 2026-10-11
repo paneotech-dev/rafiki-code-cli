@@ -39,6 +39,7 @@ export function migrate(info: typeof ConfigV1.Info.Type) {
     model: info.model,
     default_agent: info.default_agent,
     autoupdate: info.autoupdate,
+    channel: info.channel,
     share: info.share ?? (info.autoshare ? "auto" : undefined),
     enterprise: info.enterprise,
     username: info.username,

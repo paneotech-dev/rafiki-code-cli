@@ -65,6 +65,10 @@ export const Info = Schema.Struct({
     description:
       "Automatically update to the latest version. Set to true to auto-update, false to disable, or 'notify' to show update notifications",
   }),
+  channel: Schema.optional(Schema.Literals(["stable", "pre"])).annotate({
+    description:
+      "Update channel: 'stable' follows stable releases, 'pre' also pre-releases. Defaults to 'pre' for a copy installed from a pre-release and 'stable' otherwise",
+  }),
   disabled_providers: Schema.optional(Schema.mutable(Schema.Array(Schema.String))).annotate({
     description: "Disable providers that are loaded automatically",
   }),

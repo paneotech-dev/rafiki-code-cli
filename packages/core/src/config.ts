@@ -46,6 +46,9 @@ export class Info extends Schema.Class<Info>("Config.Info")({
     .annotate({
       description: "Automatically update or notify when a new version is available",
     }),
+  channel: Schema.Literals(["stable", "pre"]).pipe(Schema.optional).annotate({
+    description: "Update channel: stable releases only, or pre-releases too",
+  }),
   share: Schema.Literals(["manual", "auto", "disabled"]).pipe(Schema.optional).annotate({
     description: "Control whether sessions may be shared manually, automatically, or not at all",
   }),

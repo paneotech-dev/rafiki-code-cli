@@ -65,7 +65,20 @@ function boxName(model: string) {
   return tier ? tier[0]!.toUpperCase() + tier.slice(1) : model
 }
 
-// What to say when the key was approved without the tier.
+// What to say when the key was approved without the tier: one command. The
+// approval page ticks every tier, Max included, by default, so signing in
+// again is the whole fix.
 export function notOnKeyMessage(model: string) {
-  return `This key was approved without the ${label(model)} tier, so the gateway will refuse ${model}. Run ${Brand.name} login again and tick ${boxName(model)} on the approval page, then pick ${label(model)} again.`
+  return `This key was approved without the ${label(model)} tier, so the gateway will refuse ${model}. Sign in again to replace the key with one that includes it (${boxName(model)} is ticked on the approval page): ${Brand.name} login`
+}
+
+// The same, in the terminal interface, which offers to sign in without leaving it.
+export function signInAgainMessage(model: string) {
+  return `This key was approved without the ${label(model)} tier, so the gateway would refuse it. Sign in again now to replace the key with one that includes ${label(model)}: the approval page has ${boxName(model)} ticked. The session stays open, and the switch to ${label(model)} is retried once you have approved.`
+}
+
+// When the key comes from the environment (a server key), the sign-in cannot
+// replace it.
+export function serverKeyMessage(model: string) {
+  return `The key in ${Brand.env.apiKey} was created without the ${label(model)} tier, so the gateway would refuse ${model}. Create a key with ${boxName(model)} ticked in the Rafiki AI console and set ${Brand.env.apiKey} to it, or unset ${Brand.env.apiKey} and run ${Brand.name} login.`
 }

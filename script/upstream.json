@@ -95,7 +95,7 @@
     {
       "path": "packages/core/src/config.ts",
       "class": "hook",
-      "why": "Project file and directory names come from `Brand.project`; discovery honours the switch that disables project configuration."
+      "why": "Project file and directory names come from `Brand.project`; discovery honours the switch that disables project configuration; the `channel` key (update channel, read by `rafiki/update.ts`)."
     },
     {
       "path": "packages/core/src/config/plugin/external.ts",
@@ -155,7 +155,12 @@
     {
       "path": "packages/core/src/v1/config/config.ts",
       "class": "text",
-      "why": "The `compaction.prune` description gives this product's default (on for Rafiki tiers)."
+      "why": "The `compaction.prune` description gives this product's default (on for Rafiki tiers); the `channel` key (update channel, read by `rafiki/update.ts`)."
+    },
+    {
+      "path": "packages/core/src/v1/config/migrate.ts",
+      "class": "hook",
+      "why": "Carries the `channel` key (update channel, `rafiki/update.ts`) into the new configuration shape."
     },
     {
       "path": "packages/core/test/global.test.ts",
@@ -325,7 +330,7 @@
     {
       "path": "packages/opencode/src/cli/cmd/upgrade.ts",
       "class": "hook",
-      "why": "The `update` alias, the method choices this product supports, and the refusals and clean up from `rafiki/update.ts` and `rafiki/autoupdate.ts`."
+      "why": "The `update` alias, the method choices this product supports, `--pre` and the update channel of `rafiki/update.ts`, and the refusals and clean up from `rafiki/update.ts` and `rafiki/autoupdate.ts`."
     },
     {
       "path": "packages/opencode/src/cli/cmd/web.ts",
@@ -446,6 +451,11 @@
       "path": "packages/opencode/src/server/auth.ts",
       "class": "text",
       "why": "This product's variable names are read first and upstream's still work; the default user name is the binary name."
+    },
+    {
+      "path": "packages/opencode/src/server/routes/instance/httpapi/handlers/global.ts",
+      "class": "logic",
+      "why": "A global dispose also reads the global configuration again, so a new sign-in from the terminal interface (`tier-choice.tsx`) reaches the provider with its new key."
     },
     {
       "path": "packages/opencode/src/server/routes/instance/httpapi/public.ts",

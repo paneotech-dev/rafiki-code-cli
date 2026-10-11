@@ -1,0 +1,181 @@
+// Everything rafikicode knows about the Console wire contract, in one file.
+// Source: platform/docs/rafiki-code-contract-v1.md, sections Device flow,
+// Keys, Error taxonomy. The contract is a draft until sign-off; if a path,
+// field, interval or message changes at sign-off, this file is the only one
+// that needs editing.
+
+export const CLIENT_ID = "rafikicode"
+// Sign in surfaces the Console accepts on a device code request: a terminal
+// (the default) or an editor (ACP terminal auth, the VS Code extension).
+export const SURFACES = ["cli", "ide"] as const
+export type Surface = (typeof SURFACES)[number]
+export const SURFACE: Surface = "cli"
+
+export function isSurface(value: unknown): value is Surface {
+  return typeof value === "string" && (SURFACES as readonly string[]).includes(value)
+}
+export const GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code"
+
+export const TIERS = ["fast", "pro", "max"] as const
+export type Tier = (typeof TIERS)[number]
+
+// Every gateway call names the surface it comes from (contract, Gateway usage),
+// the tier it is made on and whether it is an escalation: 0 for a first
+// attempt, otherwise the attempt number.
+export const HEADER = {
+  surface: "X-Rafiki-Surface",
+  tier: "X-Rafiki-Tier",
+  escalation: "X-Rafiki-Escalation",
+} as const
+
+export const PATH = {
+  deviceCode: "/api/v1/device/code",
+  deviceToken: "/api/v1/device/token",
+  deviceRefresh: "/api/v1/device/refresh",
+  verify: "/device",
+  me: "/api/v1/me",
+  usage: "/api/v1/usage",
+  usagePage: "/usage",
+  keys: "/api/v1/keys",
+  keysPage: "/keys",
+} as const
+
+// Seconds added to the polling interval on every slow_down.
+export const SLOW_DOWN_INCREMENT = 5
+// Fallback when the server omits interval or expires_in (the contract values).
+export const DEFAULT_INTERVAL = 5
+export const DEFAULT_EXPIRES_IN = 600
+// Rotate when the key expires within this window, and never more than once an hour.
+export const REFRESH_WINDOW_SECONDS = 7 * 24 * 3600
+export const REFRESH_MIN_GAP_SECONDS = 3600
+// After this long without an answer from the browser, login says once that a
+// new account may still be waiting for verification or approval.
+export const LONG_WAIT_SECONDS = 120
+// Device label length cap on the wire.
+export const DEVICE_LABEL_MAX = 120
+
+export const ERROR = {
+  authorizationPending: "authorization_pending",
+  slowDown: "slow_down",
+  accessDenied: "access_denied",
+  expiredToken: "expired_token",
+  // The person who opened the approval page has an account that cannot
+  // approve yet: email not verified, or not approved by Rafiki AI. Answered
+  // by the token endpoint so the CLI can stop at once instead of polling for
+  // the code's ten minutes. See docs/contracts/device-account-pending.md.
+  accountPending: "account_pending",
+  invalidGrant: "invalid_grant",
+  unsupportedGrantType: "unsupported_grant_type",
+  unknownClient: "unknown_client",
+  invalidRequest: "invalid_request",
+  rateLimited: "rate_limited",
+  serviceUnavailable: "service_unavailable",
+  unauthenticated: "unauthenticated",
+  keyRevoked: "key_revoked",
+  wrongKeyKind: "wrong_key_kind",
+  // Surface codes mapped from gateway responses (contract, Gateway usage).
+  keyBudgetExhausted: "key_budget_exhausted",
+  tierNotAllowed: "tier_not_allowed",
+  gatewayUnavailable: "gateway_unavailable",
+  requestTimeout: "request_timeout",
+} as const
+
+// Gateway error types (LiteLLM's error.type values) the surface must recognise.
+export const GATEWAY_ERROR_TYPE = {
+  budgetExceeded: "budget_exceeded",
+  keyModelAccessDenied: "key_model_access_denied",
+} as const
+
+// Messages the CLI prints for conditions the user must act on. The Console
+// sends its own text too; the local copy covers old servers and offline paths.
+export const MESSAGE: Record<string, string> = {
+  [ERROR.accessDenied]: "Sign-in was denied in the browser.",
+  [ERROR.expiredToken]:
+    "That sign-in code expired. Run rafikicode login again. If your Rafiki AI account is new, it may still be waiting for email verification or approval: check your email first.",
+  [ERROR.accountPending]:
+    "Your Rafiki AI account cannot sign in yet: it is waiting for email verification or for approval. Check your email (the verification link, then the approval message), then run rafikicode login again.",
+  [ERROR.invalidGrant]: "That sign-in code is not valid.",
+  [ERROR.unknownClient]: "Unknown client.",
+  [ERROR.unauthenticated]: "Missing API key. Run rafikicode login, or set RAFIKICODE_API_KEY.",
+  [ERROR.keyRevoked]: "This key was revoked or has expired. Run rafikicode login.",
+  [ERROR.wrongKeyKind]: "This key cannot be refreshed here. Create a new key at console.rafikiai.io/keys.",
+  [ERROR.serviceUnavailable]: "The service is not available.",
+  [ERROR.keyBudgetExhausted]:
+    "Your key has run out of budget. Top up or raise the key's budget at console.rafikiai.io/keys.",
+  [ERROR.tierNotAllowed]:
+    "This key is not allowed to use the <tier> tier. Sign in again to replace the key with one that includes it (keep <Tier> ticked on the approval page): rafikicode login",
+  [ERROR.gatewayUnavailable]: "The model gateway is having trouble. Try again shortly.",
+  [ERROR.requestTimeout]: "The request timed out.",
+  [ERROR.rateLimited]: "Too many requests. Try again in <n> seconds.",
+}
+
+// CLI exit codes from the contract: scripts branch on these. 6 and 7 are the
+// startup codes added for the diagnosis layer (rafiki/startup.ts), so an
+// installer or a CI job can tell "this machine cannot run it" and "this
+// terminal cannot draw it" from "not signed in" (2) without reading any text.
+export const EXIT = {
+  ok: 0,
+  failed: 1,
+  usage: 2,
+  wallet: 3,
+  network: 4,
+  internal: 5,
+  // The build or the machine cannot run rafikicode at all: a native library
+  // that cannot be loaded, a CPU without the instructions the build needs, a C
+  // library mismatch, no directory it may write to.
+  machine: 6,
+  // rafikicode runs on this machine, but this terminal cannot host the full
+  // screen interface. The run command still works.
+  terminal: 7,
+} as const
+
+export interface DeviceCodeResponse {
+  device_code: string
+  user_code: string
+  verification_uri: string
+  verification_uri_complete?: string
+  expires_in?: number
+  interval?: number
+}
+
+export interface Owner {
+  id: string
+  email?: string
+  name?: string
+}
+
+export interface Limits {
+  max_budget_usd?: number | null
+  spend_usd?: number
+  budget_duration?: string | null
+  rpm_limit?: number | null
+  tpm_limit?: number | null
+}
+
+export interface TokenResponse {
+  access_token: string
+  token_type: string
+  expires_in?: number
+  scope?: string
+  key_id?: string
+  key_alias?: string
+  gateway_url?: string
+  console_url?: string
+  owner?: Owner
+  limits?: Limits
+}
+
+export interface MeResponse {
+  object?: "me"
+  owner: Owner
+  key?: { id?: string; alias?: string; name?: string; kind?: string; created_at?: string; expires_at?: string }
+  wallet?: { balance_usd?: number; credited_usd?: number; spent_usd?: number }
+  limits?: Limits
+  tiers?: string[]
+}
+
+export interface ErrorEnvelope {
+  error?: { message?: string; type?: string; code?: string; retryable?: boolean }
+  ref?: string
+  correlation_id?: string
+}

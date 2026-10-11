@@ -82,6 +82,9 @@ export const globalHandlers = HttpApiBuilder.group(RootHttpApi, "global", (handl
     })
 
     const dispose = Effect.fn("GlobalHttpApi.dispose")(function* () {
+      // The global configuration carries the stored sign-in's key (Brand.config),
+      // so a dispose after a new sign-in must read it again, not reuse the cache.
+      yield* config.invalidate()
       yield* disposeAllInstancesAndEmitGlobalDisposed()
       return true
     })

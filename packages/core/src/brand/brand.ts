@@ -377,6 +377,9 @@ export const Brand = {
     // Internal: set on the process started in place of this one after a staged
     // update was applied, so that it does not look for another (rafiki/autoupdate.ts).
     updateApplied: "RAFIKICODE_UPDATE_APPLIED",
+    // Update channel: "stable" or "pre". Wins over the `channel` setting of
+    // the global configuration (rafiki/update.ts channel()).
+    updateChannel: "RAFIKICODE_UPDATE_CHANNEL",
   },
   // Where builds are published. The installer script and the self updater read
   // these; the release workflow tags v<version> and uploads the archives plus
@@ -397,6 +400,13 @@ export const Brand = {
     // Base URL that <base>/download/v<version>/<asset> resolves under.
     base() {
       return releaseOverride(Brand.env.releaseBase) ?? `https://github.com/${Brand.release.owner}/${Brand.release.repo}/releases`
+    },
+    // The one line that installs a named version with the installer script,
+    // for the platform it is run on. Pre-releases are published only there.
+    installCommand(version: string, platform: string = process.platform) {
+      if (platform === "win32")
+        return `& ([scriptblock]::Create((irm https://github.com/${Brand.release.owner}/${Brand.release.repo}/releases/latest/download/install.ps1))) -Version ${version}`
+      return `curl -fsSL ${Brand.release.installer} | bash -s -- --version ${version}`
     },
     // A message naming the first release override that is set but not allowed.
     overrideProblem() {
