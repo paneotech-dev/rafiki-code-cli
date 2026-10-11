@@ -1,9 +1,11 @@
 // What install/install.sh puts outside its own install directory, and its
 // exact removal on uninstall: the PATH entry it writes into a shell startup
 // file (add_to_path) and the symlink it drops into a directory already on PATH
-// (link_into_path). The installer appends a blank line, "# rafikicode" and one
-// command for the bin directory; only lines that match those exactly are
-// removed, nothing else in the file changes.
+// (link_into_path). The installer writes "# rafikicode" and one command, either
+// appended after a blank line or, in a file that returns early for shells that
+// are not interactive, at the top of the file above that guard (place_line).
+// The same goes for the TMPDIR line when the temporary folder had to move. Only
+// lines that match those exactly are removed, nothing else in the file changes.
 import fs from "fs/promises"
 import os from "os"
 import path from "path"
@@ -18,6 +20,12 @@ export function commands(dir: string) {
   return [`export PATH=${dir}:$PATH`, `fish_add_path ${dir}`]
 }
 
+// The TMPDIR lines install.sh (persist_tmpdir) writes when the temporary folder
+// cannot be used: sh family and fish. Literal, $HOME and all.
+export function tmpdirCommands() {
+  return [`export TMPDIR=$HOME/.${Brand.name}/tmp`, `set -gx TMPDIR $HOME/.${Brand.name}/tmp`]
+}
+
 // Every startup file install.sh may edit, whatever the shell was.
 export function candidates(env: Record<string, string | undefined> = process.env, home = os.homedir()) {
   const xdg = env["XDG_CONFIG_HOME"] || path.join(home, ".config")
@@ -29,8 +37,10 @@ export function candidates(env: Record<string, string | undefined> = process.env
       path.join(zdot, ".zshenv"),
       path.join(xdg, "zsh", ".zshrc"),
       path.join(xdg, "zsh", ".zshenv"),
+      path.join(zdot, ".zprofile"),
       path.join(home, ".bashrc"),
       path.join(home, ".bash_profile"),
+      path.join(home, ".bash_login"),
       path.join(home, ".profile"),
       path.join(xdg, "bash", ".bashrc"),
       path.join(xdg, "bash", ".bash_profile"),
@@ -39,10 +49,11 @@ export function candidates(env: Record<string, string | undefined> = process.env
   ]
 }
 
-// Removes the installer's command for dir, with the marker and blank line
-// written just above it.
+// Removes the installer's commands for dir and its TMPDIR line, each with the
+// marker written just above it and, when it was appended, the blank line above
+// that.
 export function clean(content: string, dir: string) {
-  const wanted = new Set(commands(dir))
+  const wanted = new Set([...commands(dir), ...tmpdirCommands()])
   const kept: string[] = []
   let changed = false
   for (const line of content.split("\n")) {

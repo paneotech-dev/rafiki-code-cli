@@ -1090,7 +1090,7 @@ out=$(env HOME="$h" SHELL=/bin/bash PATH="$h/.rafikicode/bin:$safe_path" RAFIKIC
 line="export PATH=$h/.rafikicode/bin:\$PATH"
 [ "$rc" = "0" ] && grep -Fxq "$line" "$h/.bash_profile" && [ "$(grep -cFx "$line" "$h/.bashrc")" = "1" ] \
     && [ "$(grep -nFx "$line" "$h/.bashrc" | cut -d: -f1)" -lt "$(grep -n 'PS1' "$h/.bashrc" | cut -d: -f1)" ] \
-    && [ "$(grep -cFx '# rafikicode' "$h/.bashrc")" = "0" ] \
+    && [ "$(grep -cFx '# rafikicode' "$h/.bashrc")" = "1" ] && [ "$(sed -n 1p "$h/.bashrc")" = '# rafikicode' ] \
     && [[ "$out" == *"Moved the PATH entry above the early return in $h/.bashrc"* ]] \
     && [[ "$out" != *"is already on your PATH"* ]] && [[ "$out" != *"FAIL"* ]] && [[ "$out" == *"Ready."* ]]; check $? "already on this shell's PATH but not a login shell's: the login file is written and the dead line moved"
 

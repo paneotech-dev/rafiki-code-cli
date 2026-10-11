@@ -1324,14 +1324,19 @@ place_line() {
         printf 'added\n'; return 0
     fi
     tmp=$(mktemp "$(dirname "$file")/.${APP}-rc.XXXXXX" 2>/dev/null) || tmp=$(mktemp "${TMPDIR:-/tmp}/${APP}-rc.XXXXXX" 2>/dev/null) || return 1
+    # The same marker as an appended line, so uninstall (Shell.clean in the
+    # program) takes both forms out exactly. An older copy below the guard goes
+    # with its marker and the blank line above it, as uninstall would remove it.
     {
-        printf '# %s (before the early return below, so login shells read it too)\n%s\n' "$APP" "$line"
+        printf '# %s\n%s\n' "$APP" "$line"
         line="$line" tag="# $APP" awk '
             BEGIN { line = ENVIRON["line"]; tag = ENVIRON["tag"] }
-            $0 == tag { held = $0; next }
-            $0 == line { held = ""; next }
-            { if (held != "") print held; held = ""; print }
-            END { if (held != "") print held }
+            { text[NR] = $0 }
+            $0 == line {
+                drop[NR] = 1
+                if (NR > 1 && text[NR - 1] == tag) { drop[NR - 1] = 1; if (NR > 2 && text[NR - 2] == "") drop[NR - 2] = 1 }
+            }
+            END { for (i = 1; i <= NR; i++) if (!(i in drop)) print text[i] }
         ' "$file"
     } > "$tmp" || { rm -f "$tmp"; return 1; }
     # Written back in place, so a symlinked startup file and its mode survive.

@@ -258,17 +258,27 @@ if [ "$sh_path" != /bin/bash ]; then
 fi
 useradd -m -s "$sh_path" tester
 h=/home/tester
-rm -f $h/.profile $h/.bash_profile $h/.bashrc $h/.bash_login
+snap() {
+    mkdir -p "/out/$1"
+    for f in .bashrc .bash_profile .bash_login .profile .zprofile .zshrc; do
+        [ -f "$h/$f" ] && cp "$h/$f" "/out/$1/$f"
+    done
+    return 0
+}
+[ "$guard" = skel ] || rm -f $h/.profile $h/.bash_profile $h/.bashrc $h/.bash_login
 case "$guard" in
     ps1) printf '[ -z "$PS1" ] && return\nalias ll="ls -l"\n' > $h/.bashrc ;;
     case) printf '# ~/.bashrc\ncase $- in\n    *i*) ;;\n      *) return;;\nesac\nalias ll="ls -l"\n' > $h/.bashrc ;;
 esac
-if [ "$sources" = yes ]; then
+if [ "$guard" = skel ]; then
+    :
+elif [ "$sources" = yes ]; then
     printf '# .bash_profile\nif [ -f ~/.bashrc ]; then\n    . ~/.bashrc\nfi\nPATH=$PATH:$HOME/.local/bin:$HOME/bin\nexport PATH\n' > $h/.bash_profile
 else
     printf '# .bash_profile\nPATH=$PATH:$HOME/bin\nexport PATH\n' > $h/.bash_profile
 fi
 chown -R tester: $h
+snap before
 run() { su - tester -c "$1 cat /i/install.sh | $ENVS bash -s -- --no-login"; }
 run ""
 if [ "$rerun" = yes ]; then
@@ -281,15 +291,43 @@ su - tester -c 'command -v rafikicode; rafikicode --version'
 echo "--- ssh login ---"
 su tester -c "cd; env -i HOME=$h USER=tester PATH=/usr/bin:/bin TERM=dumb $sh_path -lic 'command -v rafikicode' </dev/null 2>/dev/null"
 echo "--- files ---"
-grep -c 'rafikicode/bin' $h/.bash_profile
+snap after
+grep -c 'rafikicode/bin' "$(ls $h/.bash_profile $h/.bash_login $h/.profile 2>/dev/null | head -n 1)"
 CASEEOF
-for spec in "guard-no-source:/bin/bash:ps1:no:no:$debian_curl" "guard-case-ubuntu:/bin/bash:case:no:no:$ubuntu_curl" \
-    "jailshell:/usr/local/cpanel/bin/jailshell:ps1:yes:yes:$fedora" "jailshell-no-source:/usr/local/cpanel/bin/jailshell:ps1:no:yes:$debian_curl"; do
-    IFS=: read -r cid csh cguard csrc crerun cimg <<SPECEOF
+
+# Uninstall (Shell.clean in the program) on every startup file the install
+# touched must give back the file as it was, byte for byte; a file the install
+# had to create comes back empty. Runs the program's own cleaner with bun when
+# this checkout has its dependencies, and says so when it cannot.
+REPO=$(cd "$HERE/.." && pwd)
+cleaner_ok=false
+if command -v bun >/dev/null 2>&1 && [ -d "$REPO/packages/opencode/node_modules" ]; then
+    cat > "$WORK/clean.ts" <<'TSEOF'
+import fs from "fs"
+import path from "path"
+const [, , repo, before, after, dir] = process.argv
+const Shell = await import(path.join(repo, "packages/opencode/src/rafiki/shell-path.ts"))
+let bad = 0
+for (const name of fs.readdirSync(after)) {
+  const got = Shell.clean(fs.readFileSync(path.join(after, name), "utf8"), dir).content
+  const want = fs.existsSync(path.join(before, name)) ? fs.readFileSync(path.join(before, name), "utf8") : ""
+  if (got !== want) { bad++; console.log(`differs after uninstall: ${name}\n--- before\n${want}--- cleaned\n${got}---`) }
+}
+console.log(bad === 0 ? "UNINSTALL-IDENTICAL" : "UNINSTALL-DIFFERS")
+TSEOF
+    mkdir -p "$WORK/empty"
+    (cd "$REPO/packages/opencode" && bun "$WORK/clean.ts" "$REPO" "$WORK/empty" "$WORK/empty" x 2>/dev/null | grep -q UNINSTALL-IDENTICAL) && cleaner_ok=true
+fi
+[ "$cleaner_ok" = true ] || echo "note: bun or this checkout's dependencies are missing, so the uninstall check is skipped"
+for spec in "guard-no-source:/bin/bash:ps1:no:no:$debian_curl:" "guard-case-ubuntu:/bin/bash:case:no:no:$ubuntu_curl:" \
+    "jailshell:/usr/local/cpanel/bin/jailshell:ps1:yes:yes:$fedora:" "jailshell-no-source:/usr/local/cpanel/bin/jailshell:ps1:no:yes:$debian_curl:" \
+    "debian-skel-ro-tmp:/bin/bash:skel:no:yes:$debian_curl:--tmpfs /tmp:ro"; do
+    IFS=: read -r cid csh cguard csrc crerun cimg cargs <<SPECEOF
 $spec
 SPECEOF
     id="login-$cid"
-    if cell "$id" "$cimg" "-v $WORK/login-case.sh:/i/login-case.sh:ro" "ENVS='$ENVS' sh /i/login-case.sh $csh $cguard $csrc $crerun"; then
+    rm -rf "$WORK/out-$cid"; mkdir -p "$WORK/out-$cid"
+    if cell "$id" "$cimg" "-v $WORK/login-case.sh:/i/login-case.sh:ro -v $WORK/out-$cid:/out $cargs" "ENVS='$ENVS' sh /i/login-case.sh $csh $cguard $csrc $crerun"; then
         cmd_part=${out##*--- ssh host cmd ---}; cmd_part=${cmd_part%%--- ssh login ---*}
         login_part=${out##*--- ssh login ---}; login_part=${login_part%%--- files ---*}
         files_part=${out##*--- files ---}
@@ -297,6 +335,10 @@ SPECEOF
             && [[ "$cmd_part" == *"/home/tester/.rafikicode/bin/rafikicode"* ]] && [[ "$cmd_part" == *$'\n1.2.3'* ]] \
             && [[ "$login_part" == *"/home/tester/.rafikicode/bin/rafikicode"* ]] \
             && [[ "$files_part" == *$'\n1'* ]]; check $? "$id: ssh host cmd and an ssh login both find it, the check is green"
+        if [ "$cleaner_ok" = true ]; then
+            out=$(cd "$REPO/packages/opencode" && bun "$WORK/clean.ts" "$REPO" "$WORK/out-$cid/before" "$WORK/out-$cid/after" /home/tester/.rafikicode/bin 2>&1) || true
+            [[ "$out" == *UNINSTALL-IDENTICAL* ]] && [ -n "$(ls -A "$WORK/out-$cid/after")" ]; check $? "$id: uninstall leaves every startup file as it was before the install"
+        fi
     fi
 done
 
