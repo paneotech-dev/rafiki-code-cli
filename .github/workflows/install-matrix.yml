@@ -83,10 +83,12 @@ on:
     paths:
       - install/**
       - .github/workflows/install-matrix.yml
+      - .github/workflows/release.yml
   pull_request:
     paths:
       - install/**
       - .github/workflows/install-matrix.yml
+      - .github/workflows/release.yml
   schedule:
     # Monday morning, off the hour, so a week of base image drift is found by a
     # job rather than by a user.
@@ -134,6 +136,9 @@ jobs:
       - name: install/test-release-gate.sh
         shell: bash
         run: install/test-release-gate.sh
+      - name: install/test-release-channels.sh
+        shell: bash
+        run: install/test-release-channels.sh
 
   matrix:
     name: install matrix

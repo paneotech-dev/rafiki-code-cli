@@ -179,7 +179,7 @@ node docs/check.mjs                   # documentation links, fences, wording
 
 ### Releases
 
-Pushing a tag `v<version>` runs `.github/workflows/release.yml`: every platform binary is built on one Linux runner (the macOS builds signed ad hoc there and their signatures checked page by page), archived as `rafikicode-<os>-<arch>.tar.gz` (Linux) or `.zip` (macOS, Windows), listed in `SHA256SUMS`, and attached to the GitHub release.
+Pushing a tag `v<version>` runs `.github/workflows/release.yml`: every platform binary is built on one Linux runner (the macOS builds signed ad hoc there and their signatures checked page by page), archived as `rafikicode-<os>-<arch>.tar.gz` (Linux) or `.zip` (macOS, Windows), listed in `SHA256SUMS`, and attached to the GitHub release. The secrets and variables a release uses are described in [Releasing](./docs/releasing.md).
 
 Local test servers for offline checks, both in `packages/opencode/test/brand/`: `mock-gateway.mjs` (an OpenAI compatible endpoint) and `mock-console.mjs` (the sign in flow):
 

@@ -3,8 +3,9 @@ name: release
 # Builds every rafikicode binary, proves each one before anything is public,
 # then publishes: the GitHub release first, and from it npm, Homebrew and winget.
 #
-#   preflight       the tag is a version, and every secret the run needs exists
-#                   (a pre-release needs none; see below)
+#   preflight       the tag is a version, the staging key exists for a full
+#                   release (a pre-release needs none), and which package
+#                   managers this run publishes (see Secrets below)
 #   build           all twelve builds, packed with LICENSE and NOTICE, SHA256SUMS
 #   gate            one job per published build: a clean container or runner for
 #                   that platform, the documented install, --version, the licence
@@ -15,7 +16,10 @@ name: release
 #   publish         only when every gate job and the matrix passed: the release
 #                   is created as a draft, every asset is uploaded and checked,
 #                   and only then is it published
-#   npm, homebrew, winget   each installs the archives of the published release
+#   npm, homebrew, winget   each installs the archives of the published release,
+#                   and runs only when its token is set (see Secrets)
+#   package managers  says which of the three were published and which were
+#                   skipped, in the run summary and in the release notes
 #
 # A failed build blocks the whole release: publish needs every gate job, the
 # gate matrix does not fail fast so the summary names every build that failed,
@@ -23,13 +27,19 @@ name: release
 #
 # Trigger: push a tag v<version>, for example v0.2.0.
 #
-# Secrets. A release (no hyphen in the version) needs all four, and preflight
-# stops the run, naming each one that is absent, before anything is built:
-#   RAFIKICODE_STAGING_API_KEY  API key of the staging test account (gate)
+# Secrets (docs/releasing.md says how to add them):
+#   RAFIKICODE_STAGING_API_KEY  API key of the staging test account (gate).
+#                               A release (no hyphen in the version) needs it,
+#                               and preflight stops the run before anything is
+#                               built when it is absent.
 #   NPM_TOKEN                   npm automation token for the package rafikicode
 #   HOMEBREW_TAP_TOKEN          token that can push to paneotech-dev/homebrew-tap
 #   WINGET_TOKEN                token wingetcreate uses to open the pull request
 #                               on microsoft/winget-pkgs
+# The last three are optional. The GitHub release, and with it install.sh,
+# install.ps1 and get.rafikiai.io, never depends on them. Without one, preflight
+# writes a warning naming it, that channel's jobs are skipped (not failed), and
+# the run summary and the release notes say the channel was skipped.
 # A pre-release (v0.2.0-rc.1) is published to GitHub only and needs none of
 # them. Without RAFIKICODE_STAGING_API_KEY it runs everything except the two
 # gate facets that call staging (signin and task), which every gate job
@@ -75,7 +85,17 @@ jobs:
       tag: ${{ steps.meta.outputs.tag }}
       prerelease: ${{ steps.meta.outputs.prerelease }}
       live_gate: ${{ steps.secrets.outputs.live_gate }}
+      # "true" when this run publishes that channel: a full release whose
+      # token is set.
+      npm: ${{ steps.secrets.outputs.npm }}
+      homebrew: ${{ steps.secrets.outputs.homebrew }}
+      winget: ${{ steps.secrets.outputs.winget }}
     steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          sparse-checkout: install/release-channels.sh
+          sparse-checkout-cone-mode: false
+
       - id: meta
         shell: bash
         env:
@@ -98,17 +118,15 @@ jobs:
             *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
           esac
 
-      # Every channel a released binary tells its user about has to be
-      # publishable by this run: `rafikicode upgrade` offers npm, Homebrew and
-      # winget, and the install page documents them. So the run stops here,
-      # before a build minute is spent, when it could not publish one of them
-      # or could not gate the builds. Secrets are compared with the empty
-      # string only; none is printed.
-      #
-      # A pre-release goes to GitHub only, so it needs no publishing token, and
-      # without the staging key it is still built, signed and gated: live_gate
-      # is then false and the gate jobs skip only signin and task, explicitly.
-      - name: Require every secret the release needs
+      # The staging key runs the live sign-in and task checks of the gate, so a
+      # full release stops here without it, before a build minute is spent.
+      # npm, Homebrew and winget are optional: each missing token is a warning
+      # naming it, and that channel is skipped later. A pre-release goes to
+      # GitHub only and needs no secret; without the staging key it is still
+      # built, signed and gated, with live_gate false, and the gate jobs skip
+      # only signin and task, explicitly. Secrets are compared with the empty
+      # string only; none is printed (install/release-channels.sh).
+      - name: Check the secrets and choose the channels
         id: secrets
         shell: bash
         env:
@@ -117,37 +135,7 @@ jobs:
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
           PRERELEASE: ${{ steps.meta.outputs.prerelease }}
-        run: |
-          set -euo pipefail
-          required=()
-          if [ "$PRERELEASE" != "true" ]; then
-            required+=(RAFIKICODE_STAGING_API_KEY NPM_TOKEN HOMEBREW_TAP_TOKEN WINGET_TOKEN)
-          fi
-          missing=()
-          for name in "${required[@]}"; do
-            [ -n "${!name:-}" ] || missing+=("$name")
-          done
-          if [ "${#missing[@]}" -gt 0 ]; then
-            for name in "${missing[@]}"; do
-              echo "::error title=release::The repository secret ${name} is not set. The release needs it and does not run without it."
-            done
-            {
-              echo "## Release not started"
-              echo
-              echo "Missing repository secrets: ${missing[*]}."
-              echo "Nothing was built and nothing was published. See docs/install.md, section For maintainers."
-            } >> "$GITHUB_STEP_SUMMARY"
-            exit 1
-          fi
-          if [ -n "${RAFIKICODE_STAGING_API_KEY:-}" ]; then
-            echo "live_gate=true" >> "$GITHUB_OUTPUT"
-          else
-            # Only a pre-release reaches this line without the key.
-            echo "live_gate=false" >> "$GITHUB_OUTPUT"
-            echo "::warning title=release::Pre-release without the staging key: live checks against staging are skipped; every other check runs. Set the repository secret RAFIKICODE_STAGING_API_KEY to run them."
-            echo "Pre-release without the staging key: live checks against staging are skipped; every other check runs" >> "$GITHUB_STEP_SUMMARY"
-          fi
-          echo "All required secrets are present."
+        run: install/release-channels.sh preflight
 
   build:
     name: build all platforms
@@ -446,6 +434,9 @@ jobs:
           TAG: ${{ needs.preflight.outputs.tag }}
           PRERELEASE: ${{ needs.preflight.outputs.prerelease }}
           LIVE_GATE: ${{ needs.preflight.outputs.live_gate }}
+          NPM_ENABLED: ${{ needs.preflight.outputs.npm }}
+          HOMEBREW_ENABLED: ${{ needs.preflight.outputs.homebrew }}
+          WINGET_ENABLED: ${{ needs.preflight.outputs.winget }}
         run: |
           set -euo pipefail
           # install.sh and install.ps1 ship as release assets so that
@@ -514,6 +505,19 @@ jobs:
             fi
           fi
 
+          # A full release names its package managers on its page: the ones
+          # this run publishes after it, and the ones skipped for a missing
+          # token. The package managers job rewrites the section with how each
+          # one ended. Spliced, so an earlier attempt's section is replaced.
+          if [ "$PRERELEASE" != "true" ]; then
+            notes="$RUNNER_TEMP/release-notes.md"
+            part="$RUNNER_TEMP/package-managers.md"
+            gh release view "$TAG" --json body --jq '.body' > "$notes"
+            "$GITHUB_WORKSPACE/install/release-channels.sh" section > "$part"
+            "$GITHUB_WORKSPACE/install/release-channels.sh" splice "$notes" "$part"
+            gh release edit "$TAG" --notes-file "$notes"
+          fi
+
           if [ "$PRERELEASE" = "true" ]; then
             gh release edit "$TAG" --draft=false --prerelease
           else
@@ -576,7 +580,8 @@ jobs:
   npm:
     name: publish npm package
     needs: [preflight, publish]
-    if: needs.preflight.outputs.prerelease != 'true'
+    # Skipped without NPM_TOKEN: preflight has warned, naming it.
+    if: needs.preflight.outputs.prerelease != 'true' && needs.preflight.outputs.npm == 'true'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -634,7 +639,8 @@ jobs:
   homebrew:
     name: update the Homebrew tap
     needs: [preflight, publish]
-    if: needs.preflight.outputs.prerelease != 'true'
+    # Skipped without HOMEBREW_TAP_TOKEN: preflight has warned, naming it.
+    if: needs.preflight.outputs.prerelease != 'true' && needs.preflight.outputs.homebrew == 'true'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -690,6 +696,8 @@ jobs:
   homebrew-verify:
     name: install from the tap on macOS
     needs: [preflight, homebrew]
+    # Skipped with the tap job when HOMEBREW_TAP_TOKEN is not set.
+    if: needs.preflight.outputs.prerelease != 'true' && needs.preflight.outputs.homebrew == 'true'
     runs-on: macos-15
     permissions:
       contents: read
@@ -712,7 +720,8 @@ jobs:
   winget:
     name: submit the winget manifest
     needs: [preflight, publish]
-    if: needs.preflight.outputs.prerelease != 'true'
+    # Skipped without WINGET_TOKEN: preflight has warned, naming it.
+    if: needs.preflight.outputs.prerelease != 'true' && needs.preflight.outputs.winget == 'true'
     runs-on: windows-2025
     permissions:
       contents: read
@@ -757,3 +766,45 @@ jobs:
           Invoke-WebRequest -UseBasicParsing -Uri https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
           .\wingetcreate.exe submit --prtitle "New version: PaneoTech.RafikiCode version $env:VERSION" --token $env:WINGET_TOKEN rendered\winget
           if ($LASTEXITCODE -ne 0) { Write-Host "::error title=winget::wingetcreate could not open the pull request."; exit 1 }
+
+  package-managers:
+    name: report the package managers
+    # How npm, Homebrew and winget ended, in the run summary and in the
+    # release notes: published, skipped for a missing token, or failed. It
+    # runs whatever they did, but only once the GitHub release is public, and
+    # it does not judge them: a failed channel job already fails the run.
+    needs: [preflight, publish, npm, homebrew, homebrew-verify, winget]
+    if: always() && needs.publish.result == 'success' && needs.preflight.outputs.prerelease != 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      # Edits the notes of the release publish created.
+      contents: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: refs/tags/${{ needs.preflight.outputs.tag }}
+          sparse-checkout: install/release-channels.sh
+          sparse-checkout-cone-mode: false
+
+      - name: Write which channels were published and which were skipped
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.preflight.outputs.tag }}
+          NPM_ENABLED: ${{ needs.preflight.outputs.npm }}
+          HOMEBREW_ENABLED: ${{ needs.preflight.outputs.homebrew }}
+          WINGET_ENABLED: ${{ needs.preflight.outputs.winget }}
+          NPM_RESULT: ${{ needs.npm.result }}
+          HOMEBREW_RESULT: ${{ needs.homebrew.result }}
+          HOMEBREW_VERIFY_RESULT: ${{ needs.homebrew-verify.result }}
+          WINGET_RESULT: ${{ needs.winget.result }}
+        run: |
+          set -euo pipefail
+          notes="$RUNNER_TEMP/release-notes.md"
+          part="$RUNNER_TEMP/package-managers.md"
+          install/release-channels.sh section > "$part"
+          grep -v '^<!-- ' "$part" >> "$GITHUB_STEP_SUMMARY"
+          gh release view "$TAG" --json body --jq '.body' > "$notes"
+          install/release-channels.sh splice "$notes" "$part"
+          gh release edit "$TAG" --notes-file "$notes"
