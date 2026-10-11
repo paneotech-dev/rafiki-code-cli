@@ -648,7 +648,11 @@ export function turn(messages: SessionV1.WithParts[], directory: string) {
         }
     }
   }
-  return { files: [...files], rounds: used }
+  const last = since
+    .flatMap((msg) => (msg.info.role === "user" ? msg.parts.map(metaOf) : []))
+    .filter((meta): meta is FeedbackMeta => meta?.kind === "feedback")
+    .at(-1)
+  return { files: [...files], rounds: used, last: last?.result }
 }
 
 // Changed files relative to root, without the tool's own folders and files outside root.
@@ -777,6 +781,16 @@ function seconds(value: number) {
   return `${value < 10 ? value.toFixed(1) : Math.round(value)} s`
 }
 
+// True when a round failed exactly like the round before it: the same
+// commands with the same output. Another round would most likely be spent
+// the same way (a failure that was there before the change, for example).
+export function sameFailure(previous: Result | undefined, current: Result) {
+  if (!previous) return false
+  const key = (result: Result) =>
+    JSON.stringify(result.steps.filter((step) => step.status === "failed").map((step) => [step.command, step.exit, step.output]))
+  return key(previous) === key(current)
+}
+
 // The message that sends a failure back to the model.
 export function feedback(result: Result, round: number, total: number) {
   const failed = result.steps.filter((step) => step.status === "failed")
@@ -833,8 +847,7 @@ export function statusLine(status: Status | "off" | "not_run") {
   return "checks not run"
 }
 
-// The verify status of a run for the JSON output: not_run when the step did
-// not run (it is off, or the turn changed no file).
+// The verify status of a run for the JSON output, sent only when the step ran.
 export function summary(meta: FinalMeta | undefined) {
   if (!meta) return { status: "not_run" }
   return {

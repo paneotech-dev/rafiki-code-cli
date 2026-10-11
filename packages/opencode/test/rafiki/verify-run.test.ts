@@ -126,11 +126,21 @@ describe("rafikicode run and the verify step", () => {
 
   test("a check that still fails ends with the honest line and exit code 8", async () => {
     project()
-    const result = await run((turn) => (turn === 1 ? shell("echo bad > value.cfg") : shell("true")))
+    const result = await run((turn) => (turn === 1 ? shell("echo bad > value.cfg") : turn === 2 ? shell("echo worse > value.cfg") : shell("true")))
     expect(result.all).toContain("checks failed, fix round 2 of 2")
     expect(result.all).toContain("checks failing: bun run test (exit code 1) after 2 fix rounds. The changes are not verified.")
     expect(result.exitCode).toBe(Verify.EXIT_CHECKS_FAILING)
     expect(userTurns.length).toBe(3)
+  }, 240_000)
+
+  test("a round that changes nothing about the failure ends the fix rounds", async () => {
+    project()
+    const result = await run((turn) => (turn === 1 ? shell("echo bad > value.cfg") : shell("true")))
+    expect(result.all).toContain("checks failed, fix round 1 of 2")
+    expect(result.all).not.toContain("fix round 2 of 2")
+    expect(result.all).toContain("checks failing: bun run test (exit code 1) after 1 fix round. The changes are not verified.")
+    expect(result.exitCode).toBe(Verify.EXIT_CHECKS_FAILING)
+    expect(userTurns.length).toBe(2)
   }, 240_000)
 
   test("JSON output carries the verify status, and the exit code is 8 there too", async () => {
@@ -160,7 +170,8 @@ describe("rafikicode run and the verify step", () => {
     const result = await run((turn) => (turn === 1 ? shell("echo bad > value.cfg") : undefined), ["--format", "json"], {
       [Brand.env.verify]: "0",
     })
-    expect(events(result.stdout).filter((event) => event.type === "verify")).toEqual([{ type: "verify", timestamp: expect.any(Number), sessionID: expect.any(String), status: "not_run" }])
+    // No verify event at all when the step did not run, so the JSON stream is the same as without it.
+    expect(events(result.stdout).filter((event) => event.type === "verify")).toEqual([])
     expect(result.exitCode).toBe(0)
     expect(userTurns.length).toBe(1)
   }, 240_000)

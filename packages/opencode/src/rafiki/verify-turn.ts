@@ -51,7 +51,8 @@ export const afterTurn = Effect.fnUntraced(function* (input: Input) {
             steps: steps.map((step) => ({ ...step, status: "skipped", exit: null, seconds: 0, output: "" })),
           }
 
-  if (result.status === "failing" && turn.rounds < total) {
+  // A round that ends with the very same failure as the one before gets no further round.
+  if (result.status === "failing" && turn.rounds < total && !Verify.sameFailure(turn.last, result)) {
     const round = turn.rounds + 1
     const message = yield* input.sessions.updateMessage({
       id: MessageID.ascending(),

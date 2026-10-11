@@ -980,8 +980,8 @@ export const RunCommand = effectCmd({
           async function finish() {
             const error = await completed
             if (stopped) return parked()
-            // The verify status, in the JSON output and the exit code: 8 when the checks still fail.
-            emit("verify", RafikiVerify.summary(verified))
+            // The verify status, in the JSON output when the step ran, and the exit code: 8 when the checks still fail.
+            if (verified) emit("verify", RafikiVerify.summary(verified))
             if (verified?.result.status === "failing")
               process.exitCode = process.exitCode || RafikiVerify.EXIT_CHECKS_FAILING
             await report(error ? "ended with an error" : undefined)

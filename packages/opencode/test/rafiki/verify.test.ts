@@ -303,6 +303,12 @@ describe("what the model and the user read", () => {
     expect(text).toContain("Do not weaken or delete tests")
   })
 
+  test("a round that fails exactly like the one before is the same failure", () => {
+    expect(Verify.sameFailure(undefined, failing)).toBe(false)
+    expect(Verify.sameFailure(failing, { ...failing, steps: [{ ...failing.steps[0], seconds: 9 }] })).toBe(true)
+    expect(Verify.sameFailure(failing, { ...failing, steps: [{ ...failing.steps[0], output: "other" }] })).toBe(false)
+  })
+
   test("the line added to the answer", () => {
     expect(Verify.finalLine(failing, 2)).toBe("checks failing: pytest tests/test_a.py (exit code 1) after 2 fix rounds. The changes are not verified.")
     expect(Verify.finalLine({ ...failing, status: "passed", steps: [{ ...failing.steps[0], status: "passed", exit: 0 }] }, 0)).toBe(
