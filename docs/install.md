@@ -83,6 +83,10 @@ On Windows, run `rafikicode` in Windows Terminal, the default terminal on Window
 
 A copy installed this way updates itself, see [Updates](#updates).
 
+### npm, Homebrew and winget may lag behind
+
+The installer script and the release page always have the latest release. npm, Homebrew and winget receive a release only when the release workflow can publish to them, and each needs a token of its own for that. Until those tokens are set, npm, Homebrew and winget may lag behind: they keep offering the version they last received, and `rafikicode update` on a copy installed through them stays on that version. When the daily check names a newer version than your package manager offers, or the update ends and `rafikicode --version` still shows the old version, your package manager has not received the release yet. The release notes on the release page say, under "Package managers", which channels each release reached. To get the latest release now, install it with the installer script.
+
 ## npm
 
 ```bash
@@ -213,14 +217,7 @@ What was run while these channels were written, and what was not:
 
 ## For maintainers
 
-For a release (a version without a hyphen, such as `0.2.0`), the release workflow (`.github/workflows/release.yml`) refuses to start unless these four repository secrets exist, and names the ones that are missing:
-
-| Secret | Used for |
-| --- | --- |
-| `RAFIKICODE_STAGING_API_KEY` | the gate's sign-in and task: an API key of the staging test account, created with the Rafiki Code option ticked |
-| `NPM_TOKEN` | publishing the package `rafikicode` |
-| `HOMEBREW_TAP_TOKEN` | pushing the formula to `paneotech-dev/homebrew-tap` |
-| `WINGET_TOKEN` | opening the pull request on `microsoft/winget-pkgs` |
+[Releasing](./releasing.md) lists the repository secrets and variables a release uses and how to add them. In short: a full release (a version without a hyphen, such as `0.2.0`) needs only `RAFIKICODE_STAGING_API_KEY`, and the release workflow (`.github/workflows/release.yml`) refuses to start without it. `NPM_TOKEN`, `HOMEBREW_TAP_TOKEN` and `WINGET_TOKEN` are optional: without one, that channel is skipped with a warning naming the secret, and the GitHub release, the installer scripts and `get.rafikiai.io` are published all the same.
 
 A pre-release (a version with a hyphen, such as `0.2.0-rc.1`) is published to GitHub only and needs none of them. Without `RAFIKICODE_STAGING_API_KEY` it still builds, signs and checks every build: the preflight job warns that the live checks against staging are skipped, every gate job runs install, version and licence (and `codesign --verify --strict` on macOS) and records signin and task as `skipped (no staging key, pre-release)`, the install matrix runs in full, and the release notes say that the live checks were skipped. Nothing else is skipped, and a skipped verdict is accepted only for those two facets of such a pre-release.
 
@@ -264,8 +261,9 @@ The first line of the second command must be `success`. Below it, every one of t
 | `update the Homebrew tap` | 1 |
 | `install from the tap on macOS` | 1 |
 | `submit the winget manifest` | 1 |
+| `report the package managers` | 1 |
 
-`install matrix / installer and gate script suites` says `skipped` in a release run, and that is correct. For a version with a pre-release part, the last four jobs say `skipped` as well. Any other `skipped`, `cancelled` or `failure` is a release that is not verified, whatever the release page shows.
+`install matrix / installer and gate script suites` says `skipped` in a release run, and that is correct. For a version with a pre-release part, the last five jobs say `skipped` as well. In a full release, `publish npm package` says `skipped` when `NPM_TOKEN` is not set, the two Homebrew jobs when `HOMEBREW_TAP_TOKEN` is not set, and `submit the winget manifest` when `WINGET_TOKEN` is not set; each such skip has a warning from the preflight job that names the secret, and the release notes list the channel as skipped. Any other `skipped`, `cancelled` or `failure` is a release that is not verified, whatever the release page shows.
 
 A job that is missing from the list is a failure too. That is how 0.1.8 and 0.1.9 looked: a failed run, no failed job, and no line for the install matrix. The reason is then an annotation on the run page and not a job log. For those two runs it was a deadlock on a concurrency group: `install-matrix.yml` is called by `release.yml`, and inside a called workflow `github.workflow` is the name of the caller, so the two files asked for the same group. The group in `install-matrix.yml` carries the prefix `install-matrix-` for that reason, and it must stay different from the group in `release.yml`.
 
