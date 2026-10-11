@@ -36,7 +36,7 @@ describe("the key's models", () => {
   test("the message says the key lacks the tier and how to fix it", () => {
     const text = Tier.notOnKeyMessage("rafiki-max")
     expect(text).toContain("approved without the Rafiki Max tier")
-    expect(text).toContain("rafikicode login again and tick Max")
+    expect(text).toMatch(/: rafikicode login$/)
   })
 })
 

@@ -112,7 +112,7 @@ describe("rafikicode run through the gateway", () => {
     expect(denied.exitCode).toBe(2)
     // The gateway's /key/info answer leaves rafiki-max out: the run says so before any request.
     expect(denied.all).toContain("approved without the Rafiki Max tier")
-    expect(denied.all).toContain("rafikicode login again and tick Max")
+    expect(denied.all).toMatch(/: rafikicode login\s*$/m)
     expect(chatCalls().some((call: any) => call.model === "rafiki-max")).toBe(false)
 
     const revoked = await fetch(gateway!.url + "/key/delete", {

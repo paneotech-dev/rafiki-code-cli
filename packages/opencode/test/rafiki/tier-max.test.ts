@@ -31,7 +31,7 @@ describe("the check", () => {
   test("a key without the tier is refused with the fix", async () => {
     const text = await TierCheck.refusal("rafiki/rafiki-max", info(["rafiki-fast", "rafiki-pro"]))
     expect(text).toContain("approved without the Rafiki Max tier")
-    expect(text).toContain("rafikicode login again and tick Max")
+    expect(text).toMatch(/: rafikicode login$/)
     expect(await TierCheck.refusal("rafiki/rafiki-max", info(["rafiki-fast", "rafiki-max"]))).toBeUndefined()
     expect(await TierCheck.refusal("rafiki/rafiki-max", info([]))).toBeUndefined()
   })
@@ -49,7 +49,7 @@ describe("the check", () => {
       }),
     })
     expect(failure?.message).toContain("This key is not allowed to use the max tier.")
-    expect(failure?.message).toContain("Run rafikicode login again and tick Max on the approval page")
+    expect(failure?.message).toContain("(keep Max ticked on the approval page): rafikicode login")
   })
 })
 
@@ -93,7 +93,7 @@ describe("run against the mock gateway", () => {
       const [, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])
       expect(await proc.exited).toBe(2)
       expect(stderr).toContain("approved without the Rafiki Max tier")
-      expect(stderr).toContain("rafikicode login again and tick Max")
+      expect(stderr).toMatch(/: rafikicode login\s*$/m)
       expect(gateway.requests.some((r: any) => r.path === "/key/info")).toBe(true)
       expect(gateway.requests.some((r: any) => r.path === "/v1/chat/completions")).toBe(false)
     } finally {

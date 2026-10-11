@@ -140,11 +140,45 @@ To turn it off, set `autoupdate` in `~/.rafikicode/config.json`:
 To update now, whatever the setting:
 
 ```bash
-rafikicode update            # the latest release
-rafikicode update 0.1.9      # a specific release
+rafikicode update            # the latest release of your update channel
+rafikicode update --pre      # the newest release, pre-releases included
+rafikicode update 0.1.9      # a specific release, pre-release or not
 ```
 
 `rafikicode update` works out how the copy was installed and uses that channel: the installer's own download with its checksum check, or `npm` (`pnpm` or `bun` when the package was installed with one of them), `brew` or `winget`. `--method` names the channel when the detection is wrong, and takes `curl` for the installer's download, `npm`, `pnpm`, `bun`, `brew` or `winget`. Nothing else is a channel of this product, so no other name is accepted.
+
+### Update channels
+
+Releases come on two channels:
+
+- `stable`: the release GitHub shows as the latest. Pre-releases never appear on it.
+- `pre`: the newest release of all, pre-releases included (`0.1.10-rc.7`, then `0.1.10-rc.8`, then `0.1.10`). Versions are compared by semantic versioning, so a pre-release comes before the release of the same number.
+
+A copy installed from a pre-release follows `pre`, so that testers keep receiving pre-releases. A copy installed from a stable release follows `stable`. To choose, set `channel` in `~/.rafikicode/config.json`:
+
+```json
+{
+  "channel": "pre"
+}
+```
+
+or set `RAFIKICODE_UPDATE_CHANNEL=stable` or `RAFIKICODE_UPDATE_CHANNEL=pre`, which wins over the setting. The daily check and `rafikicode update` both follow the channel. `rafikicode update --pre` (or `--prerelease`) takes the newest release including pre-releases once, whatever the channel.
+
+On `stable`, when there is nothing newer to install but a newer pre-release exists, `rafikicode update` says so in one line and gives the command to install it.
+
+The list of releases is read from the GitHub releases API. When the API refuses (it allows 60 requests an hour per address, shared by everyone behind the same address, such as an office network or a shared host), the release page is read instead, as the installers do.
+
+Pre-releases are published only through the installer script. npm, Homebrew and winget receive stable releases only, so on a copy installed by one of them `rafikicode update --pre` changes nothing and prints the line that installs the pre-release with the installer script instead, for example:
+
+```bash
+curl -fsSL https://get.rafikiai.io | bash -s -- --version 0.1.10-rc.7
+```
+
+```powershell
+& ([scriptblock]::Create((irm https://github.com/paneotech-dev/rafiki-code-cli/releases/latest/download/install.ps1))) -Version 0.1.10-rc.7
+```
+
+With `"channel": "pre"` on such a copy, `rafikicode update` prints the same line and then updates to the newest stable release of that package manager.
 
 ## Licence
 

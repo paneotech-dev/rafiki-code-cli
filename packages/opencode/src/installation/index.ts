@@ -23,6 +23,13 @@ export type ReleaseType = "patch" | "minor" | "major"
 
 export const Event = InstallationEvent
 
+// Install methods whose registry publishes pre-releases. Only the installer
+// script's: the release workflow publishes npm, Homebrew and winget for stable
+// releases only.
+export function hasPrereleases(method: Method) {
+  return method === "curl"
+}
+
 export function getReleaseType(current: string, latest: string): ReleaseType {
   const currMajor = semver.major(current)
   const currMinor = semver.minor(current)
@@ -77,7 +84,10 @@ const ScoopManifest = NpmPackage
 export interface Interface {
   readonly info: () => Effect.Effect<Info>
   readonly method: () => Effect.Effect<Method>
-  readonly latest: (method?: Method) => Effect.Effect<string>
+  // channel "pre" asks for the newest release including pre-releases. Only
+  // the installer's own feed has them: npm, Homebrew and winget publish
+  // stable releases only, so for those the answer is their stable version.
+  readonly latest: (method?: Method, channel?: RafikiUpdate.Channel) => Effect.Effect<string>
   readonly upgrade: (method: Method, target: string) => Effect.Effect<void, UpgradeFailedError>
 }
 
@@ -184,7 +194,7 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
 
         return "unknown" as Method
       }),
-      latest: Effect.fn("Installation.latest")(function* (installMethod?: Method) {
+      latest: Effect.fn("Installation.latest")(function* (installMethod?: Method, channel?: RafikiUpdate.Channel) {
         const detectedMethod = installMethod || (yield* result.method())
 
         /*
@@ -210,7 +220,7 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
         }
 
         // Every redirect hop is checked against the release URL rule (https only).
-        return yield* Effect.promise(() => RafikiUpdate.latest())
+        return yield* Effect.promise(() => RafikiUpdate.latestOf(channel ?? "stable"))
       }, Effect.orDie),
       upgrade: Effect.fn("Installation.upgrade")(function* (m: Method, target: string) {
         let upgradeResult: { code: number; stdout: string; stderr: string } | undefined

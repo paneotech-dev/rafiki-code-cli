@@ -6,6 +6,81 @@ import { Installation } from "../../installation"
 import { InstallationVersion } from "@opencode-ai/core/installation/version"
 import { RafikiUpdate } from "@/rafiki/update"
 import { RafikiAutoupdate } from "@/rafiki/autoupdate"
+import semver from "semver"
+
+// What `upgrade` decides before it installs anything, kept apart from the
+// prompts so the tests can drive it with a stubbed release list.
+export type Plan =
+  | { kind: "install"; target: string; notes: string[] }
+  | { kind: "stop"; lines: string[]; level: "warn" | "error" | "info"; exitCode?: number }
+
+// npm, Homebrew and winget publish stable releases only.
+function onlyInstaller(method: Installation.Method, version: string | undefined, platform: NodeJS.Platform) {
+  const name = method === "unknown" ? "this installation" : method
+  const install = Brand.release.installCommand(version ?? "<version>", platform)
+  return [
+    `Pre-releases are published only through the installer script; ${name} has stable releases only.`,
+    version ? `To install ${version}, run: ${install}` : `To install a pre-release, run: ${install}`,
+  ]
+}
+
+export async function plan(input: {
+  current: string
+  method: Installation.Method
+  target?: string
+  pre?: boolean
+  channel: RafikiUpdate.Channel
+  platform?: NodeJS.Platform
+  // The newest version on the method's registry for a channel.
+  latest: (channel: RafikiUpdate.Channel) => Promise<string>
+  // The newest release of all, pre-releases included (the installer's feed).
+  newest: () => Promise<string | undefined>
+}): Promise<Plan> {
+  const platform = input.platform ?? process.platform
+  // An explicit version is installed as asked, whatever the channel.
+  if (input.target) {
+    const target = input.target.replace(/^v/, "")
+    if (target === input.current)
+      return { kind: "stop", level: "warn", lines: [`${Brand.name} upgrade skipped: ${target} is already installed`] }
+    if (RafikiUpdate.isPrerelease(target) && !Installation.hasPrereleases(input.method))
+      return { kind: "stop", level: "warn", lines: onlyInstaller(input.method, target, platform), exitCode: 1 }
+    return { kind: "install", target, notes: [] }
+  }
+  const channel: RafikiUpdate.Channel = input.pre ? "pre" : input.channel
+  const notes: string[] = []
+  if (channel === "pre" && !Installation.hasPrereleases(input.method)) {
+    const version = await input.newest().catch(() => undefined)
+    const lines = onlyInstaller(input.method, version, platform)
+    // Asked for by name: nothing more to do. Asked for by the channel
+    // setting: say so, then update on the stable releases this method has.
+    if (input.pre) return { kind: "stop", level: "warn", lines, exitCode: 1 }
+    notes.push(...lines)
+  }
+  const target = await input.latest(Installation.hasPrereleases(input.method) ? channel : "stable")
+  const current = semver.valid(input.current)
+  const valid = semver.valid(target)
+  if (target === input.current || (current && valid && semver.lte(valid, current))) {
+    const lines = [
+      target === input.current
+        ? `${Brand.name} upgrade skipped: ${target} is already installed`
+        : `${Brand.name} upgrade skipped: ${input.current} is newer than the latest ${channel === "pre" ? "release" : "stable release"}, ${target}`,
+    ]
+    if (channel === "stable") {
+      // The stable feed never names a pre-release, so a tester on a stable
+      // copy would never hear of one: say it in one line, with the command.
+      const newest = await input.newest().catch(() => undefined)
+      if (newest && current && semver.gt(newest, current) && RafikiUpdate.isPrerelease(newest)) {
+        lines.push(
+          Installation.hasPrereleases(input.method)
+            ? `A newer pre-release, ${newest}, is available: ${Brand.name} upgrade --pre`
+            : `A newer pre-release, ${newest}, is available through the installer script: ${Brand.release.installCommand(newest, platform)}`,
+        )
+      }
+    }
+    return { kind: "stop", level: "warn", lines: [...notes, ...lines] }
+  }
+  return { kind: "install", target, notes }
+}
 
 export const UpgradeCommand = {
   command: "upgrade [target]",
@@ -16,6 +91,11 @@ export const UpgradeCommand = {
       .positional("target", {
         describe: "version to upgrade to, for ex '0.1.48' or 'v0.1.48'",
         type: "string",
+      })
+      .option("pre", {
+        alias: "prerelease",
+        describe: "upgrade to the newest release, pre-releases included",
+        type: "boolean",
       })
       .option("method", {
         alias: "m",
@@ -31,7 +111,7 @@ export const UpgradeCommand = {
         choices: ["curl", "npm", "pnpm", "bun", "brew", "winget"],
       })
   },
-  handler: async (args: { target?: string; method?: string }) => {
+  handler: async (args: { target?: string; method?: string; pre?: boolean }) => {
     UI.empty()
     UI.println(UI.logo("  "))
     UI.empty()
@@ -55,13 +135,23 @@ export const UpgradeCommand = {
       }
     }
     prompts.log.info("Using method: " + method)
-    const target = args.target ? args.target.replace(/^v/, "") : await Installation.latest()
-
-    if (InstallationVersion === target) {
-      prompts.log.warn(`${Brand.name} upgrade skipped: ${target} is already installed`)
+    const decided = await plan({
+      current: InstallationVersion,
+      method,
+      target: args.target,
+      pre: args.pre,
+      channel: RafikiUpdate.channel(),
+      latest: (channel) => Installation.latest(method, channel),
+      newest: () => RafikiUpdate.newest(),
+    })
+    if (decided.kind === "stop") {
+      for (const line of decided.lines) prompts.log[decided.level](line)
+      if (decided.exitCode) process.exitCode = decided.exitCode
       prompts.outro("Done")
       return
     }
+    for (const line of decided.notes) prompts.log.warn(line)
+    const target = decided.target
 
     prompts.log.info(`From ${InstallationVersion} to ${target}`)
     // Nothing is installed from a run from source, by any method.

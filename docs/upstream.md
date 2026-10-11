@@ -73,20 +73,20 @@ counted with `git diff --numstat -M` against the upstream base.
 
 <!-- upstream-files:start -->
 
-Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 196. Changed lines: 7196 (4325 added, 2871 removed).
+Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 198. Changed lines: 7348 (4465 added, 2883 removed).
 
 | Class | Files | Added | Removed |
 | --- | ---: | ---: | ---: |
-| Source: a call into this fork's modules | 48 | 756 | 209 |
-| Source: product name, file names and wording | 42 | 247 | 191 |
-| Source: behaviour changed in place | 17 | 639 | 232 |
+| Source: a call into this fork's modules | 49 | 870 | 213 |
+| Source: product name, file names and wording | 42 | 251 | 191 |
+| Source: behaviour changed in place | 18 | 654 | 234 |
 | Tests of upstream, adapted | 35 | 669 | 178 |
-| Generated files | 3 | 369 | 182 |
+| Generated files | 3 | 376 | 188 |
 | Package identity and packaging | 9 | 20 | 479 |
 | Documentation | 23 | 197 | 1182 |
 | Repository tooling and workflows | 6 | 23 | 8 |
 | Editor extension | 13 | 1405 | 210 |
-| Total | 196 | 4325 | 2871 |
+| Total | 198 | 4465 | 2883 |
 
 ### Source: a call into this fork's modules
 
@@ -94,12 +94,13 @@ On a conflict: Take upstream's side of the conflict, then put the call back at t
 
 | File | Added | Removed | Why |
 | --- | ---: | ---: | --- |
-| `packages/core/src/config.ts` | 7 | 5 | Project file and directory names come from `Brand.project`; discovery honours the switch that disables project configuration. |
+| `packages/core/src/config.ts` | 10 | 5 | Project file and directory names come from `Brand.project`; discovery honours the switch that disables project configuration; the `channel` key (update channel, read by `rafiki/update.ts`). |
 | `packages/core/src/config/plugin/external.ts` | 3 | 2 | Plugins named by a project pass through `BrandTrust.plugins` (workspace trust). |
 | `packages/core/src/flag/flag.ts` | 4 | 3 | Server credentials and the project switch are read through the brand module, which accepts this product's variable names and upstream's. |
 | `packages/core/src/models-dev.ts` | 9 | 2 | The upstream model catalogue is fetched only while the provider scope is open (`core/brand/brand.ts`, `Brand.providers.open()`): the official build offers the rafiki provider alone, so a run contacts no catalogue host. |
 | `packages/core/src/plugin/skill.ts` | 13 | 5 | The built in configuration skill is the one from `brand/skill.ts` when the upstream skill is hidden. |
 | `packages/core/src/ripgrep.ts` | 43 | 2 | When the ripgrep binary can be neither found nor downloaded, glob, file search and grep run on the built-in search (`core/brand/search-fallback.ts`), with one warning line, instead of failing. |
+| `packages/core/src/v1/config/migrate.ts` | 1 | 0 | Carries the `channel` key (update channel, `rafiki/update.ts`) into the new configuration shape. |
 | `packages/opencode/script/schema.ts` | 15 | 1 | Descriptions in the published schema are rewritten with `Brand.prompt`. |
 | `packages/opencode/src/acp/agent.ts` | 4 | 3 | Authentication and the key check go through `rafiki/acp.ts`. |
 | `packages/opencode/src/agent/agent.ts` | 7 | 1 | Headless permission defaults come from `BrandTrust.headlessPermission`; plans are allowed under each project directory name. The general subagent does not get `memory_update` (`rafiki/memory.ts`). |
@@ -109,7 +110,7 @@ On a conflict: Take upstream's side of the conflict, then put the call back at t
 | `packages/opencode/src/cli/cmd/run.ts` | 168 | 13 | Exit codes and messages for gateway errors, a missing key and rejected permissions, the attach check, the cost line, the `--resume` alias and server file credentials, each a call into `src/rafiki/`; an answer on another tier is announced through `rafiki/served.ts`, and a run on Rafiki Max is checked against the key first (`rafiki/tier-check.ts`). A command that publishes code is refused unless the run allows it (`--allow-push`, `RAFIKICODE_ALLOW_PUSH`, a `publish` permission in config), `--auto` or not (`core/brand/publish.ts`). A turn tried again after it spent its output budget reasoning is announced in one line (`rafiki/reasoning.ts`), and SIGTERM or SIGINT stop and save the session before exiting 143 or 130 (`rafiki/run-signal.ts`). The checks after a change are reported on the `Task:` line, in a `verify` JSON event and with exit code 8 when they still fail (`rafiki/verify.ts`). |
 | `packages/opencode/src/cli/cmd/run/variant.shared.ts` | 3 | 1 | The provider name is not repeated after a model name that starts with it (`Brand.provider.label`). |
 | `packages/opencode/src/cli/cmd/serve.ts` | 7 | 6 | The server password is made and stored by `rafiki/server-file.ts`; text names this product. |
-| `packages/opencode/src/cli/cmd/upgrade.ts` | 22 | 5 | The `update` alias, the method choices this product supports, and the refusals and clean up from `rafiki/update.ts` and `rafiki/autoupdate.ts`. |
+| `packages/opencode/src/cli/cmd/upgrade.ts` | 116 | 9 | The `update` alias, the method choices this product supports, `--pre` and the update channel of `rafiki/update.ts`, and the refusals and clean up from `rafiki/update.ts` and `rafiki/autoupdate.ts`. |
 | `packages/opencode/src/cli/cmd/web.ts` | 6 | 5 | The server password is made and stored by `rafiki/server-file.ts`; text names this product. |
 | `packages/opencode/src/cli/tui/worker.ts` | 10 | 1 | The update check is `rafiki/autoupdate.ts`; trust warnings are sent as events (`rafiki/notice.ts`). |
 | `packages/opencode/src/config/config.ts` | 46 | 40 | File names and the schema address come from the brand module; substitution limits, workspace trust, the provider scope and redacted secrets are calls into `brand/guard.ts`, `brand/trust.ts` and `brand/serve.ts`. |
@@ -138,7 +139,7 @@ On a conflict: Take upstream's side of the conflict, then put the call back at t
 | `packages/opencode/src/tool/registry.ts` | 9 | 1 | Tool directories pass through `BrandTrust.codeDirs` (workspace trust). `memory_update` (`tool/memory.ts`) is registered and hidden when the project memory is off (`rafiki/memory.ts`). |
 | `packages/opencode/src/tool/shell.ts` | 4 | 0 | Before a command that publishes code, the tool asks the "publish" question built by `rafiki/publish-guard.ts`. |
 | `packages/opencode/src/tool/write.ts` | 2 | 0 | A write to a file in `.rafiki/memory/` is refused: the project memory changes only through `memory_update` (`rafiki/memory.ts`). |
-| `packages/tui/src/component/dialog-model.tsx` | 24 | 4 | Tiers that are not listed are hidden (`Brand.provider.listed`); each tier states its price in credits, and Rafiki Max is confirmed once per session and checked against the key (`component/tier-choice.tsx`). |
+| `packages/tui/src/component/dialog-model.tsx` | 40 | 4 | Tiers that are not listed are hidden (`Brand.provider.listed`); each tier states its price in credits, and Rafiki Max is confirmed once per session and checked against the key (`component/tier-choice.tsx`). |
 | `packages/tui/src/config/keybind.ts` | 2 | 0 | The key that opens the History panel (`recent_open`, `<leader>o`, `feature-plugins/rafiki-history.tsx`). |
 | `packages/tui/src/feature-plugins/builtins.ts` | 8 | 0 | Registers the spend plugin (`feature-plugins/rafiki-cost.tsx`), the History plugin (`feature-plugins/rafiki-history.tsx`) and the GitHub setup (`feature-plugins/rafiki-github.tsx`). |
 | `packages/tui/src/routes/session/subagent-footer.tsx` | 6 | 14 | The context figure is what the last request sent (`core/brand/context.ts`); the amount from the model price table is not shown. |
@@ -153,7 +154,7 @@ On a conflict: Take upstream's side, then replace the literal with the value fro
 | `packages/core/src/oauth/page.ts` | 11 | 26 | The sign in result page names this product and shows its name where upstream draws its wordmark. |
 | `packages/core/src/plugin/agent.ts` | 2 | 1 | The plan agent may edit plans under each project directory name in `Brand.project.dirs`. |
 | `packages/core/src/plugin/command/initialize.txt` | 3 | 3 | Prompt text names this product and its configuration file. |
-| `packages/core/src/v1/config/config.ts` | 34 | 1 | The `compaction.prune` description gives this product's default (on for Rafiki tiers). The `verify` key configures the checks after a change (`rafiki/verify.ts`). |
+| `packages/core/src/v1/config/config.ts` | 38 | 1 | The `compaction.prune` description gives this product's default (on for Rafiki tiers). The `verify` key configures the checks after a change (`rafiki/verify.ts`). The `channel` key is the update channel (`rafiki/update.ts`). |
 | `packages/opencode/src/cli/cmd/agent.ts` | 2 | 1 | New agents are written under this product's project directory. |
 | `packages/opencode/src/cli/cmd/debug/index.ts` | 2 | 1 | The version line names this product. |
 | `packages/opencode/src/cli/cmd/mcp.ts` | 7 | 5 | Messages name this product; the configuration file candidates come from the brand module. |
@@ -209,7 +210,8 @@ On a conflict: Merge by hand and read both sides. These are the files to thin ne
 | `packages/opencode/src/cli/cmd/tui.ts` | 69 | 10 | Events raised before the interface subscribes are buffered and replayed, the terminal is checked before the renderer loads, trust warnings become notices, and a refused listener stops the start. The buffering is not specific to this product. After the interface closes, a conversation or folder picked in the History panel is opened by starting the program again there (`rafiki/history.ts`). |
 | `packages/opencode/src/cli/error.ts` | 37 | 5 | Configuration errors end with three lines that say what to do, and messages name this product's commands. |
 | `packages/opencode/src/config/parse.ts` | 38 | 0 | `normalizeLoaded` and `issuesOf` live beside the decoder so that `doctor` validates a file the way a session does, without loading the configuration layer. |
-| `packages/opencode/src/installation/index.ts` | 59 | 111 | The update source, the install method detection and the upgrade commands are this product's (`rafiki/update.ts`); upstream's installer and package addresses are removed. |
+| `packages/opencode/src/installation/index.ts` | 71 | 113 | The update source, the install method detection and the upgrade commands are this product's (`rafiki/update.ts`); upstream's installer and package addresses are removed. |
+| `packages/opencode/src/server/routes/instance/httpapi/handlers/global.ts` | 3 | 0 | A global dispose also reads the global configuration again, so a new sign-in from the terminal interface (`tier-choice.tsx`) reaches the provider with its new key. |
 | `packages/opencode/src/skill/index.ts` | 29 | 16 | The built in configuration skill is this product's, hidden skills are removed, and skill discovery honours the switch that disables project configuration. |
 | `packages/opencode/src/snapshot/index.ts` | 33 | 4 | A snapshot is bounded (10,000 files, 10 seconds) and skipped in the home folder or a filesystem root (`rafiki/workspace.ts`), so the first model request never waits on a scan of an unbounded tree. Upstream stages one pathspec per file, which grows with the square of the count. |
 | `packages/tui/src/feature-plugins/sidebar/context.tsx` | 26 | 24 | The block describes the last request (`core/brand/context.ts`): tokens sent, the cached part, the share of the window of the tier that answered, tokens received; the amount from the model price table is removed, the spend block of `feature-plugins/rafiki-cost.tsx` reads it from the gateway. |
@@ -265,7 +267,7 @@ On a conflict: Never merge by hand. Take either side, finish the merge, then reg
 | File | Added | Removed | Why |
 | --- | ---: | ---: | --- |
 | `bun.lock` | 33 | 33 | Differs by the name of the workspace package only. |
-| `packages/opencode/test/cli/help/__snapshots__/help-snapshots.test.ts.snap` | 308 | 121 | The help text of this product's command list. |
+| `packages/opencode/test/cli/help/__snapshots__/help-snapshots.test.ts.snap` | 315 | 127 | The help text of this product's command list. |
 | `packages/sdk/openapi.json` | 28 | 28 | Descriptions name this product (`Brand.document`). |
 
 ### Package identity and packaging

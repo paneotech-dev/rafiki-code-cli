@@ -12,12 +12,15 @@ import { Brand } from "@opencode-ai/core/brand/brand"
 import * as Tier from "@opencode-ai/core/brand/tier"
 import { useRoute } from "../context/route"
 import { confirmChoice, sessionKey } from "./tier-choice"
+import { DialogTierSignIn } from "./dialog-tier-signin"
+import { useSDK } from "../context/sdk"
 
 export function DialogModel(props: { providerID?: string }) {
   const local = useLocal()
   const sync = useSync()
   const dialog = useDialog()
   const route = useRoute()
+  const sdk = useSDK()
   const [query, setQuery] = createSignal("")
 
   const connected = useConnected()
@@ -153,7 +156,20 @@ export function DialogModel(props: { providerID?: string }) {
     const same = current?.providerID === providerID && current.modelID === modelID
     if (!same) {
       const key = sessionKey(route.data.type === "session" ? route.data.sessionID : undefined)
-      if (!(await confirmChoice({ dialog, providerID, modelID, key }))) return
+      const allowed = await confirmChoice({
+        dialog,
+        providerID,
+        modelID,
+        key,
+        signIn: (model) => DialogTierSignIn.show(dialog, model),
+        // The server holds the key it read at start: read the configuration
+        // and the providers again, so the next request uses the new key.
+        reload: async () => {
+          await sdk.client.global.dispose()
+          await sync.bootstrap()
+        },
+      })
+      if (!allowed) return
     }
     local.model.set({ providerID, modelID }, { recent: true })
     const list = local.model.variant.list()
