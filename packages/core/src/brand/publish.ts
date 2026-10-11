@@ -44,10 +44,10 @@ const PASSTHROUGH_VALUE: Record<string, Set<string>> = {
   stdbuf: new Set(["-i", "-o", "-e"]),
   time: new Set(["-f", "--format", "-o", "--output"]),
 }
-const SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh", "mksh", "ash", "fish", "pwsh", "powershell", "cmd"])
+export const SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh", "mksh", "ash", "fish", "pwsh", "powershell", "cmd"])
 const GIT_VALUE = new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--super-prefix", "--config-env", "--exec-path", "--list-cmds", "--attr-source"])
 // git subcommands that never publish; anything else may be an alias.
-const GIT_BUILTIN = new Set([
+export const GIT_BUILTIN = new Set([
   "add", "am", "apply", "archive", "bisect", "blame", "branch", "bundle", "cat-file", "check-ignore", "checkout", "cherry", "cherry-pick",
   "clean", "clone", "commit", "config", "describe", "diff", "difftool", "fetch", "format-patch", "fsck", "gc", "grep", "help", "init",
   "log", "ls-files", "ls-remote", "ls-tree", "merge", "merge-base", "mv", "notes", "pull", "rebase", "reflog", "remote", "reset",
@@ -56,17 +56,29 @@ const GIT_BUILTIN = new Set([
   "maintenance", "range-diff", "var", "whatchanged", "annotate", "mergetool", "prune", "repack", "verify-commit", "verify-tag",
 ])
 
-function basename(word: string) {
+export function basename(word: string) {
   const name = word.split(/[\\/]/).pop() ?? word
   return name.replace(/\.(exe|cmd|bat)$/i, "").toLowerCase()
 }
 
+// A redirection of one simple command: the operator as written (">", ">>",
+// "<", ">&", "<<") and the word it applies to.
+export interface Redirect {
+  op: string
+  target: string
+}
+
 // Splits a command line into simple commands (each a list of words), and
-// collects the text of command substitutions to look into as well.
-export function split(text: string): { commands: string[][]; nested: string[] } {
+// collects the text of command substitutions to look into as well. For each
+// command, `links` holds the operator that ended it ("|", "&&", ";", "(" and
+// so on, "" at the end of the text) and `redirects` its redirections.
+export function split(text: string): { commands: string[][]; nested: string[]; links: string[]; redirects: Redirect[][] } {
   const commands: string[][] = []
   const nested: string[] = []
+  const links: string[] = []
+  const redirects: Redirect[][] = []
   let words: string[] = []
+  let redirected: Redirect[] = []
   let word = ""
   let inWord = false
   const endWord = () => {
@@ -74,10 +86,15 @@ export function split(text: string): { commands: string[][]; nested: string[] } 
     word = ""
     inWord = false
   }
-  const endCommand = () => {
+  const endCommand = (op = "") => {
     endWord()
-    if (words.length) commands.push(words)
+    if (words.length || redirected.length) {
+      commands.push(words)
+      links.push(op)
+      redirects.push(redirected)
+    }
     words = []
+    redirected = []
   }
   // The text up to the parenthesis that closes one opened just before i.
   const balanced = (start: number) => {
@@ -168,15 +185,17 @@ export function split(text: string): { commands: string[][]; nested: string[] } 
       i = end === -1 ? text.length : end
       continue
     }
-    if (c === ";" || c === "&" || c === "|" || c === "\n" || c === "\r" || c === "(" || c === ")" || c === "{" || c === "}") {
+    if ((c === ";" || c === "&" || c === "|" || c === "\n" || c === "\r" || c === "(" || c === ")" || c === "{" || c === "}") && !(c === "&" && text[i + 1] === ">" && !inWord)) {
       // A brace inside a word (a git refspec like @{u}) is part of the word.
       if ((c === "{" || c === "}") && inWord) {
         word += c
         i++
         continue
       }
-      endCommand()
-      i++
+      const pair = text.slice(i, i + 2)
+      const op = pair === "&&" || pair === "||" || pair === "|&" || pair === ";;" ? pair : c
+      endCommand(op)
+      i += op.length
       continue
     }
     if (c === " " || c === "\t") {
@@ -184,12 +203,24 @@ export function split(text: string): { commands: string[][]; nested: string[] } 
       i++
       continue
     }
-    if ((c === ">" || c === "<") && !inWord) {
-      // A redirection: skip the operator and its target word.
+    // A redirection, with an fd number in front of it (2>&1) or &> for both outputs.
+    const fd = inWord && /^\d+$/.test(word)
+    const both = c === "&" && text[i + 1] === ">"
+    if (((c === ">" || c === "<") && (!inWord || fd)) || (both && !inWord)) {
+      // A redirection: skip the operator and its target word, and keep both.
+      if (fd) {
+        word = ""
+        inWord = false
+      }
+      const from = i
       i++
-      while (text[i] === ">" || text[i] === "&") i++
+      if (both) i++
+      while (text[i] === ">" || text[i] === "&" || (text[i] === "<" && text[from] === "<") || text[i] === "|") i++
+      const op = text.slice(from, i)
       while (text[i] === " " || text[i] === "\t") i++
+      const start = i
       while (i < text.length && !/[\s;&|()]/.test(text[i])) i++
+      redirected.push({ op, target: text.slice(start, i).replace(/^(['"])(.*)\1$/, "$2") })
       continue
     }
     word += c
@@ -197,35 +228,39 @@ export function split(text: string): { commands: string[][]; nested: string[] } 
     i++
   }
   endCommand()
-  return { commands, nested }
+  return { commands, nested, links, redirects }
 }
 
-// Drops the words in front of a command that only change how it runs.
-function strip(words: string[], depth: number, lookup: AliasLookup | undefined, findings: Finding[]): string[] {
+// The words in front of a command that only change how it runs, taken off:
+// `rest` is the command itself, `wrappers` each word group taken off (sudo -u
+// root, env A=1, timeout 5), and `inner` the text of a command given as a
+// string (eval ..., env -S "...") when there is one.
+export function unwrap(words: string[]): { rest: string[]; wrappers: string[][]; inner?: string } {
   let rest = words
+  const wrappers: string[][] = []
   for (let guard = 0; guard < 20 && rest.length; guard++) {
     const first = rest[0]
     if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(first)) {
+      wrappers.push([first])
       rest = rest.slice(1)
       continue
     }
     const name = basename(first)
-    if (name === "eval") {
-      detectInto(rest.slice(1).join(" "), depth + 1, lookup, findings)
-      return []
-    }
-    if (!PASSTHROUGH.has(name)) return rest
+    if (name === "eval") return { rest: [], wrappers: [...wrappers, [first]], inner: rest.slice(1).join(" ") }
+    if (!PASSTHROUGH.has(name)) return { rest, wrappers }
     const valued = PASSTHROUGH_VALUE[name] ?? new Set<string>()
     let j = 1
     while (j < rest.length) {
       const word = rest[j]
       if (name === "env" && (word === "-S" || word === "--split-string")) {
-        detectInto(rest.slice(j + 1).join(" "), depth + 1, lookup, findings)
-        return []
+        return { rest: [], wrappers: [...wrappers, rest.slice(0, j + 1)], inner: rest.slice(j + 1).join(" ") }
       }
       if (name === "env" && word.startsWith("--split-string=")) {
-        detectInto([word.slice("--split-string=".length), ...rest.slice(j + 1)].join(" "), depth + 1, lookup, findings)
-        return []
+        return {
+          rest: [],
+          wrappers: [...wrappers, rest.slice(0, j + 1)],
+          inner: [word.slice("--split-string=".length), ...rest.slice(j + 1)].join(" "),
+        }
       }
       if (word === "--") {
         j++
@@ -246,12 +281,33 @@ function strip(words: string[], depth: number, lookup: AliasLookup | undefined, 
       }
       break
     }
+    wrappers.push(rest.slice(0, j))
     rest = rest.slice(j)
   }
-  return rest
+  return { rest, wrappers }
 }
 
-function git(words: string[], line: string, depth: number, lookup: AliasLookup | undefined, findings: Finding[]) {
+// The script of a shell started with one (sh -c "...", pwsh -Command ...), or undefined.
+export function shellScript(words: string[]) {
+  if (!words.length || !SHELLS.has(basename(words[0]))) return undefined
+  const at = words.findIndex((w, k) => k > 0 && (/^-[a-z]*c$/i.test(w) || /^[-/]c(ommand)?$/i.test(w)))
+  if (at === -1 || words[at + 1] === undefined) return undefined
+  return words.slice(at + 1).join(" ")
+}
+
+// Drops the words in front of a command that only change how it runs.
+function strip(words: string[], depth: number, lookup: AliasLookup | undefined, findings: Finding[]): string[] {
+  const result = unwrap(words)
+  if (result.inner !== undefined) {
+    detectInto(result.inner, depth + 1, lookup, findings)
+    return []
+  }
+  return result.rest
+}
+
+// A git command line past git's global options: the subcommand, its
+// arguments, and the aliases given inline with -c alias.<name>=<value>.
+export function gitCommand(words: string[]) {
   const inline = new Map<string, string>()
   let i = 1
   while (i < words.length) {
@@ -270,9 +326,12 @@ function git(words: string[], line: string, depth: number, lookup: AliasLookup |
     }
     break
   }
-  const sub = words[i]
+  return { sub: words[i] as string | undefined, args: words.slice(i + 1), inline }
+}
+
+function git(words: string[], line: string, depth: number, lookup: AliasLookup | undefined, findings: Finding[]) {
+  const { sub, args, inline } = gitCommand(words)
   if (!sub) return
-  const args = words.slice(i + 1)
   if (sub === "push") {
     const force = args.some((a) => a === "-f" || a === "--force" || a.startsWith("--force-with-lease") || a === "--force-if-includes" || /^\+[^\s]/.test(a) || (/^-[a-z]+$/.test(a) && a.includes("f")))
     const remove = args.some((a) => a === "-d" || a === "--delete" || /^:[^\s]/.test(a))
@@ -332,8 +391,8 @@ function detectInto(text: string, depth: number, lookup: AliasLookup | undefined
     const name = basename(words[0])
     const line = raw.join(" ")
     if (SHELLS.has(name)) {
-      const at = words.findIndex((w, k) => k > 0 && (/^-[a-z]*c$/i.test(w) || /^[-/]c(ommand)?$/i.test(w)))
-      if (at !== -1 && words[at + 1] !== undefined) detectInto(words.slice(at + 1).join(" "), depth + 1, lookup, findings)
+      const script = shellScript(words)
+      if (script !== undefined) detectInto(script, depth + 1, lookup, findings)
       continue
     }
     if (name === "git" || name === "hub") git(words, line, depth, lookup, findings)

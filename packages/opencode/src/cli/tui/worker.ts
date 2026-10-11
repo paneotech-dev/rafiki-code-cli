@@ -11,8 +11,13 @@ import { AppRuntime } from "@/effect/app-runtime"
 import { Effect } from "effect"
 import { disposeAllInstancesAndEmitGlobalDisposed } from "@/server/global-lifecycle"
 import { installTrustNotices } from "@/rafiki/notice"
+import * as PermissionMode from "@opencode-ai/core/brand/permission-mode"
 
 Heap.start()
+
+// The server of the terminal interface follows the permission mode picked
+// there with Shift+Tab (core/brand/permission-mode.ts).
+PermissionMode.useSavedChoice()
 
 // Config, plugins and permission rules are loaded here, so workspace-trust
 // warnings are raised here. The terminal interface owns the screen in the parent

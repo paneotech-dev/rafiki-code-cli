@@ -81,7 +81,8 @@ function permissions(info?: ConfigPermissionV1.Info, tools?: Readonly<Record<str
     effect: enabled ? ("allow" as const) : ("deny" as const),
   }))
   for (const [action, rule] of Object.entries(info ?? {})) {
-    if (!rule) continue
+    // "mode" and "auto_check" are settings, not rules.
+    if (!rule || typeof rule === "boolean" || rule === "auto" || rule === "plan" || action === "mode") continue
     if (typeof rule === "string") {
       rules.push({ action, resource: "*", effect: rule })
       continue

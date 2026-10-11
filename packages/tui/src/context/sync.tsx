@@ -195,7 +195,16 @@ export const {
 
         case "permission.asked": {
           const request = event.properties
-          if (permission.mode === "auto") {
+          // Auto mode is applied by the server this interface started; this
+          // answers for a server that does not apply it (an attached one).
+          // A guarded action, a push and a question already asked in auto
+          // mode are always shown.
+          if (
+            permission.mode === "auto" &&
+            request.permission !== "publish" &&
+            !request.metadata?.["guard"] &&
+            request.metadata?.["mode"] !== "auto"
+          ) {
             void sdk.client.permission.reply({
               requestID: request.id,
               reply: "once",
@@ -510,6 +519,7 @@ export const {
               setStore("console_state", reconcile(consoleState))
               setStore("agent", reconcile(agents))
               setStore("config", reconcile(config))
+              permission.setConfig(config.permission)
               if (sessions !== undefined) setStore("session", reconcile(sessions))
             })
           })

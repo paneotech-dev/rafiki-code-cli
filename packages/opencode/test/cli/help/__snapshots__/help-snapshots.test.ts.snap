@@ -106,8 +106,9 @@ Options:
                             minimal)                                                        [string]
       --thinking            show thinking blocks                                           [boolean]
   -i, --interactive         run in direct interactive split-footer mode   [boolean] [default: false]
-      --auto                auto-approve permissions that are not explicitly denied (dangerous!)
-                                                                          [boolean] [default: false]
+      --auto                auto mode: run tool calls without asking, except guarded actions
+                            (deletes outside the project, sudo, credentials...), which are refused
+                            unless a rule allows them                     [boolean] [default: false]
       --allow-push          let this run publish code (git push, gh pr create, gh repo create, gh
                             release); refused otherwise, even with --auto [boolean] [default: false]"
 `;

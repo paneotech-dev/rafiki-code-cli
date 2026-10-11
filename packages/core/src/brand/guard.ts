@@ -12,6 +12,8 @@
 //    - always, any value holding the key and any env list lending it;
 //    - when project code may not load, plugin entries and provider packages
 //      outside the bundled @ai-sdk scope;
+//    - unless the workspace is trusted, "permission": { "mode": "auto" } and
+//      "auto_check": false (auto mode is the person's choice);
 //    - in a headless run of an untrusted workspace, local MCP, formatter and
 //      language server commands and every permission rule that allows
 //      something (the file may still ask or deny).
@@ -317,6 +319,26 @@ export function projectConfig<T>(source: string, data: T, where = path.dirname(s
   if (!trustedWorkspace) {
     agentOptions(data.agent, "agent", spend)
     agentOptions(data.mode, "mode", spend)
+    // Auto mode, or auto mode without its risk check, is the person's choice,
+    // not a repository's: an untrusted project may pick ask or plan only.
+    const permission: unknown = (data as Json).permission
+    if (isRecord(permission)) {
+      const modes: string[] = []
+      if (permission.mode === "auto") {
+        modes.push("permission.mode")
+        delete permission.mode
+      }
+      if (permission.auto_check === false) {
+        modes.push("permission.auto_check")
+        delete permission.auto_check
+      }
+      if (modes.length) {
+        Trust.warnOnce(
+          `mode:${source}`,
+          `Warning: ignored ${modes.join(", ")} in ${source}: a project cannot turn on auto mode or its risk check off unless the workspace is trusted; ${Trust.untrustedHint(where)}.`,
+        )
+      }
+    }
   }
 
   if (!codeAllowed && Array.isArray(data.plugin) && data.plugin.length) {

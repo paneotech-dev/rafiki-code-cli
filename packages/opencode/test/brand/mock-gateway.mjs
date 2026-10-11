@@ -76,6 +76,11 @@ export function createMockGateway(options = {}) {
     // { "rafiki-fast": "rafiki-pro" }: answer a request for the first on the
     // second, the way the gateway does after a fallback (every chunk names it).
     answeredBy: options.answeredBy,
+    // (body) => { content, toolCall, delayMs } | undefined: a reply of its
+    // own for the requests it picks (the risk check of auto mode, a script of
+    // tool calls), after an optional delay; undefined leaves the request to
+    // the rules above.
+    respond: options.respond,
   }
   // token -> { alias, models, max_budget, budget_duration, rpm_limit, tpm_limit, spend, metadata, deleted }
   const keys = new Map()
@@ -278,8 +283,15 @@ export function createMockGateway(options = {}) {
         check.key.spend = Math.round((check.key.spend + opts.cost) * 1e6) / 1e6
         headers["x-litellm-response-cost"] = String(opts.cost)
       }
-      let wanted = opts.toolCall && !opts.toolCallEach && !messages.some((m) => m && m.role === "tool") ? opts.toolCall : undefined
-      let callId = "call_mock_1"
+      const custom = opts.respond?.(body)
+      if (custom?.delayMs) await new Promise((resolve) => setTimeout(resolve, custom.delayMs))
+      if (custom && (res.destroyed || res.writableEnded)) return
+      if (custom && !custom.toolCall) {
+        if (body.stream === true) return stream(res, model, custom.content ?? "", headers, false)
+        return json(res, 200, completion(model, custom.content ?? "", false), headers)
+      }
+      let wanted = custom?.toolCall ?? (opts.toolCall && !opts.toolCallEach && !messages.some((m) => m && m.role === "tool") ? opts.toolCall : undefined)
+      let callId = custom?.toolCall ? `call_mock_r${messages.filter((m) => m && m.role === "tool").length + 1}` : "call_mock_1"
       if (opts.toolCallEach && messages[messages.length - 1]?.role === "user") {
         const turn = messages.filter((m) => m && m.role === "user").length
         wanted = typeof opts.toolCallEach === "function" ? opts.toolCallEach(turn, messages) : opts.toolCall
