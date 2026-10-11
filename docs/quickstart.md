@@ -108,7 +108,11 @@ rafikicode whoami     # the account and key this terminal uses
 rafikicode logout     # sign out and revoke this terminal's key
 ```
 
-`login` needs a terminal: in a script, a pipeline or `ssh host "command"` it stops with exit code 2 and points you to an API key.
+`logout` ends with the line `To sign in again, run rafikicode login, or start rafikicode in a terminal.`
+
+You can also skip `login`: start `rafikicode` (or `rafikicode run "your task"`) in a terminal while signed out, and it says `Not signed in. Starting sign-in.`, shows the same code and link, and opens the interface (or runs the task) once you approve. Press Ctrl+C to stop. If the sign-in is refused or the code expires, it says why, followed by the usual message about creating an account or a key.
+
+`login` needs a terminal: in a script, a pipeline or `ssh host "command"` it stops with exit code 2 and points you to an API key. Started without a key in those places, in CI or with `--format json`, `rafikicode` and `rafikicode run` do not start a sign-in either: they stop with exit code 2 and the same message. Set `RAFIKICODE_NO_AUTO_LOGIN=1` to get that message at a terminal too.
 
 ### Or use an API key
 

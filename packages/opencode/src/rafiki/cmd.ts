@@ -53,14 +53,107 @@ export function refuseUnsafeCredential(command: unknown) {
 // Runs before every command (src/index.ts), after the credential check: the
 // terminal interface and a local run need a Rafiki key and a Rafiki model, so
 // without a key, or with --model naming another provider, they stop here with
-// one message instead of opening a session that cannot answer.
-export function refuseMissingKey(opts: { _: (string | number)[]; attach?: unknown; model?: unknown; help?: unknown; version?: unknown }) {
+// one message instead of opening a session that cannot answer. At a terminal,
+// a missing key starts the browser sign-in instead (autoSignIn), and the
+// command carries on once it is approved.
+export async function refuseMissingKey(
+  opts: { _: (string | number)[]; attach?: unknown; model?: unknown; help?: unknown; version?: unknown; format?: unknown },
+  env: DeviceFlow.Env = process.env,
+  tty: Terminal = terminal(),
+) {
   if (opts.help || opts.version) return
   if (!MissingKey.needed(opts._[0], opts.attach)) return
   const message = MissingKey.message(typeof opts.model === "string" ? opts.model : undefined)
   if (!message) return
+  if (MissingKey.missing() && autoSignIn(opts, env, tty)) {
+    const result = await signInHere()
+    if (result.ok) return
+    UI.error(`${result.message}\n${message}`)
+    process.exit(result.exitCode)
+  }
   UI.error(message)
   process.exit(MissingKey.exitCode)
+}
+
+export interface Terminal {
+  stdin: boolean
+  stdout: boolean
+}
+
+function terminal(): Terminal {
+  return { stdin: Boolean(process.stdin.isTTY), stdout: Boolean(process.stdout.isTTY) }
+}
+
+// Turns off the sign-in that starts on its own; the command then stops with
+// the message, as it does without a terminal.
+export const NO_AUTO_LOGIN = "RAFIKICODE_NO_AUTO_LOGIN"
+// Test hook: subprocess tests have no terminal, so this stands in for one
+// here only (RAFIKICODE_TEST_TTY is set by most CLI tests and must not start
+// a sign-in).
+const TEST_AUTO_LOGIN = "RAFIKICODE_TEST_AUTO_LOGIN"
+
+// True when a command that needs a key may start the browser sign-in itself:
+// a person at a terminal (stdin and stdout), not CI, not --format json, and
+// not turned off with RAFIKICODE_NO_AUTO_LOGIN.
+export function autoSignIn(opts: { format?: unknown }, env: DeviceFlow.Env = process.env, tty: Terminal = terminal()) {
+  const off = env[NO_AUTO_LOGIN]
+  if (off && off !== "0" && off.toLowerCase() !== "false") return false
+  if (opts.format === "json") return false
+  if (env[Brand.env.apiKey] || env["CI"]) return false
+  return (tty.stdin && tty.stdout) || env[TEST_AUTO_LOGIN] === "1"
+}
+
+// The browser sign-in of rafikicode login, run in place for a command that
+// found no key. Ctrl+C stops it like any other command.
+export async function signInHere(client?: DeviceFlow.Client): Promise<{ ok: true } | { ok: false; message: string; exitCode: number }> {
+  UI.println("Not signed in. Starting sign-in.")
+  const label = DeviceFlow.deviceLabel(InstallationVersion)
+  try {
+    const { credential } = await DeviceFlow.signIn({
+      client,
+      label,
+      surface: Contract.SURFACE,
+      events: { onCode: (code) => showCode(code, label), ...pollEvents },
+    })
+    signedIn(credential)
+    UI.empty()
+    return { ok: true }
+  } catch (cause) {
+    if (cause instanceof DeviceFlow.DeviceFlowError) {
+      return { ok: false, message: cause.ref ? `${cause.message}\n(ref ${cause.ref})` : cause.message, exitCode: cause.exitCode }
+    }
+    return { ok: false, message: cause instanceof Error ? cause.message : String(cause), exitCode: Contract.EXIT.internal }
+  }
+}
+
+// What rafikicode login and the sign-in in place show while waiting.
+function showCode(code: { user_code: string; verification_uri: string; verification_uri_complete?: string; expires_in: number }, label: string) {
+  UI.empty()
+  UI.println(`Open ${UI.Style.TEXT_HIGHLIGHT_BOLD}${code.verification_uri}${UI.Style.TEXT_NORMAL} in a browser and enter this code:`)
+  UI.empty()
+  UI.println(`    ${UI.Style.TEXT_NORMAL_BOLD}${code.user_code}${UI.Style.TEXT_NORMAL}`)
+  UI.empty()
+  if (code.verification_uri_complete) {
+    UI.println(`${UI.Style.TEXT_DIM}Or open ${code.verification_uri_complete}${UI.Style.TEXT_NORMAL}`)
+  }
+  UI.println(
+    `${UI.Style.TEXT_DIM}Approving as: ${label}. The code expires in ${Math.round(code.expires_in / 60)} minutes.${UI.Style.TEXT_NORMAL}`,
+  )
+  UI.println(`${UI.Style.TEXT_DIM}Waiting for approval...${UI.Style.TEXT_NORMAL}`)
+}
+
+const pollEvents: DeviceFlow.PollEvents = {
+  onSlowDown: ({ interval }) => UI.println(`${UI.Style.TEXT_DIM}The Rafiki AI console asked to slow down; polling every ${interval} s.${UI.Style.TEXT_NORMAL}`),
+  onRateLimited: ({ retryAfter }) => UI.println(`${UI.Style.TEXT_DIM}Rate limited; retrying in ${retryAfter} s.${UI.Style.TEXT_NORMAL}`),
+  onLongWait: () =>
+    UI.println(
+      `${UI.Style.TEXT_WARNING}Still waiting. If your Rafiki AI account is new and the browser shows a page about approval, your account is still waiting for email verification or approval, and this sign-in cannot finish until it is. Press Ctrl+C, check your email, and run ${Brand.name} login again once it is approved.${UI.Style.TEXT_NORMAL}`,
+    ),
+}
+
+function signedIn(credential: Credentials.StoredCredential) {
+  UI.empty()
+  UI.println(`${UI.Style.TEXT_SUCCESS_BOLD}Signed in${UI.Style.TEXT_NORMAL} as ${describeOwner(credential.owner)}.`)
 }
 
 // The stored credential, or undefined when the file is unsafe and the
@@ -165,32 +258,10 @@ export const LoginCommand = effectCmd({
     const label = DeviceFlow.deviceLabel(InstallationVersion, args.label, surface)
     const code = yield* tryFlow(DeviceFlow.requestCode(c, { label, surface }))
 
-    UI.empty()
-    UI.println(`Open ${UI.Style.TEXT_HIGHLIGHT_BOLD}${code.verification_uri}${UI.Style.TEXT_NORMAL} in a browser and enter this code:`)
-    UI.empty()
-    UI.println(`    ${UI.Style.TEXT_NORMAL_BOLD}${code.user_code}${UI.Style.TEXT_NORMAL}`)
-    UI.empty()
-    if (code.verification_uri_complete) {
-      UI.println(`${UI.Style.TEXT_DIM}Or open ${code.verification_uri_complete}${UI.Style.TEXT_NORMAL}`)
-    }
-    UI.println(
-      `${UI.Style.TEXT_DIM}Approving as: ${label}. The code expires in ${Math.round(code.expires_in / 60)} minutes.${UI.Style.TEXT_NORMAL}`,
-    )
-    UI.println(`${UI.Style.TEXT_DIM}Waiting for approval...${UI.Style.TEXT_NORMAL}`)
-
-    const token = yield* tryFlow(
-      DeviceFlow.pollToken(c, code, {
-        onSlowDown: ({ interval }) => UI.println(`${UI.Style.TEXT_DIM}The Rafiki AI console asked to slow down; polling every ${interval} s.${UI.Style.TEXT_NORMAL}`),
-        onRateLimited: ({ retryAfter }) => UI.println(`${UI.Style.TEXT_DIM}Rate limited; retrying in ${retryAfter} s.${UI.Style.TEXT_NORMAL}`),
-        onLongWait: () =>
-          UI.println(
-            `${UI.Style.TEXT_WARNING}Still waiting. If your Rafiki AI account is new and the browser shows a page about approval, your account is still waiting for email verification or approval, and this sign-in cannot finish until it is. Press Ctrl+C, check your email, and run ${Brand.name} login again once it is approved.${UI.Style.TEXT_NORMAL}`,
-          ),
-      }),
-    )
+    showCode(code, label)
+    const token = yield* tryFlow(DeviceFlow.pollToken(c, code, pollEvents))
     const credential = store(token)
-    UI.empty()
-    UI.println(`${UI.Style.TEXT_SUCCESS_BOLD}Signed in${UI.Style.TEXT_NORMAL} as ${describeOwner(credential.owner)}.`)
+    signedIn(credential)
     // The previous sign-in's key would otherwise stay live at the gateway
     // until it expires. Best effort: a failure here never undoes the login.
     if (existing?.key_id && existing.key !== token.access_token) {
@@ -212,6 +283,11 @@ export const LoginCommand = effectCmd({
   }),
 })
 
+// The last line of rafikicode logout.
+export function signInAgain() {
+  return `To sign in again, run ${Brand.name} login, or start ${Brand.name} in a terminal.`
+}
+
 export const LogoutCommand = effectCmd({
   command: "logout",
   describe: `sign out of ${Brand.product} and revoke this terminal's key`,
@@ -224,6 +300,7 @@ export const LogoutCommand = effectCmd({
       Credentials.remove(dir)
       UI.println(`Removed ${Credentials.file(dir)} without revoking its key, because the file ${unsafe.reason}.`)
       UI.println(`Revoke that key at ${Brand.consoleURL()}${Contract.PATH.keysPage} if it was yours.`)
+      UI.println(signInAgain())
       return
     }
     if (!existing) {
@@ -232,6 +309,7 @@ export const LogoutCommand = effectCmd({
         return
       }
       UI.println("Not signed in.")
+      UI.println(signInAgain())
       return
     }
     if (existing.key_id) {
@@ -250,6 +328,7 @@ export const LogoutCommand = effectCmd({
     }
     Credentials.remove(dir)
     UI.println(`Removed ${Credentials.file(dir)}. Signed out.`)
+    UI.println(signInAgain())
   }),
 })
 
