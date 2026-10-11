@@ -3,7 +3,8 @@
 // models (the gateway). Read after a response completes, never per streamed
 // chunk; the figures shown are these readings, not estimates (meter.ts).
 //
-//   balance     GET <console>/api/v1/me            wallet.balance_usd
+//   balance     GET <console>/api/v1/me            wallet.balance_usd,
+//                                                  wallet.billing_enforced
 //   key         GET <gateway root>/key/info         spend, max_budget, models
 //
 // Either reading may be missing (a server key without an account view, a
@@ -55,12 +56,31 @@ export function gatewayRoot(url: string) {
   return url.replace(/\/+$/, "").replace(/\/v1$/, "")
 }
 
+// The account's wallet as the Console says it: the balance, and whether the
+// organisation's work stops when it reaches zero. `enforced` is false for an
+// internal or staff organisation, whose balance falls but stops nothing; it
+// is undefined when the Console does not say (one older than the field).
+export interface Wallet {
+  usd?: number
+  enforced?: boolean
+}
+
+export function parseWallet(body: unknown): Wallet | undefined {
+  const wallet = (body as { wallet?: { balance_usd?: unknown; billing_enforced?: unknown } | null } | undefined)?.wallet
+  if (!wallet || typeof wallet !== "object") return undefined
+  const value = wallet.balance_usd
+  const usd = typeof value === "number" && Number.isFinite(value) ? value : undefined
+  const enforced = typeof wallet.billing_enforced === "boolean" ? wallet.billing_enforced : undefined
+  if (usd === undefined && enforced === undefined) return undefined
+  return { usd, enforced }
+}
+
+export async function wallet(source: Pick<Source, "key" | "consoleURL">, f?: Fetch, timeoutMs = TIMEOUT_MS) {
+  return parseWallet(await get(source.consoleURL.replace(/\/+$/, "") + "/api/v1/me", source.key, f, timeoutMs))
+}
+
 export async function balance(source: Pick<Source, "key" | "consoleURL">, f?: Fetch, timeoutMs = TIMEOUT_MS) {
-  const body = (await get(source.consoleURL.replace(/\/+$/, "") + "/api/v1/me", source.key, f, timeoutMs)) as
-    | { wallet?: { balance_usd?: unknown } | null }
-    | undefined
-  const value = body?.wallet?.balance_usd
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined
+  return (await wallet(source, f, timeoutMs))?.usd
 }
 
 // The key's member's builder projects (GET <console>/api/v1/builder/sessions),

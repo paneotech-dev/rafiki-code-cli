@@ -32,10 +32,10 @@ afterEach(async () => {
   fs.rmSync(home, { recursive: true, force: true })
 })
 
-async function start() {
+async function start(consoleOptions: Record<string, unknown> = {}) {
   gateway = createMockGateway({ quiet: true })
   await gateway.ready
-  console_ = createMockConsole({ quiet: true, gatewayURL: gateway.url + "/v1" })
+  console_ = createMockConsole({ quiet: true, gatewayURL: gateway.url + "/v1", ...consoleOptions })
   await console_.ready
 }
 
@@ -129,6 +129,14 @@ describe("doctor checks", () => {
     expect(text).not.toMatch(upstreamWord)
     expect(gateway!.requests.find((r: any) => r.path === "/health/liveliness")).toBeTruthy()
     expect(gateway!.requests.find((r: any) => r.path === "/key/info")).toMatchObject({ key_alias: token.key_alias, status: 200 })
+  })
+
+  test("an account whose billing is not enforced: the console line says so, no balance", async () => {
+    await start({ billingEnforced: false })
+    await signIn()
+    const report = await Doctor.run(options())
+    expect(byName(report, "console").detail).toContain("credits not enforced (internal account)")
+    expect(byName(report, "console").detail).not.toContain("USD available")
   })
 
   test("no credential: the dependent checks are skipped and the Console is still probed", async () => {

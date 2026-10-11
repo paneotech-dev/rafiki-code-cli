@@ -34,9 +34,9 @@ afterEach(async () => {
   fs.rmSync(home, { recursive: true, force: true })
 })
 
-async function mocks(options: { gateway?: Record<string, unknown>; register?: boolean } = {}) {
+async function mocks(options: { gateway?: Record<string, unknown>; console?: Record<string, unknown>; register?: boolean } = {}) {
   gateway = createMockGateway({ quiet: true, usage: USAGE, cost: 0.0025, ...options.gateway })
-  console_ = createMockConsole({ quiet: true, anyKey: true })
+  console_ = createMockConsole({ quiet: true, anyKey: true, ...options.console })
   await Promise.all([gateway.ready, console_.ready])
   if (options.register !== false)
     await fetch(gateway.url + "/__test/register", {
@@ -108,6 +108,22 @@ describe("the line", () => {
   })
 })
 
+describe("the wallet from the Console", () => {
+  for (const [label, option, expected] of [
+    ["not enforced", false, { usd: 12.4, enforced: false }],
+    ["enforced", true, { usd: 12.4, enforced: true }],
+    ["an older Console without the field", undefined, { usd: 12.4, enforced: undefined }],
+  ] as const) {
+    test(`${label}`, async () => {
+      console_ = createMockConsole({ quiet: true, anyKey: true, billingEnforced: option })
+      await console_.ready
+      const source = { key: KEY, consoleURL: console_.url }
+      expect(await Account.wallet(source)).toEqual(expected)
+      expect(await Account.balance(source)).toBe(12.4)
+    })
+  }
+})
+
 describe("rafikicode run against the mock gateway", () => {
   test("prints the line after the answer with the figures the mock reported", async () => {
     const env = await mocks()
@@ -129,6 +145,23 @@ describe("rafikicode run against the mock gateway", () => {
     // The key is read before and after the task, not per request.
     expect(gateway!.requests.filter((r: any) => r.path === "/key/info").length).toBe(2)
     expect(result.stderr).not.toContain("estimate")
+  }, 60_000)
+
+  test("an account whose billing is not enforced: the line says so instead of the credits left", async () => {
+    const env = await mocks({ console: { billingEnforced: false, balance: 11.01 } })
+    const result = await spawnCli(home, ["run", "say hello"], env)
+    expect(result.exitCode).toBe(0)
+    expect(result.stderr).toMatch(/Task: tier fast · 1 request, .* · credits not enforced \(internal account\)/)
+    expect(result.stderr).not.toContain("of credits left")
+    expect(result.stderr).not.toContain("11.01")
+  }, 60_000)
+
+  test("a billed account keeps the credits left", async () => {
+    const env = await mocks({ console: { billingEnforced: true, balance: 11.01 } })
+    const result = await spawnCli(home, ["run", "say hello"], env)
+    expect(result.exitCode).toBe(0)
+    expect(result.stderr).toContain(" · 11.01 USD of credits left")
+    expect(result.stderr).not.toContain("not enforced")
   }, 60_000)
 
   test("a key the gateway does not know gives no amount", async () => {

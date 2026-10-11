@@ -103,11 +103,11 @@ export function line(collected: Collected, state: Meter.State, pending = false, 
 }
 
 type Read = () => Promise<Account.KeyInfoResult>
-type Balance = () => Promise<number | undefined>
+type Balance = () => Promise<number | Account.Wallet | undefined>
 
 function defaultBalance() {
   const from = Account.source()
-  return from ? Account.balance(from) : Promise.resolve(undefined)
+  return from ? Account.wallet(from) : Promise.resolve(undefined)
 }
 
 const settle = (promise: Promise<Account.KeyInfoResult>, now: () => number) =>

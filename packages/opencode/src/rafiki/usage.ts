@@ -6,10 +6,16 @@
 // alias is recorded under that alias). The split by day needs the `by_day`
 // field; a console that does not serve it yet gets the tier table and a plain
 // line saying so (docs/plans/cost-display.md, Usage contract).
+//
+// An account whose billing is not enforced (an internal or staff
+// organisation, as GET /api/v1/me says) is told so once at the top: the
+// amounts are still recorded, but its work does not stop at zero.
 import type { Argv } from "yargs"
 import { Effect } from "effect"
+import * as Account from "@opencode-ai/core/brand/account"
 import { Brand } from "@opencode-ai/core/brand/brand"
 import * as Cost from "@opencode-ai/core/brand/cost"
+import * as Meter from "@opencode-ai/core/brand/meter"
 import { effectCmd, fail } from "@/cli/effect-cmd"
 import * as Contract from "./contract"
 import * as DeviceFlow from "./device-flow"
@@ -111,11 +117,31 @@ function table(rows: string[][]): string[] {
   )
 }
 
-// The report, one string per line.
-export function render(body: UsageResponse, input: { days: number; consoleURL: string }): string[] {
+// The line at the top of the report for an account whose billing is not enforced.
+export const NOT_ENFORCED_LINE = `Credits: ${Meter.NOT_ENFORCED}. Usage is recorded, but work does not stop when the balance reaches zero.`
+
+// Whether the account's billing is enforced, from GET /api/v1/me; undefined
+// when the Console does not say or does not answer in time. Never fails.
+export async function enforced(c: Pick<DeviceFlow.Client, "consoleURL" | "fetch">, key: string, timeoutMs = 5_000) {
+  try {
+    const response = await c.fetch(`${c.consoleURL}${Contract.PATH.me}`, {
+      headers: { authorization: `Bearer ${key}`, accept: "application/json" },
+      signal: AbortSignal.timeout(timeoutMs),
+    })
+    if (!response.ok) return undefined
+    return Account.parseWallet(await response.json())?.enforced
+  } catch {
+    return undefined
+  }
+}
+
+// The report, one string per line. enforced: false puts the not enforced
+// line at the top; undefined (an older Console) leaves the report as it was.
+export function render(body: UsageResponse, input: { days: number; consoleURL: string; enforced?: boolean }): string[] {
   const days = body.period?.days ?? input.days
   const since = typeof body.period?.since === "string" ? body.period.since.slice(0, 10) : undefined
-  const lines = [`Usage of your Rafiki AI account, last ${days} ${days === 1 ? "day" : "days"}${since ? ` (since ${since})` : ""}. Amounts are USD charged.`, ""]
+  const lines = input.enforced === false ? [NOT_ENFORCED_LINE, ""] : []
+  lines.push(`Usage of your Rafiki AI account, last ${days} ${days === 1 ? "day" : "days"}${since ? ` (since ${since})` : ""}. Amounts are USD charged.`, "")
   const tiers = byTier(body)
   if (number(body.totals?.calls) === 0 && tiers.length === 0 && !(body.by_day ?? []).length) {
     lines.push("No usage in this period.")
@@ -190,8 +216,10 @@ export const UsageCommand = effectCmd({
     if (!key) return yield* fail(Contract.MESSAGE[Contract.ERROR.unauthenticated], Contract.EXIT.usage)
     const consoleURL = Brand.consoleFor(envKey ? undefined : stored?.console_url)
 
+    const client = DeviceFlow.client({ consoleURL })
+    const account = args.json ? Promise.resolve(undefined) : enforced(client, key)
     const body = yield* Effect.tryPromise({
-      try: () => load(DeviceFlow.client({ consoleURL }), key, days),
+      try: () => load(client, key, days),
       catch: (cause) => cause,
     }).pipe(
       Effect.catch((cause) =>
@@ -204,6 +232,7 @@ export const UsageCommand = effectCmd({
       process.stdout.write(JSON.stringify(body, null, 2) + "\n")
       return
     }
-    process.stdout.write(render(body, { days, consoleURL }).join("\n") + "\n")
+    const billing = yield* Effect.promise(() => account)
+    process.stdout.write(render(body, { days, consoleURL, enforced: billing }).join("\n") + "\n")
   }),
 })
