@@ -163,6 +163,16 @@ export function Prompt(props: PromptProps) {
   const stash = usePromptStash()
   const keymap = useOpencodeKeymap()
   const agentShortcut = useCommandShortcut("agent.cycle")
+  const permissionModeShortcut = useCommandShortcut("permission.mode.cycle")
+  // The permission mode in the status row and the footer (context/permission.tsx).
+  const permissionModeLabel = () => {
+    const mode = local.permission.mode
+    return mode === "ask" ? "Ask" : mode === "auto" ? "Auto" : "Plan"
+  }
+  const permissionModeColor = () => {
+    const mode = local.permission.mode
+    return mode === "auto" ? theme.warning : mode === "plan" ? theme.info : theme.textMuted
+  }
   const paletteShortcut = useCommandShortcut("command.palette.show")
   const renderer = useRenderer()
   const exit = useExit()
@@ -1442,8 +1452,9 @@ export function Prompt(props: PromptProps) {
                       <text fg={fadeColor(highlight(), agentMetaAlpha())}>
                         {store.mode === "shell" ? "Shell" : Locale.titlecase(agent().name)}
                       </text>
-                      <Show when={store.mode === "normal" && local.permission.mode === "auto"}>
-                        <text fg={fadeColor(theme.textMuted, agentMetaAlpha())}>auto</text>
+                      <Show when={store.mode === "normal"}>
+                        <text fg={fadeColor(theme.textMuted, agentMetaAlpha())}>·</text>
+                        <text fg={fadeColor(permissionModeColor(), agentMetaAlpha())}>{permissionModeLabel()}</text>
                       </Show>
                       <Show when={store.mode === "normal"}>
                         <box flexDirection="row" gap={1}>
@@ -1670,6 +1681,11 @@ export function Prompt(props: PromptProps) {
                       </text>
                     </Match>
                   </Switch>
+                  <text fg={theme.text}>
+                    {permissionModeShortcut()}{" "}
+                    <span style={{ fg: permissionModeColor() }}>{local.permission.mode}</span>
+                    <span style={{ fg: theme.textMuted }}> mode</span>
+                  </text>
                   <text fg={theme.text}>
                     {paletteShortcut()} <span style={{ fg: theme.textMuted }}>commands</span>
                   </text>

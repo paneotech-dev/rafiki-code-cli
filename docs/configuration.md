@@ -48,6 +48,8 @@ Every top-level key the CLI honors, with the meaning from the configuration sche
 | `instructions` | additional file paths or URLs whose content is added as instructions to every session |
 | `permission` | ordered rules deciding which tool actions run without asking, ask, or are denied, for example `{"permission": {"bash": "allow", "edit": "allow"}}` |
 | `permission.publish` | commands that publish code (`git push`, `gh pr create`, `gh repo create`, `gh release`) always ask in the interface. `"deny"` refuses them without a question; `"allow"` lets `rafikicode run` push. See [Pushes ask first](./github.md#pushes-ask-first) |
+| `permission.mode` | the permission mode when none was picked in the interface: `"ask"` (default), `"auto"` or `"plan"`. See [Permission modes](#permission-modes) |
+| `permission.auto_check` | `false` turns off the risk check of auto mode, so a shell command the rules cannot classify runs without it. `true` by default. See [The risk check](#the-risk-check) |
 | `agent` | overrides of built-in agents and custom agent definitions |
 | `command` | named slash commands |
 | `skills` | additional paths or URLs to discover skills from |
@@ -77,6 +79,7 @@ The structure of the nested keys (`permission`, `agent`, `mcp`, and so on) is un
 | `RAFIKICODE_API_KEY` | API key for headless and CI use, created in the Rafiki AI console with the Rafiki Code option ticked. Takes precedence over the stored sign in |
 | `RAFIKICODE_GATEWAY_URL` | override the gateway base URL (local test servers). Default `https://gateway.rafikiai.io/v1`. Must be https; plain http is accepted only for `127.0.0.1`, `[::1]` or `localhost`. Any other value is not used, a warning is printed and the key is not sent there. The same rule applies to the gateway URL the console returns at sign in and to a `baseURL` in your own configuration |
 | `RAFIKICODE_CACHE_MARKERS` | which tiers carry a prompt cache marker (a field that tells the model provider where the repeated start of a request ends, so it can reuse it at a lower price): `all`, `off`, or tier names separated by commas. Unset, the CLI marks the tiers that need one. Every request starts with the same text in the same order on every tier either way; today's date is sent after that text, in a message of its own |
+| `RAFIKICODE_PERMISSION_MODE` | `ask`, `auto` or `plan`: the permission mode of this process, over `permission.mode` and the mode last picked for the project. Picking a mode with Shift+Tab during the session wins over it. See [Permission modes](#permission-modes) |
 | `RAFIKICODE_ALLOW_PUSH` | `1` lets `rafikicode run` publish code (`git push`, `gh pr create`, `gh repo create`, `gh release`), like `run --allow-push`. Without it a run refuses them. See [Pushing code from a run](./headless-and-ci.md#pushing-code-from-a-run) |
 | `RAFIKICODE_VERIFY` | `0`, `off` or `false` turns the checks after a change off for this run; `1`, `on` or `true` turns them on. Wins over `verify.enabled`. See [Checks after a change](#checks-after-a-change) |
 | `RAFIKICODE_PRUNE` | `0`, `off` or `false` stops replacing old tool output; `1`, `on` or `true` turns it on, on any provider. Wins over `compaction.prune`. Unset, it is on for the Rafiki tiers. See [Long sessions: old tool output](#long-sessions-old-tool-output) |
@@ -172,6 +175,57 @@ Providers bill input they have seen before at a lower rate when a request starts
 - Because a batch removes at least 20,000 tokens, the one cache rewrite costs less than the input it saves on the following turns.
 
 When asked who it is, the agent answers that it is Rafiki Code by PANEOTECH, and names the tier it runs on rather than guessing the model behind it.
+
+## Permission modes
+
+A permission mode decides how much Rafiki Code asks before a tool runs. There are three:
+
+| mode | what happens |
+|---|---|
+| Ask | today's behaviour: a tool call asks when the permission rules say `"ask"`, runs when they say `"allow"`, and is refused when they say `"deny"` |
+| Auto | tool calls run without a question, except the guarded actions below, which still ask every time |
+| Plan | read-only: reading, searching and commands that change nothing run; edits and commands that change things are refused with a note, and the agent describes the change it proposes instead |
+
+In the terminal interface, Shift+Tab cycles Ask, Auto, Plan. The mode shows in the status row under the prompt (`Build · Auto · Rafiki Fast`) and in the footer (`shift+tab auto mode`), and the command palette has "Permission mode" too. The pick is kept per project on your machine, in `~/.local/state/rafikicode/permission-mode.json` (`$XDG_STATE_HOME/rafikicode/` when it is set), never in the project, so nothing about it is committed. The next session in that project starts in the same mode. Shift+Tab used to select the previous agent; that action now has no key by default (`agent_cycle_reverse` in the interface keybinds).
+
+Where the mode comes from, first match wins:
+
+1. `rafikicode run --auto` for that run, or `rafikicode --auto` for that session
+2. a mode picked with Shift+Tab during the session
+3. `RAFIKICODE_PERMISSION_MODE`
+4. the mode last picked in the interface for this project (the interface only)
+5. `"permission": { "mode": "auto" }` in the configuration
+6. Ask
+
+Your own rules still apply in every mode, and a `"deny"` rule always wins: a command your configuration denies is refused in Auto mode too. An untrusted workspace cannot turn Auto mode on, or its risk check off, from its own `rafikicode.json`; it may choose Ask or Plan.
+
+### Guarded actions
+
+In Auto mode these still ask, each time, with the reason on the question (`Auto mode asks: recursive delete: rm -rf build`), and the question has no "Allow always":
+
+| guarded action | examples |
+|---|---|
+| publishing code | `git push`, `gh pr create`, `gh repo create`, `gh release` (the publish question, see [Pushes ask first](./github.md#pushes-ask-first)) |
+| recursive deletes | `rm -r`, `rm -rf`, `find -delete`, `git clean -d`, `rsync --delete`, `Remove-Item -Recurse` |
+| deletes or writes outside the project folder and the temp folder | `rm ../other/file`, `cp app ~/bin/`, `echo x > ../file`, `npm install -g`, an edit of a file in another folder |
+| writes to system paths, and commands that change the system | `/etc`, `/usr`, `/var`, `/opt`, `C:\Windows`, `C:\Program Files`; `systemctl`, `apt-get install`, `crontab -r` |
+| administrator rights | `sudo`, `su`, `doas`, `pkexec` |
+| git history rewrites, on any branch | `git push --force`, `git reset --hard`, `git filter-branch`, `git branch -D` of the default branch |
+| a download piped into a shell | `curl ... \| sh`, `wget -O- ... \| bash`, `bash -c "$(curl ...)"`, `sh <(curl ...)` |
+| credential files, read or written | `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.netrc`, `~/.npmrc`, `~/.docker/config.json`, a `.env` file outside the project, the Rafiki Code sign-in file |
+| a tool that sends email | |
+| package publishing | `npm publish`, `pnpm publish`, `cargo publish`, `twine upload`, `gem push`, `docker push` |
+| stopping processes this session did not start | `kill 1234`, `pkill node`, `killall`, `taskkill`; `kill` of a process the session started is not guarded |
+
+Shell commands are read the way the shell reads them: lists (`;`, `&&`, `||`), pipes, subshells, command substitutions, `sh -c` and `eval` strings, `if` and `while` bodies, `VAR=value` and `env` prefixes, `sudo`, `timeout`, `nohup` and `xargs` in front, `cd` earlier in the same command, and git aliases. A guarded action anywhere in a command makes the whole command ask. This reads the command line only: a script or program that does any of this by itself is not seen.
+
+To let one guarded command run without the question, write a rule for it by name, for example `{"permission":{"bash":{"rm -rf build":"allow"}}}`. The fixed part of the pattern must cover the guarded words: `"git reset --hard*"` allows `git reset --hard`, while `"git *"`, `"bash": "allow"` or `"*": "allow"` do not. Pushes follow the publish rules instead.
+
+### The risk check
+
+A shell command the rules cannot classify (a program they do not know, inline code such as `python -c "..."`, a script of more than 15 lines) gets a risk check in Auto mode: one small request to the `rafiki-fast` tier with the command and the folder, answered with `{"risk": "low" | "high", "reason": "..."}` (at most 100 output tokens). Low runs the command. High asks you, with the reason. No answer within 5 seconds, an answer that is not that JSON, or no Rafiki key asks you too. The answer is kept for the exact command for the rest of the session, so a command is checked once. The request is made on your key like any other, so it counts in the spend figures and in `rafikicode usage`, under the fast tier.
+
+To turn the risk check off, set `"permission": { "auto_check": false }`; commands the rules cannot classify then run without it.
 
 ## Checks after a change
 

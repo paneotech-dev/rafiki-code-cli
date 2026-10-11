@@ -28,6 +28,7 @@ import { FormatError, FormatUnknownError } from "../error"
 import * as RafikiGateway from "@/rafiki/gateway-errors"
 import * as RafikiPermission from "@/rafiki/permission-hint"
 import * as Publish from "@opencode-ai/core/brand/publish"
+import * as PermissionMode from "@opencode-ai/core/brand/permission-mode"
 import * as RafikiMissingKey from "@/rafiki/missing-key"
 import * as RafikiAttach from "@/rafiki/attach"
 import * as RafikiCost from "@/rafiki/cost"
@@ -75,6 +76,12 @@ const ATTACH_FILE_MAX_BYTES = 10 * 1024 * 1024
 async function pushAllowedByConfig(client: OpencodeClient) {
   const cfg = await client.config.get().catch(() => undefined)
   return Publish.allowedByConfig(cfg?.data?.permission)
+}
+
+// How to let a refused guarded action run: a rule written for it by name.
+function guardHint(permission: string, pattern: string) {
+  const example = JSON.stringify({ permission: { [permission]: { [pattern]: "allow" } } })
+  return `To let a run do this, allow it by name in ${Brand.configHint}, for example ${example}. A wildcard rule such as "${permission}": "allow" does not.`
 }
 
 type Inline = {
@@ -260,7 +267,7 @@ export const RunCommand = effectCmd({
       })
       .option("auto", {
         type: "boolean",
-        describe: "auto-approve permissions that are not explicitly denied (dangerous!)",
+        describe: "auto mode: run tool calls without asking, except guarded actions (deletes outside the project, sudo, credentials...), which are refused unless a rule allows them",
         default: false,
       })
       .option("allow-push", {
@@ -296,6 +303,8 @@ export const RunCommand = effectCmd({
       const rawMessage = [...args.message, ...(args["--"] || [])].join(" ")
       const interactive = args.mini
       const auto = args.auto || args.yolo || args["dangerously-skip-permissions"]
+      // --auto is auto mode for this run, with its guards (core/brand/permission-mode.ts).
+      if (auto) PermissionMode.setOverride("auto")
       const thinking = interactive ? (args.thinking ?? true) : (args.thinking ?? false)
       const die = (message: string): never => {
         UI.error(message)
@@ -911,6 +920,26 @@ export const RunCommand = effectCmd({
                 await client.permission.reply({
                   requestID: permission.id,
                   reply: allowed ? "once" : "reject",
+                })
+                continue
+              }
+
+              // A guarded action in auto mode (core/brand/guarded.ts), or one the
+              // risk check rated high: nobody can answer, so it is refused with
+              // the reason. A rule written for the command allows it.
+              const guard = Array.isArray(permission.metadata?.guard)
+                ? permission.metadata.guard.filter((item): item is string => typeof item === "string")
+                : []
+              if (guard.length) {
+                const command =
+                  typeof permission.metadata?.command === "string" ? permission.metadata.command : permission.patterns.join(" ")
+                UI.println(UI.Style.TEXT_WARNING_BOLD + "!", UI.Style.TEXT_NORMAL + `refused in auto mode: ${guard.join("; ")}`)
+                permissions.rejected(permission.permission)
+                UI.println(UI.Style.TEXT_NORMAL + guardHint(permission.permission, permission.patterns[0] ?? command))
+                await client.permission.reply({
+                  requestID: permission.id,
+                  reply: "reject",
+                  message: `Refused without asking, because ${Brand.name} run cannot ask anyone: ${guard.join("; ")}. Do not retry it; find another way or say what is needed.`,
                 })
                 continue
               }

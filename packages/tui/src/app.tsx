@@ -88,6 +88,14 @@ import * as TuiAudio from "./audio"
 import { win32DisableProcessedInput, win32FlushInputBuffer } from "./terminal-win32"
 import { destroyRenderer } from "./util/renderer"
 import { cliErrorMessage, errorFormat } from "./util/error"
+import * as PermissionModes from "@opencode-ai/core/brand/permission-mode"
+
+// One line when the permission mode changes (Shift+Tab).
+const PERMISSION_MODE_NOTE: Record<PermissionModes.Mode, string> = {
+  ask: "Ask mode: tool calls ask when the permission rules say so.",
+  auto: "Auto mode: tool calls run without asking, except guarded actions (deletes outside the project, sudo, credentials, pushes...).",
+  plan: "Plan mode: read-only. Edits and commands that change things are refused; the agent proposes instead.",
+}
 
 registerOpencodeSpinner()
 
@@ -116,6 +124,7 @@ const appBindingCommands = [
   "mcp.list",
   "agent.cycle",
   "agent.cycle.reverse",
+  "permission.mode.cycle",
   "variant.cycle",
   "variant.list",
   "provider.connect",
@@ -740,6 +749,20 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         },
       },
       {
+        name: "permission.mode.cycle",
+        title: "Permission mode cycle",
+        category: "Agent",
+        hidden: true,
+        run: () => {
+          const mode = local.permission.cycle()
+          toast.show({
+            message: PERMISSION_MODE_NOTE[mode],
+            variant: mode === "auto" ? "warning" : "info",
+            duration: 2500,
+          })
+        },
+      },
+      {
         name: "provider.connect",
         title: "Connect provider",
         suggested: !connected(),
@@ -949,11 +972,10 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       },
       {
         name: "permission.mode",
-        title:
-          local.permission.mode === "auto" ? "Disable auto-approve permissions" : "Enable auto-approve permissions",
+        title: `Permission mode: ${local.permission.mode} (switch to ${PermissionModes.next(local.permission.mode)})`,
         category: "System",
         run: () => {
-          local.permission.toggle()
+          local.permission.cycle()
           dialog.clear()
         },
       },

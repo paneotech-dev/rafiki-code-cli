@@ -2,6 +2,7 @@ import { Brand } from "@opencode-ai/core/brand/brand"
 import { cmd } from "@/cli/cmd/cmd"
 import { Rpc } from "@/util/rpc"
 import { type rpc } from "../tui/worker"
+import * as PermissionMode from "@opencode-ai/core/brand/permission-mode"
 import path from "path"
 import { fileURLToPath } from "url"
 import { UI } from "@/cli/ui"
@@ -139,7 +140,7 @@ export const TuiThreadCommand = cmd({
       })
       .option("auto", {
         type: "boolean",
-        describe: "auto-approve permissions that are not explicitly denied (dangerous!)",
+        describe: "start in auto mode: tool calls run without asking, except guarded actions",
         default: false,
       })
       .option("yolo", {
@@ -249,6 +250,8 @@ export const TuiThreadCommand = cmd({
       }
       const cwd = Filesystem.resolve(process.cwd())
 
+      // --auto starts this interface in auto mode, as RAFIKICODE_PERMISSION_MODE=auto would.
+      if (args.auto || args.yolo || args["dangerously-skip-permissions"]) process.env[PermissionMode.ENV] = "auto"
       const worker = new Worker(file, {
         env: Object.fromEntries(
           Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),

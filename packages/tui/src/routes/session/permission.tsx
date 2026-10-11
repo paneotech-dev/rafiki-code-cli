@@ -401,6 +401,12 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
           }
 
           const current = info()
+          // Why auto mode still asks (core/brand/guarded.ts, rafiki/risk-check.ts).
+          const guard = () => {
+            const meta = props.request.metadata ?? {}
+            if (meta["mode"] !== "auto" || !Array.isArray(meta["guard"])) return ""
+            return meta["guard"].filter((item): item is string => typeof item === "string").join("; ")
+          }
 
           const header = () => (
             <box flexDirection="column" gap={0}>
@@ -414,6 +420,11 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
                 </text>
                 <text fg={theme.text}>{current.title}</text>
               </box>
+              <Show when={guard()}>
+                <box flexDirection="row" gap={1} paddingLeft={2} flexShrink={0}>
+                  <text fg={theme.warning}>{"Auto mode asks: " + guard()}</text>
+                </box>
+              </Show>
             </box>
           )
 
@@ -423,7 +434,7 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
               header={header()}
               body={current.body}
               options={
-                props.request.permission === "publish"
+                props.request.permission === "publish" || props.request.always.length === 0
                   ? { once: "Allow once", reject: "Reject" }
                   : { once: "Allow once", always: "Allow always", reject: "Reject" }
               }

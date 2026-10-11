@@ -90,6 +90,15 @@
         "deny"
       ]
     },
+    "PermissionModeConfig": {
+      "type": "string",
+      "enum": [
+        "ask",
+        "auto",
+        "plan"
+      ],
+      "description": "The permission mode used when none was picked in the interface: ask (the rules decide), auto (only guarded actions ask) or plan (read-only)."
+    },
     "PermissionObjectConfig": {
       "type": "object",
       "additionalProperties": {
@@ -114,6 +123,13 @@
         {
           "type": "object",
           "properties": {
+            "mode": {
+              "$ref": "#/$defs/PermissionModeConfig"
+            },
+            "auto_check": {
+              "type": "boolean",
+              "description": "In auto mode, a short risk check on the rafiki-fast tier for shell commands the rules cannot classify (default true)."
+            },
             "read": {
               "$ref": "#/$defs/PermissionRuleConfig"
             },
@@ -161,7 +177,17 @@
             }
           },
           "additionalProperties": {
-            "$ref": "#/$defs/PermissionRuleConfig"
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PermissionRuleConfig"
+              },
+              {
+                "$ref": "#/$defs/PermissionModeConfig"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
           }
         }
       ]

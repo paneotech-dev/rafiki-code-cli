@@ -160,7 +160,12 @@
     {
       "path": "packages/core/src/v1/config/migrate.ts",
       "class": "hook",
-      "why": "Carries the `channel` key (update channel, `rafiki/update.ts`) into the new configuration shape."
+      "why": "Carries the `channel` key (update channel, `rafiki/update.ts`) into the new configuration shape. Skips the `permission.mode` and `permission.auto_check` settings (`core/brand/permission-mode.ts`), which are not rules."
+    },
+    {
+      "path": "packages/core/src/v1/config/permission.ts",
+      "class": "hook",
+      "why": "The `mode` and `auto_check` settings of the permission config (`core/brand/permission-mode.ts`), checked next to the rules."
     },
     {
       "path": "packages/core/test/global.test.ts",
@@ -290,7 +295,7 @@
     {
       "path": "packages/opencode/src/cli/cmd/run.ts",
       "class": "hook",
-      "why": "Exit codes and messages for gateway errors, a missing key and rejected permissions, the attach check, the cost line, the `--resume` alias and server file credentials, each a call into `src/rafiki/`; an answer on another tier is announced through `rafiki/served.ts`, and a run on Rafiki Max is checked against the key first (`rafiki/tier-check.ts`). A command that publishes code is refused unless the run allows it (`--allow-push`, `RAFIKICODE_ALLOW_PUSH`, a `publish` permission in config), `--auto` or not (`core/brand/publish.ts`). A turn tried again after it spent its output budget reasoning is announced in one line (`rafiki/reasoning.ts`), and SIGTERM or SIGINT stop and save the session before exiting 143 or 130 (`rafiki/run-signal.ts`). The checks after a change are reported on the `Task:` line, in a `verify` JSON event and with exit code 8 when they still fail (`rafiki/verify.ts`)."
+      "why": "Exit codes and messages for gateway errors, a missing key and rejected permissions, the attach check, the cost line, the `--resume` alias and server file credentials, each a call into `src/rafiki/`; an answer on another tier is announced through `rafiki/served.ts`, and a run on Rafiki Max is checked against the key first (`rafiki/tier-check.ts`). A command that publishes code is refused unless the run allows it (`--allow-push`, `RAFIKICODE_ALLOW_PUSH`, a `publish` permission in config), `--auto` or not (`core/brand/publish.ts`). A turn tried again after it spent its output budget reasoning is announced in one line (`rafiki/reasoning.ts`), and SIGTERM or SIGINT stop and save the session before exiting 143 or 130 (`rafiki/run-signal.ts`). The checks after a change are reported on the `Task:` line, in a `verify` JSON event and with exit code 8 when they still fail (`rafiki/verify.ts`). `--auto` is auto mode (`core/brand/permission-mode.ts`): a guarded action is refused with the reason and how to allow it."
     },
     {
       "path": "packages/opencode/src/cli/cmd/run/footer.permission.tsx",
@@ -325,7 +330,7 @@
     {
       "path": "packages/opencode/src/cli/cmd/tui.ts",
       "class": "logic",
-      "why": "Events raised before the interface subscribes are buffered and replayed, the terminal is checked before the renderer loads, trust warnings become notices, and a refused listener stops the start. The buffering is not specific to this product. After the interface closes, a conversation or folder picked in the History panel is opened by starting the program again there (`rafiki/history.ts`)."
+      "why": "Events raised before the interface subscribes are buffered and replayed, the terminal is checked before the renderer loads, trust warnings become notices, and a refused listener stops the start. The buffering is not specific to this product. After the interface closes, a conversation or folder picked in the History panel is opened by starting the program again there (`rafiki/history.ts`). `--auto` starts the interface in auto mode (`core/brand/permission-mode.ts`)."
     },
     {
       "path": "packages/opencode/src/cli/cmd/upgrade.ts",
@@ -350,7 +355,7 @@
     {
       "path": "packages/opencode/src/cli/tui/worker.ts",
       "class": "hook",
-      "why": "The update check is `rafiki/autoupdate.ts`; trust warnings are sent as events (`rafiki/notice.ts`)."
+      "why": "The update check is `rafiki/autoupdate.ts`; trust warnings are sent as events (`rafiki/notice.ts`). The server follows the permission mode picked in the interface (`core/brand/permission-mode.ts`)."
     },
     {
       "path": "packages/opencode/src/cli/ui.ts",
@@ -420,7 +425,7 @@
     {
       "path": "packages/opencode/src/permission/index.ts",
       "class": "hook",
-      "why": "A request for the \"publish\" permission (`core/brand/publish.ts`) is asked every time: wildcard and shell allows and earlier \"always\" answers do not apply to it, and only a rule named \"publish\" can deny it."
+      "why": "A request for the \"publish\" permission (`core/brand/publish.ts`) is asked every time: wildcard and shell allows and earlier \"always\" answers do not apply to it, and only a rule named \"publish\" can deny it. Permission modes (`core/brand/permission-mode.ts`, `rafiki/auto-mode.ts`): plan mode refuses changes with a note, auto mode runs what the rules would ask about and asks for guarded actions (`core/brand/guarded.ts`) and for commands the risk check (`rafiki/risk-check.ts`) rates high; `mode` and `auto_check` are settings, not rules. Reads the config for them."
     },
     {
       "path": "packages/opencode/src/plugin/install.ts",
@@ -555,7 +560,7 @@
     {
       "path": "packages/opencode/src/tool/shell.ts",
       "class": "hook",
-      "why": "Before a command that publishes code, the tool asks the \"publish\" question built by `rafiki/publish-guard.ts`."
+      "why": "Before a command that publishes code, the tool asks the \"publish\" question built by `rafiki/publish-guard.ts`. The shell question carries the working folder, and the process of each command is recorded for auto mode (`rafiki/auto-mode.ts`)."
     },
     {
       "path": "packages/opencode/src/tool/write.ts",
@@ -730,7 +735,7 @@
     {
       "path": "packages/tui/src/app.tsx",
       "class": "text",
-      "why": "Terminal title, documentation address and update message name this product; the exit text ends with the cost line (`brand/cost.ts`)."
+      "why": "Terminal title, documentation address and update message name this product; the exit text ends with the cost line (`brand/cost.ts`). Shift+Tab cycles the permission mode (`context/permission.tsx`, `core/brand/permission-mode.ts`)."
     },
     {
       "path": "packages/tui/src/attention.ts",
@@ -760,12 +765,22 @@
     {
       "path": "packages/tui/src/component/prompt/index.tsx",
       "class": "text",
-      "why": "The message shown without a provider names the sign in command; the context figure is what the last request sent (`core/brand/context.ts`), the amount from the model price table is not shown (the spend is read from the gateway by `feature-plugins/rafiki-cost.tsx`), and an empty provider label (`Brand.provider.label`) is not drawn."
+      "why": "The message shown without a provider names the sign in command; the context figure is what the last request sent (`core/brand/context.ts`), the amount from the model price table is not shown (the spend is read from the gateway by `feature-plugins/rafiki-cost.tsx`), and an empty provider label (`Brand.provider.label`) is not drawn. The permission mode in the status row and the footer (`context/permission.tsx`)."
     },
     {
       "path": "packages/tui/src/context/local.tsx",
       "class": "text",
       "why": "The labels shown without a provider name the sign in command; the provider name is not repeated after a model name that starts with it (`Brand.provider.label`); a new session never starts on Rafiki Max from the recent list, and the cycling shortcuts never move to it before it was confirmed (`core/brand/tier.ts`)."
+    },
+    {
+      "path": "packages/tui/src/context/permission.tsx",
+      "class": "logic",
+      "why": "The permission mode (ask, auto, plan) read and saved per project through `core/brand/permission-mode.ts`, replacing the upstream auto toggle."
+    },
+    {
+      "path": "packages/tui/src/context/sync.tsx",
+      "class": "hook",
+      "why": "Auto mode answers for a server that does not apply it, but never for a guarded action or a push (`core/brand/guarded.ts`); passes the permission config to `context/permission.tsx`."
     },
     {
       "path": "packages/tui/src/context/theme.tsx",
@@ -775,7 +790,7 @@
     {
       "path": "packages/tui/src/config/keybind.ts",
       "class": "hook",
-      "why": "The key that opens the History panel (`recent_open`, `<leader>o`, `feature-plugins/rafiki-history.tsx`)."
+      "why": "The key that opens the History panel (`recent_open`, `<leader>o`, `feature-plugins/rafiki-history.tsx`). Shift+Tab cycles the permission mode (`permission_mode_cycle`); the previous agent has no key by default."
     },
     {
       "path": "packages/tui/src/feature-plugins/builtins.ts",
@@ -810,7 +825,7 @@
     {
       "path": "packages/tui/src/routes/session/permission.tsx",
       "class": "logic",
-      "why": "Product name in the permission text. The \"publish\" question has its own text and no \"Allow always\" option."
+      "why": "Product name in the permission text. The \"publish\" question has its own text and no \"Allow always\" option. A guarded action of auto mode says why it asks and has no \"Allow always\" option."
     },
     {
       "path": "packages/tui/src/routes/session/subagent-footer.tsx",

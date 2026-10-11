@@ -39,7 +39,7 @@ Flags that matter in automation, all listed by `rafikicode run --help`:
 | flag | effect |
 |---|---|
 | `--format json` | emit raw JSON events instead of formatted text, one per line, for machines to parse |
-| `--auto` | approve tool permissions that ask (the shell in headless runs, reads of `.env` files, paths outside the workspace) unless they are explicitly denied; without it such a request is rejected and the task continues without it. Grant this only to jobs that run in a disposable checkout |
+| `--auto` | auto mode for this run: tool calls that would ask (the shell in headless runs, reads of `.env` files, paths outside the workspace) run without a question unless a rule denies them, except the guarded actions, which are refused with the reason. See [Auto mode in a run](#auto-mode-in-a-run) |
 | `--allow-push` | let this run publish code: `git push` in any form, `gh pr create`, `gh repo create`, `gh release`. Without it such a command is refused, `--auto` or not. See [Pushing code from a run](#pushing-code-from-a-run) |
 | `--model rafiki/rafiki-pro` | choose the tier for this run (default `rafiki/rafiki-fast`) |
 | `--dir PATH` | run in another directory |
@@ -84,12 +84,31 @@ To let a job run commands, say so from a place the repository does not control:
 
 | way | example |
 |---|---|
-| `--auto` on the run | `rafikicode run --auto "refresh the lockfile"` approves every question that is not explicitly denied |
+| `--auto` on the run | `rafikicode run --auto "refresh the lockfile"` runs every tool call that is not denied, except the [guarded actions](#auto-mode-in-a-run) |
 | `OPENCODE_PERMISSION` in the job | `OPENCODE_PERMISSION='{"bash":{"npm test":"allow","*":"deny"}}'` |
 | your own config | `{"permission":{"bash":"allow","edit":"allow","external_directory":"allow"}}` in `~/.rafikicode/config.json` on the machine |
 | trust the workspace | `RAFIKICODE_TRUST_WORKSPACE=1` in the job, or `rafikicode trust` on a long lived machine; the repository's own permission settings then apply |
 
 An untrusted workspace also loads no project plugins, custom tools or provider packages, and in headless runs starts none of its local MCP servers, formatters or language servers. See [workspace trust](security/workspace-trust.md) for the full rules. The pull request review action needs none of these: it denies edits, shell commands and web fetches explicitly and reviews an untrusted checkout.
+
+## Auto mode in a run
+
+`rafikicode run --auto`, `RAFIKICODE_PERMISSION_MODE=auto` or `"permission": { "mode": "auto" }` in your own config runs the task in auto mode (see [Permission modes](./configuration.md#permission-modes)). Tool calls run without a question, and a `"deny"` rule still wins. A run cannot ask, so the [guarded actions](./configuration.md#guarded-actions) are refused instead, the model is told why and continues without them, and the run prints the reason and how to allow it:
+
+```text
+! refused in auto mode: recursive delete: rm -rf build
+To let a run do this, allow it by name in ~/.rafikicode/config.json, for example {"permission":{"bash":{"rm -rf build":"allow"}}}. A wildcard rule such as "bash": "allow" does not.
+```
+
+Commands the rules cannot classify get the [risk check](./configuration.md#the-risk-check); a high rating or no answer within 5 seconds refuses the command in the same way. `"permission": { "auto_check": false }` turns the check off for jobs where every command should run. Pushes follow their own rules, below: `--auto` alone does not push.
+
+`RAFIKICODE_PERMISSION_MODE=plan` makes a read-only run: the model reads and searches, edits and commands that change things are refused, and the answer describes the changes it proposes. The mode picked in the terminal interface for a project does not apply to `rafikicode run`.
+
+| run | a command that asks | a guarded action | a push |
+|---|---|---|---|
+| `rafikicode run` | refused | refused | refused |
+| `rafikicode run --auto` | runs | refused with the reason, unless a rule allows it by name | refused unless `--allow-push` |
+| `RAFIKICODE_PERMISSION_MODE=plan` | edits and changing commands refused | refused | refused |
 
 ## Pushing code from a run
 

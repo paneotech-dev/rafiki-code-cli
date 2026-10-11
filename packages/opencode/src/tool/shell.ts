@@ -22,6 +22,7 @@ import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner
 import { ShellPrompt, type Parameters } from "./shell/prompt"
 import { BashArity } from "@/permission/arity"
 import * as PublishGuard from "@/rafiki/publish-guard"
+import * as RafikiAutoMode from "@/rafiki/auto-mode"
 
 export { Parameters } from "./shell/prompt"
 
@@ -261,7 +262,7 @@ const parse = Effect.fn("ShellTool.parse")(function* (command: string, ps: boole
   return tree
 })
 
-const ask = Effect.fn("ShellTool.ask")(function* (ctx: Tool.Context, scan: Scan, input: { command: string }) {
+const ask = Effect.fn("ShellTool.ask")(function* (ctx: Tool.Context, scan: Scan, input: { command: string; workdir: string }) {
   if (scan.dirs.size > 0) {
     const directories = Array.from(scan.dirs)
     const globs = directories.map((dir) => {
@@ -287,6 +288,7 @@ const ask = Effect.fn("ShellTool.ask")(function* (ctx: Tool.Context, scan: Scan,
     always: Array.from(scan.always),
     metadata: {
       command: input.command,
+      workdir: input.workdir,
     },
   })
 })
@@ -483,6 +485,8 @@ export const ShellTool = Tool.define(
         Effect.gen(function* () {
           yield* Effect.addFinalizer(closeSink)
           const handle = yield* spawner.spawn(cmd(input.shell, input.command, input.cwd, input.env))
+          // Auto mode lets a command stop what the session started (rafiki/auto-mode.ts).
+          RafikiAutoMode.recordProcess(ctx.sessionID, Number(handle.pid))
 
           yield* Effect.forkScoped(
             Stream.runForEach(Stream.decodeText(handle.all), (chunk) => {
@@ -628,7 +632,7 @@ export const ShellTool = Tool.define(
                   // A command that publishes code asks first, every time (rafiki/publish-guard.ts).
                   const publish = PublishGuard.request(params.command, scan.patterns, cwd)
                   if (publish) yield* ctx.ask(publish)
-                  yield* ask(ctx, scan, params)
+                  yield* ask(ctx, scan, { command: params.command, workdir: cwd })
                 }),
               )
 
