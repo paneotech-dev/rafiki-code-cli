@@ -11,11 +11,73 @@ const dir = "/home/jane/.rafikicode/bin"
 
 describe("installer PATH entry", () => {
   test("the lines match what install.sh writes", () => {
-    expect(installer).toContain('echo -e "\\n# ${APP}" >> "$config_file"')
+    // Appended after a blank line, or at the top above an early return.
+    expect(installer).toContain(`printf '\\n# %s\\n%s\\n' "$APP" "$line" >> "$file"`)
+    expect(installer).toContain(`printf '# %s\\n%s\\n' "$APP" "$line"`)
+    expect(installer).toContain('local line="export TMPDIR=\\$HOME/.${APP}/tmp" file')
+    expect(installer).toContain(`printf 'set -gx TMPDIR $HOME/.%s/tmp\\n' "$APP"`)
     expect(installer).toContain('command="export PATH=$INSTALL_DIR:\\$PATH"')
     expect(installer).toContain('command="fish_add_path $INSTALL_DIR"')
     expect(Shell.marker()).toBe("# rafikicode")
     expect(Shell.commands(dir)).toEqual([`export PATH=${dir}:$PATH`, `fish_add_path ${dir}`])
+    expect(Shell.tmpdirCommands()).toEqual(["export TMPDIR=$HOME/.rafikicode/tmp", "set -gx TMPDIR $HOME/.rafikicode/tmp"])
+  })
+
+  // The forms install.sh writes since 0.1.10, each removed back to the exact
+  // bytes the file had before the install.
+  const guard = '[ -z "$PS1" ] && return\nalias ll="ls -l"\n'
+  const pathLine = `export PATH=${dir}:$PATH`
+  const tmpLine = "export TMPDIR=$HOME/.rafikicode/tmp"
+
+  test("the copy placed above an early return is removed, the guard and the rest stay", () => {
+    expect(Shell.clean(`# rafikicode\n${pathLine}\n` + guard, dir)).toEqual({ content: guard, changed: true })
+    // With the TMPDIR line placed above it in the same way.
+    expect(Shell.clean(`# rafikicode\n${tmpLine}\n# rafikicode\n${pathLine}\n` + guard, dir)).toEqual({ content: guard, changed: true })
+  })
+
+  test("appended PATH and TMPDIR lines are removed with their markers and blank lines", () => {
+    const before = "# ~/.bash_profile\nPATH=$PATH:$HOME/bin\nexport PATH\n"
+    expect(Shell.clean(before + `\n# rafikicode\n${pathLine}\n\n# rafikicode\n${tmpLine}\n`, dir)).toEqual({ content: before, changed: true })
+    // TMPDIR as 0.1.9 wrote it, appended with no marker, and fish's form.
+    expect(Shell.clean(before + `\n# rafikicode\n${pathLine}\n${tmpLine}\n`, dir)).toEqual({ content: before, changed: true })
+    expect(Shell.clean(`set x 1\n\n# rafikicode\nfish_add_path ${dir}\nset -gx TMPDIR $HOME/.rafikicode/tmp\n`, dir)).toEqual({ content: "set x 1\n", changed: true })
+    // A file the installer created empty is left empty.
+    expect(Shell.clean(`\n# rafikicode\n${pathLine}\n`, dir)).toEqual({ content: "", changed: true })
+  })
+
+  test("a TMPDIR line to some other folder is not ours", () => {
+    const other = "export TMPDIR=$HOME/tmp\nexport TMPDIR=/var/tmp/rafikicode\n"
+    expect(Shell.clean(other, dir)).toEqual({ content: other, changed: false })
+  })
+
+  test("the login files are searched: .bash_profile, .bash_login, .profile and .zprofile", async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "rafikicode-shell-"))
+    try {
+      const before: Record<string, string> = {
+        ".bashrc": guard,
+        ".bash_profile": "# .bash_profile\nPATH=$PATH:$HOME/bin\n",
+        ".bash_login": "# login\n",
+        ".profile": "# profile\n",
+        ".zprofile": "",
+      }
+      const after: Record<string, string> = {
+        ".bashrc": `# rafikicode\n${tmpLine}\n# rafikicode\n${pathLine}\n` + guard,
+        ".bash_profile": before[".bash_profile"] + `\n# rafikicode\n${pathLine}\n\n# rafikicode\n${tmpLine}\n`,
+        ".bash_login": before[".bash_login"] + `\n# rafikicode\n${pathLine}\n`,
+        ".profile": before[".profile"] + `\n# rafikicode\n${tmpLine}\n`,
+        ".zprofile": `\n# rafikicode\n${pathLine}\n`,
+      }
+      for (const [name, content] of Object.entries(after)) fs.writeFileSync(path.join(home, name), content)
+      fs.writeFileSync(path.join(home, ".zshrc"), "# untouched\n")
+      const found = await Shell.configsWithPath(dir, {}, home)
+      expect(found.sort()).toEqual(Object.keys(after).map((name) => path.join(home, name)).sort())
+      for (const file of found) expect(await Shell.cleanFile(file, dir)).toBe(true)
+      for (const [name, content] of Object.entries(before)) expect(fs.readFileSync(path.join(home, name), "utf8")).toBe(content)
+      expect(fs.readFileSync(path.join(home, ".zshrc"), "utf8")).toBe("# untouched\n")
+      expect(await Shell.configsWithPath(dir, {}, home)).toEqual([])
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true })
+    }
   })
 
   test("only the installer's lines are removed, and the file is otherwise unchanged", () => {
