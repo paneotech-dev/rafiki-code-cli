@@ -1287,22 +1287,79 @@ clear_quarantine() {
 # true only when a file on disk says so.
 path_written=""
 startup_files=""
+
+# The line number of the first early return in a startup file: the guard that
+# Debian, Ubuntu and many hosting images put at the top of ~/.bashrc so that a
+# shell which is not interactive stops reading there, in any of its spellings:
+#   [ -z "$PS1" ] && return
+#   [[ $- != *i* ]] && return
+#   case $- in *i*) ;; *) return;; esac
+#   if [ -z "$PS1" ]; then return; fi
+# A return within three lines of a test of PS1 or $- counts. Prints nothing
+# when there is none. A false match only moves our line to the top of the file,
+# which is harmless.
+early_return_line() {
+    [ -f "$1" ] || return 0
+    awk '
+        /^[[:space:]]*#/ { next }
+        /PS1|\$-/ { mark = NR }
+        /(^|[^[:alnum:]_])return([^[:alnum:]_]|$)/ && mark && NR - mark <= 3 { print NR; exit }
+    ' "$1" 2>/dev/null || true
+}
+
+# Put LINE in FILE where every shell that reads the file reaches it: appended
+# when nothing in the file returns early, otherwise at the top, before the
+# guard. A copy of the line left below the guard by an older install is never
+# read, so it is taken out. Prints what was done: present, added or moved.
+place_line() {
+    local file=$1 line=$2 guard first tmp
+    guard=$(early_return_line "$file")
+    first=$(grep -Fxn -- "$line" "$file" 2>/dev/null | sed -n '1s/:.*//p')
+    if [ -n "$first" ] && { [ -z "$guard" ] || [ "$first" -lt "$guard" ]; }; then
+        printf 'present\n'; return 0
+    fi
+    [ -w "$file" ] || return 1
+    if [ -z "$guard" ]; then
+        printf '\n# %s\n%s\n' "$APP" "$line" >> "$file" || return 1
+        printf 'added\n'; return 0
+    fi
+    tmp=$(mktemp "$(dirname "$file")/.${APP}-rc.XXXXXX" 2>/dev/null) || tmp=$(mktemp "${TMPDIR:-/tmp}/${APP}-rc.XXXXXX" 2>/dev/null) || return 1
+    {
+        printf '# %s (before the early return below, so login shells read it too)\n%s\n' "$APP" "$line"
+        line="$line" tag="# $APP" awk '
+            BEGIN { line = ENVIRON["line"]; tag = ENVIRON["tag"] }
+            $0 == tag { held = $0; next }
+            $0 == line { held = ""; next }
+            { if (held != "") print held; held = ""; print }
+            END { if (held != "") print held }
+        ' "$file"
+    } > "$tmp" || { rm -f "$tmp"; return 1; }
+    # Written back in place, so a symlinked startup file and its mode survive.
+    cat "$tmp" > "$file" || { rm -f "$tmp"; return 1; }
+    rm -f "$tmp"
+    if [ -n "$first" ]; then printf 'moved\n'; else printf 'added\n'; fi
+}
+
 add_to_path() {
     local config_file=$1
-    local command=$2
+    local command=$2 result
     case " $startup_files " in *" $config_file "*) ;; *) startup_files="${startup_files}${startup_files:+ }$config_file" ;; esac
-    if grep -Fxq "$command" "$config_file" 2>/dev/null; then
-        case " ${announced:-} " in
-            *" $config_file "*) ;;
-            *) print_message info "${MUTED}PATH entry already present in ${NC}$config_file" ;;
+    if result=$(place_line "$config_file" "$command"); then
+        case "$result" in
+            present)
+                case " ${announced:-} " in
+                    *" $config_file "*) ;;
+                    *) print_message info "${MUTED}PATH entry already present in ${NC}$config_file" ;;
+                esac ;;
+            moved) print_message info "${MUTED}Moved the PATH entry above the early return in ${NC}$config_file" ;;
+            *)
+                if [ -n "$(early_return_line "$config_file")" ]; then
+                    print_message info "${MUTED}Added ${NC}${INSTALL_DIR}${MUTED} to PATH at the top of ${NC}$config_file${MUTED}, before its early return${NC}"
+                else
+                    print_message info "${MUTED}Added ${NC}${INSTALL_DIR}${MUTED} to PATH in ${NC}$config_file"
+                fi ;;
         esac
         announced="${announced:-} $config_file"
-        path_written="$config_file"
-    elif [[ -w $config_file ]]; then
-        echo -e "\n# ${APP}" >> "$config_file"
-        echo "$command" >> "$config_file"
-        announced="${announced:-} $config_file"
-        print_message info "${MUTED}Added ${NC}${INSTALL_DIR}${MUTED} to PATH in ${NC}$config_file"
         path_written="$config_file"
     else
         print_message warning "Add the directory to your PATH in $config_file (or similar):"
@@ -1310,9 +1367,86 @@ add_to_path() {
     fi
 }
 
+# The shell a new login uses, as a family whose startup files we know. cPanel's
+# jailshell and rbash are bash; anything else unknown is treated as bash too,
+# which is what it nearly always is.
+shell_family() {
+    case "$(basename "${SHELL:-sh}")" in
+        fish) echo fish ;;
+        zsh) echo zsh ;;
+        ash|sh|dash) echo sh ;;
+        *) echo bash ;;
+    esac
+}
+
+# The file a login shell of this family reads, which is where ssh, su - and a
+# new terminal on most servers start. bash reads the first of these that
+# exists; none at all means ~/.profile is the one to make.
+login_file_for() {
+    local file
+    case "$1" in
+        bash)
+            for file in "$HOME_DIR/.bash_profile" "$HOME_DIR/.bash_login" "$HOME_DIR/.profile"; do
+                [ -f "$file" ] && { printf '%s\n' "$file"; return 0; }
+            done
+            printf '%s\n' "$HOME_DIR/.profile" ;;
+        zsh) printf '%s\n' "${ZDOTDIR:-$HOME_DIR}/.zprofile" ;;
+        fish) printf '%s\n' "$HOME_DIR/.config/fish/config.fish" ;;
+        *) printf '%s\n' "$HOME_DIR/.profile" ;;
+    esac
+}
+
+# The program that runs a new login: SHELL itself when it can be run (cPanel's
+# /usr/local/cpanel/bin/jailshell is not on PATH by name), else its name on
+# PATH, else sh.
+login_shell_bin() {
+    if [ -n "${SHELL:-}" ] && [ -x "$SHELL" ] && [ ! -d "$SHELL" ]; then printf '%s\n' "$SHELL"; return 0; fi
+    command -v "$(basename "${SHELL:-sh}")" 2>/dev/null || command -v sh 2>/dev/null || printf '%s\n' "$BASH"
+}
+
+# Run COMMAND as a new login would: nothing inherited from this shell (no PATH,
+# no TMPDIR), only the startup files. MODE "interactive" is what someone who
+# connects with ssh and types gets (bash -lic); "command" is `ssh host cmd`,
+# cron or a CI step (bash -lc). Bounded in time, because an interactive startup
+# file may start something that waits.
+login_run() {
+    local mode=$1 cmd=$2 bin flags="-l -c" limit=""
+    bin=$(login_shell_bin)
+    if [ "$mode" = "interactive" ]; then
+        case "$(shell_family)" in bash|zsh) flags="-l -i -c" ;; esac
+    fi
+    command -v timeout >/dev/null 2>&1 && limit="timeout 20"
+    # An interactive shell started from a terminal takes the terminal over, and
+    # one under timeout runs in the background and stops there for good. Out of
+    # the terminal's session (setsid), or in its foreground, it does not.
+    if [ "$mode" = "interactive" ]; then
+        if command -v setsid >/dev/null 2>&1; then
+            limit="setsid ${limit}"
+        elif [ -n "$limit" ] && timeout --foreground 1 true >/dev/null 2>&1; then
+            limit="timeout --foreground 20"
+        else
+            limit=""
+        fi
+    fi
+    # shellcheck disable=SC2086
+    env -i HOME="$HOME_DIR" USER="${USER:-$(id -un 2>/dev/null)}" LOGNAME="${LOGNAME:-$(id -un 2>/dev/null)}" \
+        SHELL="${SHELL:-$bin}" TERM="${TERM:-dumb}" PATH="/usr/local/bin:/usr/bin:/bin" \
+        ${RAFIKICODE_GATEWAY_URL:+RAFIKICODE_GATEWAY_URL="$RAFIKICODE_GATEWAY_URL"} \
+        $limit "$bin" $flags "$cmd" </dev/null
+}
+
+# Whether a new login shell, in MODE, finds this install by its bare name.
+login_finds() {
+    local found
+    found=$(login_run "$1" "command -v ${APP}" 2>/dev/null | sed '$!d' || true)
+    [ -n "$found" ] || return 1
+    [ "$found" = "${INSTALL_DIR}/${BIN_NAME}" ] && return 0
+    [ "$(readlink -f "$found" 2>/dev/null)" = "$(readlink -f "${INSTALL_DIR}/${BIN_NAME}" 2>/dev/null)" ]
+}
+
 path_note() {
     local current_shell
-    current_shell=$(basename "${SHELL:-sh}")
+    current_shell=$(shell_family)
     XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-$HOME_DIR/.config}
     case $current_shell in
         fish)
@@ -1344,7 +1478,13 @@ path_note() {
             ;;
     esac
 
-    if [[ ":$PATH:" == *":$INSTALL_DIR:"* ]] && [ -z "$shadowed" ]; then
+    # On the PATH of this shell is not the same as in the startup files a new
+    # login reads: a ~/.bashrc that returns early for a login shell, or an export
+    # typed by hand, puts it here and nowhere else. Say nothing more only when a
+    # new login shell, both as someone typing after ssh and as `ssh host cmd`,
+    # finds it already.
+    if [[ ":$PATH:" == *":$INSTALL_DIR:"* ]] && [ -z "$shadowed" ] \
+        && { [ "$no_modify_path" = "true" ] || { login_finds interactive && login_finds command; }; }; then
         print_message info "${MUTED}${INSTALL_DIR} is already on your PATH${NC}"
         return
     fi
@@ -1384,32 +1524,23 @@ path_note() {
 
     # One more file, because the first one is read by only half the shells that
     # matter. An interactive shell reads ~/.bashrc, which is what the list above
-    # finds first and what a new terminal window uses. A login shell that is not
-    # interactive -- `ssh host rafikicode ...`, cron, a CI step -- reads
-    # ~/.bash_profile or ~/.profile instead, and on Debian and Ubuntu the
-    # ~/.bashrc they ship opens with "If not running interactively, don't do
-    # anything" and returns before it ever reaches the line just appended.
-    #
-    # So an unprivileged install writes to ~/.bashrc, prints "New terminals find
-    # rafikicode on their own", and is telling the truth about new terminals and
-    # not about ssh. Writing the same line to the login file as well costs one
-    # append and makes the sentence true in both. add_to_path is idempotent, so a
-    # second install adds nothing.
+    # finds first and what a new terminal window uses. A login shell reads
+    # ~/.bash_profile (or ~/.bash_login, or ~/.profile) instead, and reads
+    # ~/.bashrc only when that file sources it; and on Debian, Ubuntu and many
+    # hosting images ~/.bashrc opens with "If not running interactively, don't
+    # do anything" and returns before the line just appended (place_line puts
+    # it above that guard). `ssh host rafikicode`, cron, a CI step and a cPanel
+    # login whose ~/.bash_profile does not source ~/.bashrc all depend on the
+    # login file, so the same line goes there too. add_to_path is idempotent, so
+    # a second install adds nothing.
     case "$config_file" in
         *.bashrc|*.zshrc|*.ashrc)
-            local login_file=""
-            for file in "$HOME_DIR/.bash_profile" "$HOME_DIR/.zprofile" "$HOME_DIR/.profile"; do
-                case "$current_shell" in
-                    bash) [[ "$file" == *.zprofile ]] && continue ;;
-                    zsh)  [[ "$file" == *.bash_profile ]] && continue ;;
-                esac
-                if [[ -f $file ]]; then login_file=$file; break; fi
-            done
+            local login_file
+            login_file=$(login_file_for "$current_shell")
             # No login file at all (a user made without the skeleton files):
             # a login shell, `su - user` or ssh, would never see the PATH line,
             # so make the one it reads.
-            if [ -z "$login_file" ]; then
-                if [ "$current_shell" = "zsh" ]; then login_file="${ZDOTDIR:-$HOME_DIR}/.zprofile"; else login_file="$HOME_DIR/.profile"; fi
+            if [ ! -f "$login_file" ]; then
                 touch "$login_file" 2>/dev/null && print_message info "${MUTED}Created ${NC}$login_file" || login_file=""
             fi
             if [ -n "$login_file" ] && [ "$login_file" != "$config_file" ]; then
@@ -1918,7 +2049,7 @@ check_shadow() {
 add_other_shells() {
     [ "$no_modify_path" = "true" ] && return 0
     local current file
-    current=$(basename "${SHELL:-sh}")
+    current=$(shell_family)
     if [ "$current" != "bash" ] && [ -f "$HOME_DIR/.bashrc" ]; then
         add_to_path "$HOME_DIR/.bashrc" "export PATH=$INSTALL_DIR:\$PATH"
     fi
@@ -1978,9 +2109,9 @@ persist_tmpdir() {
     local line="export TMPDIR=\$HOME/.${APP}/tmp" file
     for file in $startup_files; do
         case "$file" in *config.fish) continue ;; esac
-        if ! grep -Fxq "$line" "$file" 2>/dev/null; then
-            printf '%s\n' "$line" >> "$file" 2>/dev/null && print_message info "${MUTED}Added TMPDIR=\$HOME/.${APP}/tmp to ${NC}$file"
-        fi
+        case "$(place_line "$file" "$line" 2>/dev/null)" in
+            added|moved) print_message info "${MUTED}Added TMPDIR=\$HOME/.${APP}/tmp to ${NC}$file" ;;
+        esac
     done
     for file in $startup_files; do
         case "$file" in *config.fish)
@@ -1994,23 +2125,21 @@ persist_tmpdir() {
 # the folder doctor find every folder it needs. A short summary, green when all
 # of it holds; red, with the report written, when something does not.
 self_check() {
-    local bin="${INSTALL_DIR}/${BIN_NAME}" version gateway root folders status=0 bad="" fresh shell_bin login=""
+    local bin="${INSTALL_DIR}/${BIN_NAME}" version gateway root folders status=0 bad="" fresh shell_bin missed="" fix_file=""
     # As the next terminal will: a login shell with nothing inherited from this
-    # one (no TMPDIR from a fallback, no PATH), reading the startup files. When
-    # the startup files were left alone, the program is called by its path.
-    shell_bin=$(command -v "$(basename "${SHELL:-sh}")" 2>/dev/null || command -v sh 2>/dev/null || printf '%s' "$BASH")
-    fresh() {
-        env -i HOME="$HOME_DIR" USER="${USER:-$(id -un 2>/dev/null)}" LOGNAME="${LOGNAME:-$(id -un 2>/dev/null)}" \
-            TERM="${TERM:-dumb}" PATH="/usr/local/bin:/usr/bin:/bin" ${RAFIKICODE_GATEWAY_URL:+RAFIKICODE_GATEWAY_URL="$RAFIKICODE_GATEWAY_URL"} \
-            "$shell_bin" -l -c "$1" 2>&1
-    }
+    # one (no TMPDIR from a fallback, no PATH), reading the startup files, the
+    # way an ssh login reads them (login_run). When the startup files were left
+    # alone, the program is called by its path.
+    shell_bin=$(login_shell_bin)
+    fresh() { login_run command "$1" 2>&1; }
     if [ "$no_modify_path" != "true" ] && [ -n "$startup_files$linked_path" ]; then
-        login=$(fresh "command -v ${APP}" | sed '$!d' || true)
-        if [ "$login" = "$bin" ] || [ "$(readlink -f "$login" 2>/dev/null)" = "$(readlink -f "$bin" 2>/dev/null)" ]; then
+        login_finds interactive || missed="an ssh login"
+        login_finds command || missed="${missed:+$missed and }ssh host ${APP}"
+        if [ -z "$missed" ]; then
             bin_cmd="$APP"
         else
             bin_cmd="$bin"
-            bad="a new login shell does not find this ${APP} (it finds ${login:-nothing})"
+            bad="a new login shell does not find this ${APP} (${missed})"
         fi
     else
         bin_cmd="$bin"
@@ -2028,7 +2157,22 @@ self_check() {
     folders=$(printf '%s\n' "$folders" | grep -v '^exit=' || true)
     [ -n "$status" ] || status=1
     print_message info "\nCheck:"
-    case "$bad" in *"login shell does not find"*) print_message info "  ${RED}FAIL${NC}  ${bad}" ;; esac
+    case "$bad" in *"login shell does not find"*)
+        print_message info "  ${RED}FAIL${NC}  ${bad}"
+        # The one line that fixes it, and the file it goes in.
+        fix_file=$(login_file_for "$(shell_family)")
+        if [ "$(shell_family)" = "fish" ]; then
+            print_message info "        Add this line to ${fix_file}:"
+            print_message info "          fish_add_path ${INSTALL_DIR}"
+        else
+            print_message info "        Add this line to ${fix_file}, above any line that says return:"
+            print_message info "          export PATH=${INSTALL_DIR}:\$PATH"
+        fi
+        if [ -n "$(early_return_line "$fix_file")" ]; then
+            print_message info "        ${MUTED}${fix_file} returns early at line $(early_return_line "$fix_file") when the shell is not interactive.${NC}"
+        fi
+        ;;
+    esac
     if [ -n "$version" ]; then
         print_message info "  ${GREEN}ok${NC}    ${APP} ${version} runs in a new login shell"
     else
