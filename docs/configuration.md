@@ -218,7 +218,7 @@ A turn that changed only documentation or images (`.md`, `.txt`, `.rst`, images,
 
 ### Fix rounds and the answer
 
-When a check fails, its command, exit code and the end of its output go back to the agent as a new message, and it gets another round to fix the cause, up to `verify.rounds` rounds (2 by default, 0 to 5). It is asked not to weaken or delete tests, and to say so when a failure was there before its change. The checks run again after each round.
+When a check fails, its command, exit code and the end of its output go back to the agent as a new message, and it gets another round to fix the cause, up to `verify.rounds` rounds (2 by default, 0 to 5). A round that ends with exactly the same failure as the round before (same commands, same output) gets no further round, since another one would most likely go the same way. It is asked not to weaken or delete tests, and to say so when a failure was there before its change. The checks run again after each round.
 
 The answer then ends with one line:
 
