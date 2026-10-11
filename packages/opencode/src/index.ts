@@ -105,7 +105,7 @@ const cli = yargs(args)
     process.env.OPENCODE_PID = String(process.pid)
     refuseUnsafeCredential(opts._[0])
     markHeadless(opts._[0])
-    refuseMissingKey(opts)
+    await refuseMissingKey(opts)
     // The folder doctor for the start folder: an unsafe, too big or unusable
     // folder is replaced by ~/RafikiCode (rafiki/workspace.ts).
     await Workspace.apply(opts)
