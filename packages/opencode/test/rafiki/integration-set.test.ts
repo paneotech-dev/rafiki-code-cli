@@ -188,7 +188,11 @@ const ENV = ["RAFIKICODE_GATEWAY_URL", "RAFIKICODE_API_KEY", RafikiResilience.WI
 
 beforeAll(async () => {
   model = await createScriptedModel()
-  proxy = await createFaultProxy(model.url, { ignore: (request) => isTitleRequest(request.body) })
+  // Only model requests are counted: the session also reads the key's limits
+  // from the gateway (GET /key/info, src/rafiki/tpm.ts).
+  proxy = await createFaultProxy(model.url, {
+    ignore: (request) => isTitleRequest(request.body) || !request.path.startsWith("/v1/chat/completions"),
+  })
   for (const name of ENV) saved[name] = process.env[name]
   process.env["RAFIKICODE_GATEWAY_URL"] = proxy.url + "/v1"
   process.env["RAFIKICODE_API_KEY"] = "sk-test-stub"
