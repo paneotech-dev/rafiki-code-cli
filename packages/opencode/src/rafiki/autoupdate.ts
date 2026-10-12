@@ -103,6 +103,10 @@ export interface CheckInput {
   latest: () => Promise<string>
   // How this copy was installed: "curl" is the installer script.
   method: () => Promise<string>
+  // The version a package manager offers now (rafiki/channels.ts offered()).
+  // npm, Homebrew and winget can be behind the release: their command would
+  // then find nothing, so the installer line is given instead.
+  offered?: (method: string) => Promise<string | undefined>
   execPath: string
   platform?: NodeJS.Platform
   arch?: string
@@ -329,10 +333,18 @@ export async function check(input: CheckInput): Promise<CheckOutcome> {
   if (method !== "curl") {
     // A pre-release (the "pre" channel) is published only through the
     // installer script, so the package manager's command would not reach it.
-    const command = RafikiUpdate.isPrerelease(latest)
-      ? Brand.release.installCommand(latest, input.platform ?? process.platform)
-      : Brand.upgradeCommand(method)
-    input.notify({ kind: "manual", version: latest, command })
+    const install = Brand.release.installCommand(latest, input.platform ?? process.platform)
+    if (RafikiUpdate.isPrerelease(latest)) {
+      input.notify({ kind: "manual", version: latest, command: install })
+      return "manual"
+    }
+    const offered = Brand.upgradeCommand(method) ? await input.offered?.(method).catch(() => undefined) : undefined
+    if (offered && newer(latest, offered)) {
+      const name = method === "brew" ? "Homebrew" : method === "winget" ? "winget" : "npm"
+      input.notify({ kind: "manual", version: latest, command: install, reason: `${name} has only ${offered} so far` })
+      return "manual"
+    }
+    input.notify({ kind: "manual", version: latest, command: Brand.upgradeCommand(method) })
     return "manual"
   }
   const installDir = path.dirname(input.execPath)
@@ -466,11 +478,12 @@ export function toastFor(notice: Exclude<Notice, { kind: "available" }>) {
 export async function upgrade(): Promise<CheckOutcome> {
   // Imported here, not at the top: applyStaged() is called while src/index.ts
   // is still starting, and must not pull the configuration service in with it.
-  const [{ Config }, { AppRuntime }, { Installation }, { GlobalBus }] = await Promise.all([
+  const [{ Config }, { AppRuntime }, { Installation }, { GlobalBus }, { RafikiChannels }] = await Promise.all([
     import("@/config/config"),
     import("@/effect/app-runtime"),
     import("@/installation"),
     import("@/bus/global"),
+    import("./channels"),
   ])
   const config = await AppRuntime.runPromise(Config.Service.use((cfg) => cfg.getGlobal()))
   const emit = (type: string, properties: Record<string, unknown>) =>
@@ -485,6 +498,7 @@ export async function upgrade(): Promise<CheckOutcome> {
     // for a copy that is itself a pre-release.
     latest: () => RafikiUpdate.latestOf(RafikiUpdate.channel()),
     method: () => Installation.method(),
+    offered: (method) => RafikiChannels.offered(method),
     execPath: process.execPath,
     notify(notice) {
       if (notice.kind === "available") {
