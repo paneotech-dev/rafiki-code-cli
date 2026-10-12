@@ -73,11 +73,11 @@ counted with `git diff --numstat -M` against the upstream base.
 
 <!-- upstream-files:start -->
 
-Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 204. Changed lines: 7968 (5035 added, 2933 removed).
+Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 204. Changed lines: 7970 (5037 added, 2933 removed).
 
 | Class | Files | Added | Removed |
 | --- | ---: | ---: | ---: |
-| Source: a call into this fork's modules | 53 | 1245 | 234 |
+| Source: a call into this fork's modules | 53 | 1247 | 234 |
 | Source: product name, file names and wording | 42 | 354 | 209 |
 | Source: behaviour changed in place | 20 | 737 | 244 |
 | Tests of upstream, adapted | 35 | 677 | 179 |
@@ -86,7 +86,7 @@ Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 204. Changed lin
 | Documentation | 23 | 197 | 1182 |
 | Repository tooling and workflows | 6 | 23 | 8 |
 | Editor extension | 13 | 1405 | 210 |
-| Total | 204 | 5035 | 2933 |
+| Total | 204 | 5037 | 2933 |
 
 ### Source: a call into this fork's modules
 
@@ -145,7 +145,7 @@ On a conflict: Take upstream's side of the conflict, then put the call back at t
 | `packages/tui/src/config/keybind.ts` | 7 | 1 | The key that opens the History panel (`recent_open`, `<leader>o`, `feature-plugins/rafiki-history.tsx`). Shift+Tab cycles the permission mode (`permission_mode_cycle`); the previous agent has no key by default. The send now key (`session_send_now`, `<leader>return`). |
 | `packages/tui/src/context/sync.tsx` | 27 | 5 | Auto mode answers for a server that does not apply it, but never for a guarded action or a push (`core/brand/guarded.ts`); passes the permission config to `context/permission.tsx`. A todo update that arrives while a session is read is not replaced by the older list read. |
 | `packages/tui/src/feature-plugins/builtins.ts` | 12 | 0 | Registers the spend plugin (`feature-plugins/rafiki-cost.tsx`), the History plugin (`feature-plugins/rafiki-history.tsx`) and the GitHub setup (`feature-plugins/rafiki-github.tsx`). Registers the project description (`feature-plugins/rafiki-about.tsx`) and Agents (`feature-plugins/rafiki-agents.tsx`). |
-| `packages/tui/src/feature-plugins/sidebar/todo.tsx` | 19 | 3 | Placed under the project description and Agents, and shows the running subagent's list (`feature-plugins/rafiki-agents.tsx`). |
+| `packages/tui/src/feature-plugins/sidebar/todo.tsx` | 21 | 3 | Placed under the project description and Agents, and shows the running subagent's list (`feature-plugins/rafiki-agents.tsx`). |
 | `packages/tui/src/routes/session/subagent-footer.tsx` | 6 | 14 | The context figure is what the last request sent (`core/brand/context.ts`); the amount from the model price table is not shown. |
 
 ### Source: product name, file names and wording

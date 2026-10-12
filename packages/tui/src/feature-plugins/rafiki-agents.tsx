@@ -11,6 +11,7 @@
 // child session, which the event stream keeps current.
 import type { TuiPlugin, TuiPluginApi } from "@opencode-ai/plugin/tui"
 import { createMemo, createSignal, For, onCleanup, Show } from "solid-js"
+import { useSync } from "../context/sync"
 import { Locale } from "../util/locale"
 import type { BuiltinTuiPlugin } from "./builtins"
 
@@ -64,10 +65,17 @@ export interface Source {
   parts(messageID: string): readonly PartLike[]
   todo(sessionID: string): readonly TodoLike[]
   busy(sessionID: string): boolean
+  // The child sessions of a conversation, for task parts that do not name theirs.
+  children?(sessionID: string): readonly { id: string; title: string; time: { created: number } }[]
 }
 
-export function source(api: Pick<TuiPluginApi, "state">): Source {
+export function source(
+  api: Pick<TuiPluginApi, "state">,
+  sessions?: () => readonly { id: string; parentID?: string; title: string; time: { created: number } }[],
+): Source {
   return {
+    children: (sessionID) =>
+      (sessions?.() ?? []).filter((item) => item.parentID === sessionID).toSorted((a, b) => a.time.created - b.time.created),
     messages: (sessionID) => api.state.session.messages(sessionID),
     parts: (messageID) => api.state.part(messageID) as readonly PartLike[],
     todo: (sessionID) => api.state.session.todo(sessionID),
@@ -84,13 +92,23 @@ function text(value: unknown) {
 
 // The subagents started from a conversation, oldest first.
 export function list(from: Source, sessionID: string): Agent[] {
+  const children = [...(from.children?.(sessionID) ?? [])]
+  const used = new Set<string>()
   return from.messages(sessionID).flatMap((message) => {
     if (message.role !== "assistant") return []
     return from.parts(message.id).flatMap((part): Agent[] => {
       if (part.type !== "tool" || part.tool !== "task" || !part.state) return []
       const state = part.state
       const metadata = state.metadata ?? {}
-      const child = text(metadata["sessionId"])
+      const title = text(state.title) ?? text(state.input?.["description"]) ?? "Subagent"
+      const agent = text(state.input?.["subagent_type"])
+      // The part names its child session once the tool reports it; until
+      // then (and for parts stored without it) the child session is found by
+      // its title, "<description> (@<agent> subagent)", oldest unused first.
+      const child =
+        text(metadata["sessionId"]) ??
+        children.find((item) => !used.has(item.id) && item.title.startsWith(`${title} (@${agent ?? ""}`))?.id
+      if (child) used.add(child)
       const status = ((): Status => {
         if (state.status === "error") return metadata["interrupted"] === true ? "stopped" : "failed"
         // A background run returns at once; its child session says whether it still works.
@@ -101,8 +119,8 @@ export function list(from: Source, sessionID: string): Agent[] {
         {
           callID: part.callID ?? `${message.id}:${child ?? ""}`,
           sessionID: child,
-          title: text(state.title) ?? text(state.input?.["description"]) ?? "Subagent",
-          agent: text(state.input?.["subagent_type"]),
+          title,
+          agent,
           status,
           start: state.time?.start ?? message.time.created,
           end: status === "running" ? undefined : state.time?.end,
@@ -167,7 +185,8 @@ export function detail(agent: Agent, value: Progress | undefined, now: number) {
 
 function View(props: { api: TuiPluginApi; session_id: string }) {
   const theme = () => props.api.theme.current
-  const from = source(props.api)
+  const sync = useSync()
+  const from = source(props.api, () => sync.data.session)
   const all = createMemo(() => list(from, props.session_id))
   // Running first, then the latest finished ones.
   const shown = createMemo(() => {

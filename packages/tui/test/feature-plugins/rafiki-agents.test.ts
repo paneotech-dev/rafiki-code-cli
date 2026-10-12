@@ -99,3 +99,16 @@ test("a conversation stored by 0.1.9 loads: old task parts list, nothing throws"
     "general · stopped · 1m 38s",
   ])
 })
+
+test("a task part that does not name its child session finds it by title", () => {
+  const from: Agents.Source = {
+    ...source({
+      messages: { parent: [{ id: "m1", role: "assistant", time: { created: 1 } }], child: [{ id: "c1", role: "assistant", time: { created: 2, completed: 3 } }] },
+      parts: { m1: [task("running")] },
+    }),
+    children: () => [{ id: "child", title: "Agent running (@explore subagent)", time: { created: 2 } }],
+  }
+  const item = Agents.list(from, "parent")[0]
+  expect(item.sessionID).toBe("child")
+  expect(Agents.progress(from, item)).toEqual({ kind: "steps", steps: 1, current: undefined })
+})
