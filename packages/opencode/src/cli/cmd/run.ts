@@ -26,6 +26,7 @@ import { Filesystem } from "@/util/filesystem"
 import { createOpencodeClient, type OpencodeClient, type ToolPart } from "@opencode-ai/sdk/v2"
 import { FormatError, FormatUnknownError } from "../error"
 import * as RafikiGateway from "@/rafiki/gateway-errors"
+import * as RafikiTpm from "@/rafiki/tpm"
 import * as RafikiPermission from "@/rafiki/permission-hint"
 import * as Publish from "@opencode-ai/core/brand/publish"
 import * as PermissionMode from "@opencode-ai/core/brand/permission-mode"
@@ -878,12 +879,15 @@ export const RunCommand = effectCmd({
             }
 
             // A turn that spent its whole output budget reasoning is tried
-            // again once (rafiki/reasoning.ts); one line says so.
+            // again once (rafiki/reasoning.ts), and a session compacted to stay
+            // under the key's tokens per minute limit (rafiki/tpm.ts); one line
+            // says so.
             if (
               event.type === "session.status" &&
               event.properties.sessionID === sessionID &&
               event.properties.status.type === "retry" &&
-              RafikiReasoning.isRetryLine(event.properties.status.message)
+              (RafikiReasoning.isRetryLine(event.properties.status.message) ||
+                RafikiTpm.isNotice(event.properties.status.message))
             ) {
               const line = event.properties.status.message
               if (toggles.get(line) === true) continue

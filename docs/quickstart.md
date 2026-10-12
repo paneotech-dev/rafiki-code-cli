@@ -127,13 +127,14 @@ In a shared room or on a recorded screen, load the key without showing it: `read
 
 `RAFIKICODE_API_KEY` takes precedence over a stored sign in. While it is set, `rafikicode login` stops with exit code 2 and says the session already uses a key.
 
-`doctor` prints one line per check. The lines that matter for running tasks are `credential`, `gateway`, `key` and `tiers`, for example:
+`doctor` prints one line per check. The lines that matter for running tasks are `credential`, `gateway`, `key`, `tiers` and `limits`, for example:
 
 ```text
 ok    credential  RAFIKICODE_API_KEY from the environment
 ok    gateway     https://gateway.rafikiai.io answered in 181 ms
 ok    key         key rafikicode-..., spent 0.0769 USD of 2.5 USD budget, expires 2026-10-13T12:34:43.455000+00:00
 ok    tiers       rafiki-fast, rafiki-pro, rafiki-max
+ok    limits      1,000 requests per minute, 2,000,000 tokens per minute
 ```
 
 The other lines check things that are not about the key: your configuration file and the project configuration of the directory you are in, whether the workspace is trusted, which copy of `rafikicode` your shell resolves the name to, and the installed version. Every line is one of `ok`, `WARN` with a fix hint, `FAIL` with a fix hint, or `skip`, and `doctor` exits 0 unless something failed. The full list is in [Headless and CI](./headless-and-ci.md#checking-a-machine-with-doctor).

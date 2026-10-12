@@ -4,6 +4,7 @@ import { iife } from "@/util/iife"
 import type { ProviderV2 } from "@opencode-ai/core/provider"
 import { isContextOverflow } from "@opencode-ai/llm"
 import * as RafikiGateway from "@/rafiki/gateway-errors"
+import * as RafikiTpm from "@/rafiki/tpm"
 
 export class HeaderTimeoutError extends Error {
   public override readonly name = "ProviderHeaderTimeoutError"
@@ -177,6 +178,18 @@ export function parseAPICallError(input: { providerID: ProviderV2.ID; error: API
     return {
       type: "context_overflow",
       message: m,
+      responseBody: input.error.responseBody,
+    }
+  }
+
+  // A request larger than the key's tokens per minute limit is refused on
+  // every retry: compacting is the cure, as for a context overflow (rafiki/tpm.ts).
+  const tpm = RafikiGateway.isRafikiProvider(input.providerID) ? RafikiTpm.oversized(input.error) : undefined
+  if (tpm !== undefined) {
+    RafikiTpm.learn(tpm)
+    return {
+      type: "context_overflow",
+      message: RafikiTpm.overflowMessage(tpm),
       responseBody: input.error.responseBody,
     }
   }

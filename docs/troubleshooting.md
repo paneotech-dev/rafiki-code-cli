@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Each entry gives the message or symptom, the cause, and what to do. The messages quoted here are the ones the current release prints. Start with `rafikicode doctor`: it checks your configuration file, the project configuration this directory would load, whether the workspace is trusted, the credential, the gateway, the key's budget, the tiers, the Rafiki AI console, the copy of `rafikicode` your shell resolves the name to, and the installed version, one line each with a fix hint (details in [Headless and CI](./headless-and-ci.md#checking-a-machine-with-doctor)). Add `--print-logs --log-level DEBUG` to any command to see what it did.
+Each entry gives the message or symptom, the cause, and what to do. The messages quoted here are the ones the current release prints. Start with `rafikicode doctor`: it checks your configuration file, the project configuration this directory would load, whether the workspace is trusted, the credential, the gateway, the key's budget, the tiers, the key's per minute limits, the Rafiki AI console, the copy of `rafikicode` your shell resolves the name to, and the installed version, one line each with a fix hint (details in [Headless and CI](./headless-and-ci.md#checking-a-machine-with-doctor)). Add `--print-logs --log-level DEBUG` to any command to see what it did.
 
 ## Installation
 
@@ -167,6 +167,10 @@ Sign in with `rafikicode login`, or set `RAFIKICODE_API_KEY`, and check that `ra
 **`No models available: not signed in.`** Printed by `rafikicode models rafiki` when no credential is present. Sign in or set the key, then run the command again.
 
 **Budget exceeded.** The key's budget or the credits in your Rafiki AI account are spent. The request was refused and not charged, and `run` exits 3. Add credits in the Rafiki AI console, raise the key's budget on the key page, or use a different key. The `key` line of `rafikicode doctor` shows spend and budget.
+
+**`Too many requests. Try again in N seconds.`** The key sent more requests or more tokens in the last minute than the gateway allows it. The request is sent again after a wait, as the line says. The `limits` line of `rafikicode doctor` shows the key's requests per minute and tokens per minute.
+
+**`Compacting the session first: ...`.** A long session had grown so large that its next request would come near the key's tokens per minute limit, or the gateway refused a request larger than that limit. A request that large is refused however long it waits, so the session is compacted (summarised) first and the request is sent once more. Nothing needs doing. If the request is still too large after compacting, the task stops with `This request is larger than this key's limit of N tokens per minute, even after compacting the session`: ask for a higher limit on the key in the Rafiki AI console, or start a new session.
 
 **A tier is refused with an access error.** The key was created for fewer tiers than you asked for (`run` exits 2). Check the `tiers` line of `rafikicode doctor` and pick an allowed tier, or create a key with the tiers you need.
 

@@ -118,6 +118,10 @@ export interface KeyInfo {
   maxBudget: number | null
   // The models the key may use; empty when the gateway lists none (every model).
   models: string[]
+  // Tokens and requests per minute the gateway lets the key use; absent when
+  // the key has no such limit or the gateway does not say.
+  tpmLimit?: number
+  rpmLimit?: number
 }
 
 export type KeyInfoResult =
@@ -138,12 +142,56 @@ export function parseKeyInfo(body: unknown): KeyInfo | undefined {
     spend?: unknown
     max_budget?: unknown
     models?: unknown
+    tpm_limit?: unknown
+    rpm_limit?: unknown
   }
   const spend = money(info.spend ?? 0)
   if (spend === undefined) return undefined
   const cap = info.max_budget == null ? null : money(info.max_budget)
   const models = Array.isArray(info.models) ? info.models.filter((item): item is string => typeof item === "string") : []
-  return { spend, maxBudget: cap ?? null, models }
+  const out: KeyInfo = { spend, maxBudget: cap ?? null, models }
+  const tpm = perMinute(info.tpm_limit)
+  const rpm = perMinute(info.rpm_limit)
+  if (tpm !== undefined) out.tpmLimit = tpm
+  if (rpm !== undefined) out.rpmLimit = rpm
+  return out
+}
+
+const perMinute = (value: unknown) => (typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined)
+
+// The last good answer of keyInfo in this process, whoever asked: the spend
+// figures and the per minute limits come from the same call.
+let lastGood: (KeyInfoResult & { ok: true }) | undefined
+let lastFailed: KeyInfoResult | undefined
+let inflight: Promise<KeyInfoResult> | undefined
+
+// keyInfo, answered from the last good reading when it is younger than
+// maxAgeMs; concurrent callers share one request, and a failed reading is not
+// asked again for a minute, so a gateway that cannot answer slows nothing.
+export async function cachedKeyInfo(
+  input: { maxAgeMs?: number; fetch?: Fetch; timeoutMs?: number; now?: () => number } = {},
+): Promise<KeyInfoResult> {
+  const now = input.now ?? Date.now
+  if (lastGood && now() - lastGood.at < (input.maxAgeMs ?? 5 * 60_000)) return lastGood
+  if (lastFailed && now() - lastFailed.at < 60_000) return lastGood ?? lastFailed
+  if (!inflight) {
+    inflight = keyInfo({ fetch: input.fetch, timeoutMs: input.timeoutMs, now })
+      .then((result) => {
+        lastFailed = result.ok ? undefined : result
+        return result.ok ? result : (lastGood ?? result)
+      })
+      .finally(() => {
+        inflight = undefined
+      })
+  }
+  return inflight
+}
+
+// For tests: forget the last reading.
+export function resetKeyInfoCache() {
+  lastGood = undefined
+  lastFailed = undefined
+  inflight = undefined
 }
 
 export async function keyInfo(
@@ -161,7 +209,11 @@ export async function keyInfo(
     })
     if (!response.ok) return { ok: false, status: response.status, at: now() }
     const info = parseKeyInfo(await response.json())
-    return info ? { ok: true, info, at: now() } : { ok: false, status: response.status, at: now() }
+    if (!info) return { ok: false, status: response.status, at: now() }
+    const result = { ok: true as const, info, at: now() }
+    // A reading of another key (a test, a source passed in) is not this process's key.
+    if (!input.source) lastGood = result
+    return result
   } catch {
     return { ok: false, at: now() }
   }
