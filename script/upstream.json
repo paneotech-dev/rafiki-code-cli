@@ -335,7 +335,7 @@
     {
       "path": "packages/opencode/src/cli/cmd/upgrade.ts",
       "class": "hook",
-      "why": "The `update` alias, the method choices this product supports, `--pre` and the update channel of `rafiki/update.ts`, and the refusals and clean up from `rafiki/update.ts` and `rafiki/autoupdate.ts`."
+      "why": "The `update` alias, the method choices this product supports, `--pre` and the update channel of `rafiki/update.ts`, and the refusals and clean up from `rafiki/update.ts` and `rafiki/autoupdate.ts`. The version npm, Homebrew or winget offers, the `--version` check after an upgrade and the copy a new shell runs come from `rafiki/channels.ts`."
     },
     {
       "path": "packages/opencode/src/cli/cmd/web.ts",

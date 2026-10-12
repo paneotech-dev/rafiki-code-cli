@@ -73,11 +73,11 @@ counted with `git diff --numstat -M` against the upstream base.
 
 <!-- upstream-files:start -->
 
-Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 201. Changed lines: 7656 (4747 added, 2909 removed).
+Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 201. Changed lines: 7798 (4888 added, 2910 removed).
 
 | Class | Files | Added | Removed |
 | --- | ---: | ---: | ---: |
-| Source: a call into this fork's modules | 51 | 1048 | 224 |
+| Source: a call into this fork's modules | 51 | 1189 | 225 |
 | Source: product name, file names and wording | 42 | 294 | 196 |
 | Source: behaviour changed in place | 19 | 706 | 243 |
 | Tests of upstream, adapted | 35 | 677 | 179 |
@@ -86,7 +86,7 @@ Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 201. Changed lin
 | Documentation | 23 | 197 | 1182 |
 | Repository tooling and workflows | 6 | 23 | 8 |
 | Editor extension | 13 | 1405 | 210 |
-| Total | 201 | 4747 | 2909 |
+| Total | 201 | 4888 | 2910 |
 
 ### Source: a call into this fork's modules
 
@@ -111,7 +111,7 @@ On a conflict: Take upstream's side of the conflict, then put the call back at t
 | `packages/opencode/src/cli/cmd/run.ts` | 210 | 15 | Exit codes and messages for gateway errors, a missing key and rejected permissions, the attach check, the cost line, the `--resume` alias and server file credentials, each a call into `src/rafiki/`; an answer on another tier is announced through `rafiki/served.ts`, and a run on Rafiki Max is checked against the key first (`rafiki/tier-check.ts`). A command that publishes code is refused unless the run allows it (`--allow-push`, `RAFIKICODE_ALLOW_PUSH`, a `publish` permission in config), `--auto` or not (`core/brand/publish.ts`). A turn tried again after it spent its output budget reasoning is announced in one line (`rafiki/reasoning.ts`), and SIGTERM or SIGINT stop and save the session before exiting 143 or 130 (`rafiki/run-signal.ts`). The checks after a change are reported on the `Task:` line, in a `verify` JSON event and with exit code 8 when they still fail (`rafiki/verify.ts`). `--auto` is auto mode (`core/brand/permission-mode.ts`): a guarded action is refused with the reason and how to allow it. |
 | `packages/opencode/src/cli/cmd/run/variant.shared.ts` | 3 | 1 | The provider name is not repeated after a model name that starts with it (`Brand.provider.label`). |
 | `packages/opencode/src/cli/cmd/serve.ts` | 7 | 6 | The server password is made and stored by `rafiki/server-file.ts`; text names this product. |
-| `packages/opencode/src/cli/cmd/upgrade.ts` | 116 | 9 | The `update` alias, the method choices this product supports, `--pre` and the update channel of `rafiki/update.ts`, and the refusals and clean up from `rafiki/update.ts` and `rafiki/autoupdate.ts`. |
+| `packages/opencode/src/cli/cmd/upgrade.ts` | 257 | 10 | The `update` alias, the method choices this product supports, `--pre` and the update channel of `rafiki/update.ts`, and the refusals and clean up from `rafiki/update.ts` and `rafiki/autoupdate.ts`. The version npm, Homebrew or winget offers, the `--version` check after an upgrade and the copy a new shell runs come from `rafiki/channels.ts`. |
 | `packages/opencode/src/cli/cmd/web.ts` | 6 | 5 | The server password is made and stored by `rafiki/server-file.ts`; text names this product. |
 | `packages/opencode/src/cli/tui/worker.ts` | 15 | 1 | The update check is `rafiki/autoupdate.ts`; trust warnings are sent as events (`rafiki/notice.ts`). The server follows the permission mode picked in the interface (`core/brand/permission-mode.ts`). |
 | `packages/opencode/src/config/config.ts` | 46 | 40 | File names and the schema address come from the brand module; substitution limits, workspace trust, the provider scope and redacted secrets are calls into `brand/guard.ts`, `brand/trust.ts` and `brand/serve.ts`. |

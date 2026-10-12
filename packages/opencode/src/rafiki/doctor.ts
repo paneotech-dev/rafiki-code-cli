@@ -15,6 +15,7 @@ import * as Contract from "./contract"
 import * as WindowsConsole from "./windows-console"
 import * as Folders from "./folders"
 import * as Workspace from "./workspace"
+import { RafikiChannels } from "./channels"
 
 // warn: worth knowing, but it does not stop runs and does not fail doctor.
 export type Status = "ok" | "warn" | "fail" | "skip"
@@ -52,6 +53,9 @@ export interface Options {
   cwd?: string
   // What the shell resolves the command to; the real `which` by default.
   which?: (command: string) => string | null
+  // What a new terminal's shell resolves the command to (rafiki/channels.ts
+  // newShell). Real by default unless `which` is stubbed.
+  newShell?: () => Promise<string | null>
   // Schema validation for config files, loaded from the config decoder by
   // default (loadValidate). Injected by the tests.
   validate?: Validate
@@ -818,10 +822,45 @@ export function checkPath(resolved: string | null, execPath: string, channel: st
       PATH_LAUNCHER,
     )
   }
+  const { how, remove } = RafikiChannels.removal(resolved)
   return fail(
     "path",
     `${Brand.name} resolves to ${resolved}${through}, but this process runs from ${execPath}`,
-    `Your shell finds another copy first. Remove ${resolved}, or put ${path.dirname(execPath)} earlier on PATH, then open a new terminal and run ${Brand.name} doctor again.`,
+    `Your shell finds another copy first (${how}). Remove ${resolved} with: ${remove}; or put ${path.dirname(execPath)} earlier on PATH. Then open a new terminal and run ${Brand.name} doctor again.`,
+  )
+}
+
+// What a new terminal runs, which can differ from this one: a PATH line added
+// to a startup file, or an older copy that a new shell finds first. The same
+// check `update` makes after it installs (rafiki/channels.ts newShell). Only
+// asked when this terminal's PATH already reaches this binary, since the path
+// line covers the other case.
+export function checkNewShell(found: string | null, execPath: string, channel: string, version?: string, running?: string): Line {
+  const own = path.basename(execPath).replace(/\.exe$/i, "") === Brand.name
+  if (!own || channel === "local") return skip("new shell", `not applicable, this process runs from ${execPath}`)
+  if (!found) {
+    return warn(
+      "new shell",
+      `a new terminal does not find ${Brand.name} on PATH, this process runs from ${execPath}`,
+      `Put ${path.dirname(execPath)} on PATH: ${RafikiChannels.pathFix(path.dirname(execPath))}`,
+      "This terminal finds it, a new one would not.",
+    )
+  }
+  if (RafikiChannels.sameFile(found, execPath)) return ok("new shell", `a new terminal runs ${found}, this binary`)
+  // A launcher is normal for some package managers, unless it starts another version.
+  if (looksLikeLauncher(realPath(found)) && !(version && running && version !== running)) {
+    return warn(
+      "new shell",
+      `a new terminal runs ${found}, a launcher script, not ${execPath}`,
+      `Check that it starts this version: run ${Brand.name} --version in a new terminal.`,
+      PATH_LAUNCHER,
+    )
+  }
+  const { how, remove } = RafikiChannels.removal(found)
+  return fail(
+    "new shell",
+    `a new terminal runs ${found} (${how}${version ? `, version ${version}` : ""}), not ${execPath}`,
+    `Remove the other copy: ${remove}; or put ${path.dirname(execPath)} first on PATH: ${RafikiChannels.pathFix(path.dirname(execPath))}`,
   )
 }
 
@@ -913,7 +952,16 @@ export async function run(options: Options = {}): Promise<Report> {
   // such as ripgrep live. This binary is never installed there, so what it finds
   // is what the shell's PATH finds.
   const resolve = options.which ?? ((command: string) => which(command, env as NodeJS.ProcessEnv))
-  lines.push(checkPath(resolve(Brand.name), execPath, channel))
+  const pathLine = checkPath(resolve(Brand.name), execPath, channel)
+  lines.push(pathLine)
+  // A new shell is started only by the real check; tests that stub `which`
+  // and give no newShell leave the line out.
+  const newShell = options.newShell ?? (options.which ? undefined : () => RafikiChannels.newShell({ env: env as NodeJS.ProcessEnv }))
+  if (newShell && pathLine.status === "ok") {
+    const found = await newShell().catch(() => null)
+    const other = found && !RafikiChannels.sameFile(found, execPath) ? await RafikiChannels.versionOf(found).catch(() => undefined) : undefined
+    lines.push(checkNewShell(found, execPath, channel, other, options.version ?? InstallationVersion))
+  }
   lines.push(checkVersion(options.version ?? InstallationVersion, channel, execPath))
   // Only where the question arises, so the report elsewhere is unchanged.
   const verdict = (options.windowsConsole ?? (() => WindowsConsole.check(env)))()

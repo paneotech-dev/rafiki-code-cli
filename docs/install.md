@@ -85,7 +85,27 @@ A copy installed this way updates itself, see [Updates](#updates).
 
 ### npm, Homebrew and winget may lag behind
 
-The installer script and the release page always have the latest release. npm, Homebrew and winget receive a release only when the release workflow can publish to them, and each needs a token of its own for that. Until those tokens are set, npm, Homebrew and winget may lag behind: they keep offering the version they last received, and `rafikicode update` on a copy installed through them stays on that version. When the daily check names a newer version than your package manager offers, or the update ends and `rafikicode --version` still shows the old version, your package manager has not received the release yet. The release notes on the release page say, under "Package managers", which channels each release reached. To get the latest release now, install it with the installer script.
+The installer script and the release page always have the latest release. npm, Homebrew and winget receive a release only when the release workflow can publish to them, and each needs a token of its own for that. Until those tokens are set, npm, Homebrew and winget may lag behind: they keep offering the version they last received. The release notes on the release page say, under "Package managers", which channels each release reached.
+
+`rafikicode update` does not assume your package manager has the latest release. It asks it first (`npm view rafikicode version`, `brew info --json=v2 paneotech-dev/tap/rafikicode` after `brew update`, `winget show --id PaneoTech.RafikiCode --exact`) and compares the answer with the latest release on GitHub:
+
+| What your package manager offers | What `rafikicode update` does |
+| --- | --- |
+| the latest release | upgrades through it, as before |
+| something newer than your copy, but not the latest release | upgrades to what it offers, then says which release is newer and gives the installer line for it |
+| nothing newer than your copy | upgrades nothing, says that the package manager has not received the latest release yet, gives the installer line, and exits with code 1 |
+| no answer (`brew` or `winget` failed) | upgrades nothing, says so, gives the installer line, and exits with code 1 |
+
+For example, on a Mac with Homebrew still at 0.1.9:
+
+```text
+Homebrew offers rafikicode 0.1.9, but the newest release is 0.1.11: it has not reached Homebrew yet.
+To install 0.1.11, run: curl -fsSL https://get.rafikiai.io | bash -s -- --version 0.1.11
+```
+
+On Windows the line is the PowerShell one, `& ([scriptblock]::Create((irm https://github.com/paneotech-dev/rafiki-code-cli/releases/latest/download/install.ps1))) -Version 0.1.11`. The installer puts the new copy in `~/.rafikicode/bin` first on your PATH and names the package manager's copy with the command that removes it.
+
+After any upgrade, `rafikicode update` runs `rafikicode --version` on the copy it updated. `Upgrade complete` is printed only when that version changed; when it did not, the update says so, gives the installer line and exits with code 1. The daily check does the same comparison with what your package manager already knows (no `brew update`): when it is behind, the notice gives the installer line instead of a package manager command that would find nothing.
 
 ## npm
 
@@ -129,7 +149,7 @@ A copy installed by the installer script keeps itself up to date:
 
 Only an interactive session downloads an update, so a machine that only ever runs `rafikicode run` stays on the version it was installed with until you update it.
 
-A copy installed by npm, Homebrew or winget is never replaced this way. The daily check shows one notice naming the command of your package manager.
+A copy installed by npm, Homebrew or winget is never replaced this way. The daily check shows one notice naming the command of your package manager, or the installer line when your package manager does not offer the new version yet (see [npm, Homebrew and winget may lag behind](#npm-homebrew-and-winget-may-lag-behind)).
 
 To turn it off, set `autoupdate` in `~/.rafikicode/config.json`:
 
@@ -150,6 +170,20 @@ rafikicode update 0.1.9      # a specific release, pre-release or not
 ```
 
 `rafikicode update` works out how the copy was installed and uses that channel: the installer's own download with its checksum check, or `npm` (`pnpm` or `bun` when the package was installed with one of them), `brew` or `winget`. `--method` names the channel when the detection is wrong, and takes `curl` for the installer's download, `npm`, `pnpm`, `bun`, `brew` or `winget`. Nothing else is a channel of this product, so no other name is accepted.
+
+### An older copy earlier on PATH
+
+An update replaces one file. If another `rafikicode` comes earlier on PATH (an npm or Homebrew install from before, or a copy put in `/usr/local/bin` by hand), every new terminal keeps running that one, at its old version. After installing, `rafikicode update` asks a new shell which file it runs (`command -v rafikicode` in your login shell, or `Get-Command rafikicode` with the PATH a new Windows terminal gets). When that is not the file just updated, it names it, with its version, and gives two ways out:
+
+```text
+A new terminal runs /usr/local/bin/rafikicode (an older copy, version 0.1.9), not /home/me/.rafikicode/bin/rafikicode, which was just updated.
+To remove the other copy: sudo rm '/usr/local/bin/rafikicode'
+Or put /home/me/.rafikicode/bin first on PATH: echo 'export PATH=/home/me/.rafikicode/bin:$PATH' >> ~/.bashrc
+```
+
+The removal command follows the installer's rules: `npm uninstall -g rafikicode` for a copy under `node_modules`, `brew uninstall paneotech-dev/tap/rafikicode` for one under Homebrew, `winget uninstall --id PaneoTech.RafikiCode --exact` for one under WinGet, and `rm` (`Remove-Item` on Windows) for anything else, with `sudo` when its folder is not yours.
+
+`rafikicode doctor` has the same check on its `new shell` line, below the `path` line: `ok` when a new terminal runs the binary doctor runs from, `FAIL` with the other copy, its version and the same commands when it does not, and `WARN` when a new terminal would not find `rafikicode` at all.
 
 ### Update channels
 
