@@ -73,6 +73,9 @@ export function createMockGateway(options = {}) {
     bodies: options.bodies ?? false,
     prices: options.prices ?? MOCK_PRICES,
     usage: options.usage ?? USAGE,
+    // true puts the cost of the request in the usage block (usage.cost, in
+    // USD), the way the gateway does with include_cost_in_streaming_usage.
+    costInUsage: options.costInUsage ?? false,
     // { "rafiki-fast": "rafiki-pro" }: answer a request for the first on the
     // second, the way the gateway does after a fallback (every chunk names it).
     answeredBy: options.answeredBy,
@@ -148,6 +151,10 @@ export function createMockGateway(options = {}) {
     })
   }
 
+  function usageBlock() {
+    return opts.costInUsage ? { ...opts.usage, cost: opts.cost } : opts.usage
+  }
+
   function completion(model, text, empty) {
     return {
       id: "chatcmpl-mock-" + Date.now(),
@@ -159,7 +166,7 @@ export function createMockGateway(options = {}) {
           ? { index: 0, message: { role: "assistant", content: "", reasoning_content: "Planning the answer..." }, finish_reason: "length" }
           : { index: 0, message: { role: "assistant", content: text }, finish_reason: "stop" },
       ],
-      usage: opts.usage,
+      usage: usageBlock(),
     }
   }
 
@@ -184,7 +191,7 @@ export function createMockGateway(options = {}) {
     }
     res.write(
       "data: " +
-        JSON.stringify({ id, object: "chat.completion.chunk", created, model, choices: [], usage: opts.usage }) +
+        JSON.stringify({ id, object: "chat.completion.chunk", created, model, choices: [], usage: usageBlock() }) +
         "\n\n",
     )
     res.write("data: [DONE]\n\n")
@@ -306,7 +313,7 @@ export function createMockGateway(options = {}) {
             created: Math.floor(Date.now() / 1000),
             model,
             choices: [{ index: 0, message: { role: "assistant", content: null, tool_calls: [call] }, finish_reason: "tool_calls" }],
-            usage: opts.usage,
+            usage: usageBlock(),
           }, headers)
         }
         res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive", ...headers })
@@ -316,7 +323,7 @@ export function createMockGateway(options = {}) {
           res.write("data: " + JSON.stringify({ id, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta, finish_reason: finish }] }) + "\n\n")
         send({ role: "assistant", content: null, tool_calls: [{ index: 0, ...call }] }, null)
         send({}, "tool_calls")
-        res.write("data: " + JSON.stringify({ id, object: "chat.completion.chunk", created, model, choices: [], usage: opts.usage }) + "\n\n")
+        res.write("data: " + JSON.stringify({ id, object: "chat.completion.chunk", created, model, choices: [], usage: usageBlock() }) + "\n\n")
         res.write("data: [DONE]\n\n")
         return res.end()
       }

@@ -129,7 +129,14 @@ describe("opencode run (non-interactive subprocess)", () => {
             type: "text",
             part: expect.objectContaining({ type: "text", text: "structured output" }),
           },
-          { type: "step_finish", part: expect.objectContaining({ type: "step-finish" }) },
+          {
+            type: "step_finish",
+            part: expect.objectContaining({ type: "step-finish" }),
+            usage: { input: expect.any(Number), output: expect.any(Number), reasoning: expect.any(Number), cache_read: expect.any(Number), cache_write: expect.any(Number) },
+            // The test provider has no price: no figure, never 0.
+            cost: null,
+            cost_source: "unknown",
+          },
         ])
         expect(result.stdout.endsWith("\n")).toBe(true)
         expect(

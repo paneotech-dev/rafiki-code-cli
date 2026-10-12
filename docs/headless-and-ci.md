@@ -32,7 +32,7 @@ Store the key in the secret store of your CI system, never in the repository. Re
 rafikicode run "update the changelog for release 1.4.0 from the commits since the last tag"
 ```
 
-After the answer, `run` prints one `Task:` line on standard error: the tier of each turn, the requests and tokens, what the key spent during the task by the gateway's count, the key's budget and the credits left (see [What a task costs](./cost.md)). Standard output carries the answer only, and `--format json` prints no such line.
+After the answer, `run` prints one `Task:` line on standard error: the tier of each turn, the requests and tokens, what the key spent during the task by the gateway's count, the key's budget and the credits left (see [What a task costs](./cost.md)). Standard output carries the answer only, and `--format json` prints no such line: it ends with a `task` event instead (see [JSON events](#json-events)).
 
 Flags that matter in automation, all listed by `rafikicode run --help`:
 
@@ -48,6 +48,46 @@ Flags that matter in automation, all listed by `rafikicode run --help`:
 | `-f FILE` | attach a file to the message |
 
 Standard input is read as the message when it is not a terminal, so a script that pipes nothing should redirect `< /dev/null` or pass the message as arguments.
+
+### JSON events
+
+With `--format json`, standard output carries one JSON object per line. Every event has `type`, `timestamp` (milliseconds since the epoch) and `sessionID`. The types are `step_start`, `text`, `reasoning`, `tool_use`, `step_finish`, `verify`, `notice`, `error` and, last, `task`.
+
+Each request to the model ends with a `step_finish` event, which carries its usage and its cost:
+
+```json
+{"type":"step_finish","timestamp":1760270400000,"sessionID":"ses_...","part":{"type":"step-finish","reason":"stop","cost":null,"tokens":{"input":4000,"output":2000,"reasoning":0,"cache":{"read":6000,"write":0}}},"usage":{"input":4000,"output":2000,"reasoning":0,"cache_read":6000,"cache_write":0},"cost":null,"cost_source":"unknown"}
+```
+
+| field | meaning |
+|---|---|
+| `usage.input` | input tokens of the request, without the cached part |
+| `usage.output` | output tokens, without the reasoning tokens |
+| `usage.reasoning` | reasoning tokens |
+| `usage.cache_read` | input tokens read from the provider's cache |
+| `usage.cache_write` | input tokens written to the provider's cache |
+| `cost` | the cost of the request in USD, or `null` when it is not known. Never a made up `0` |
+| `cost_source` | `gateway`: the gateway's own count for this request, sent in the usage block of its answer. `price_list`: a provider other than the Rafiki gateway, priced from its model's price list. `unknown`: no figure, `cost` is `null` |
+
+The Rafiki tiers have no price list in the program, so a request's cost is known only when the gateway puts it in the answer; otherwise it is `null` and `unknown`. `part.cost` follows `cost`. The real total of a task is in the `task` event.
+
+When the task made at least one request on a Rafiki tier, the last event is `task`, with the same figures as the `Task:` line:
+
+```json
+{"type":"task","timestamp":1760270460000,"sessionID":"ses_...","tiers":["fast"],"requests":1,"usage":{"input":4000,"output":2000,"reasoning":0,"cache_read":6000,"cache_write":0},"cost":0.0025,"cost_source":"key_spend","pending":false,"partial":null,"key":{"spend":1.2125,"max_budget":25},"credits":{"usd":12.4}}
+```
+
+| field | meaning |
+|---|---|
+| `tiers` | the tier of each turn, in order (`fast`, `pro`, `max`) |
+| `requests` | requests that reported tokens, subagents included |
+| `usage` | the usage of those requests added up, with the fields of `step_finish` |
+| `cost` | USD charged to the key during the task: its spend read from the gateway (`/key/info`) after the task, less its spend before. `null` when the gateway did not answer. Everything charged to the key in the meantime counts, so another run on the same key adds to it |
+| `cost_source` | `key_spend` when `cost` is the key's spend difference, `unknown` when it is `null` |
+| `pending` | `true` when the gateway had not counted the last requests yet when it was read for the last time: `cost` may be lower than the final figure |
+| `partial` | why the run ended early (`stopped by SIGTERM`, `ended with an error`), or `null` |
+| `key` | the key's spend and budget (`max_budget`, `null` without a cap) after the task, or `null` |
+| `credits` | `{"usd": ...}` for the credits left in the account, `{"not_enforced": true}` for an account whose billing is not enforced, or `null` |
 
 `rafikicode serve --port 4096` starts the HTTP server for editor integrations and long lived automation on the same machine; `rafikicode attach` and `rafikicode run --attach` talk to it. The server can run commands and read files as you, including the key, so it always requires a password. Set one with `RAFIKICODE_SERVER_PASSWORD`. Without one, a server on `127.0.0.1`, `::1` or `localhost` makes a random password and stores it in `~/.rafikicode/servers/<port>.json` (mode 0600, removed when the server exits), and any other address is refused (exit code 2). See [Server files](./configuration.md#server-files). The server uses basic authentication with the user name `rafikicode` (change it with `RAFIKICODE_SERVER_USERNAME`). The upstream names `OPENCODE_SERVER_PASSWORD` and `OPENCODE_SERVER_USERNAME` still work.
 

@@ -179,3 +179,91 @@ describe("rafikicode run against the mock gateway", () => {
     expect(result.all).not.toContain("Task:")
   }, 60_000)
 })
+
+// The JSON events: each step_finish carries the usage of its request and a
+// cost that is the gateway's figure or null, never 0; the task event comes
+// last with the key's spend difference.
+describe("rafikicode run --format json: usage and cost", () => {
+  const events = (stdout: string) =>
+    stdout
+      .split("\n")
+      .filter((line) => line.startsWith("{"))
+      .map((line) => JSON.parse(line))
+  const usage = { input: 4_000, output: 2_000, reasoning: 0, cache_read: 6_000, cache_write: 0 }
+
+  async function spentOnKey() {
+    const keys = await (await fetch(gateway!.url + "/__test/keys")).json()
+    return keys[0].spend as number
+  }
+
+  test("without a cost in the usage block: cost null, cost_source unknown, the task event has the key's spend", async () => {
+    const env = await mocks()
+    const result = await spawnCli(home, ["run", "--format", "json", "say hello"], env)
+    expect(result.exitCode).toBe(0)
+    const list = events(result.stdout)
+    const steps = list.filter((event) => event.type === "step_finish")
+    expect(steps).toHaveLength(1)
+    for (const step of steps) {
+      expect(step.usage).toEqual(usage)
+      expect(step.cost).toBeNull()
+      expect(step.cost_source).toBe("unknown")
+      expect(step.part.cost).toBeNull()
+      expect(step.part.tokens).toEqual(expect.objectContaining({ input: 4_000, output: 2_000 }))
+    }
+    expect(list.map((event) => event.type)).toEqual(["step_start", "text", "step_finish", "task"])
+    const spent = await spentOnKey()
+    expect(spent).toBeGreaterThan(0)
+    expect(list.at(-1)).toEqual({
+      type: "task",
+      timestamp: expect.any(Number),
+      sessionID: expect.any(String),
+      tiers: ["fast"],
+      requests: 1,
+      usage,
+      cost: spent,
+      cost_source: "key_spend",
+      pending: false,
+      partial: null,
+      key: { spend: spent, max_budget: 2.5 },
+      credits: { usd: 12.4 },
+    })
+    expect(result.stdout).not.toContain('"cost":0,')
+  }, 60_000)
+
+  test("with the gateway's cost in the usage block: each step carries it", async () => {
+    const env = await mocks({ gateway: { costInUsage: true } })
+    const result = await spawnCli(home, ["run", "--format", "json", "say hello"], env)
+    expect(result.exitCode).toBe(0)
+    const list = events(result.stdout)
+    const steps = list.filter((event) => event.type === "step_finish")
+    expect(steps).toHaveLength(1)
+    for (const step of steps) {
+      expect(step.usage).toEqual(usage)
+      expect(step.cost).toBe(0.0025)
+      expect(step.cost_source).toBe("gateway")
+      expect(step.part.cost).toBe(0.0025)
+    }
+    const task = list.at(-1)
+    expect(task.type).toBe("task")
+    expect(task.cost).toBe(await spentOnKey())
+    expect(task.cost_source).toBe("key_spend")
+  }, 60_000)
+})
+
+describe("the JSON fields", () => {
+  test("a step without a figure is null and unknown, never 0", () => {
+    expect(RafikiCost.stepCostFields({ cost: 0, providerID: "rafiki" })).toEqual({ cost: null, cost_source: "unknown" })
+    expect(RafikiCost.stepCostFields({ cost: undefined, providerID: "openai" })).toEqual({ cost: null, cost_source: "unknown" })
+    expect(RafikiCost.stepCostFields({ cost: 0.01, providerID: "rafiki" })).toEqual({ cost: 0.01, cost_source: "gateway" })
+    expect(RafikiCost.stepCostFields({ cost: 0.01, providerID: "openai" })).toEqual({ cost: 0.01, cost_source: "price_list" })
+  })
+
+  test("the task event: no reading of the key is a null cost", async () => {
+    const tracker = RafikiCost.tracker({ read: async () => ({ ok: false, status: 401, at: 0 }), balance: async () => undefined })
+    const event = await tracker.event(client([{ id: "a1", parentID: "u1", steps: 2, completed: 1 }]) as never, "root")
+    expect(event).toEqual(
+      expect.objectContaining({ requests: 2, cost: null, cost_source: "unknown", key: null, credits: null }),
+    )
+    expect(event?.usage).toEqual({ input: 8_000, output: 4_000, reasoning: 0, cache_read: 12_000, cache_write: 0 })
+  })
+})

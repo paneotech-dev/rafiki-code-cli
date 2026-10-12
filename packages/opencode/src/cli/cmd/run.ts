@@ -752,8 +752,12 @@ export const RunCommand = effectCmd({
           // on another tier (a gateway fallback) is announced with its own line.
           let asked: string | undefined
           let announced: string | undefined
+          // The provider of each assistant message, for the cost fields of its steps.
+          const providers = new Map<string, string>()
 
           for await (const event of events.stream) {
+            if (event.type === "message.updated" && event.properties.info.role === "assistant")
+              providers.set(event.properties.info.id, event.properties.info.providerID)
             if (event.type === "session.created" && event.properties.info.parentID) {
               if (sessions.has(event.properties.info.parentID)) sessions.add(event.properties.info.id)
             }
@@ -830,7 +834,11 @@ export const RunCommand = effectCmd({
               }
 
               if (part.type === "step-finish") {
-                if (emit("step_finish", { part })) continue
+                // The usage of the request, and its cost: the gateway's figure,
+                // or null with cost_source "unknown", never a made up 0 (rafiki/cost.ts).
+                const cost = RafikiCost.stepCostFields({ cost: part.cost, providerID: providers.get(part.messageID) })
+                if (emit("step_finish", { part: { ...part, cost: cost.cost }, usage: RafikiCost.usageOf(part.tokens), ...cost }))
+                  continue
               }
 
               if (part.type === "text" && part.time?.end) {
@@ -991,9 +999,12 @@ export const RunCommand = effectCmd({
           const cost = RafikiCost.tracker()
           // The Task: line however the run ends: an error or a signal still
           // prints it, from the key's spend, marked partial.
+          // In the JSON format, the task event: the same figures, last on stdout.
           const report = (partial?: string) =>
             args.format === "json"
-              ? Promise.resolve()
+              ? cost.event(client, sessionID, partial).then((task) => {
+                  if (task) emit("task", task)
+                })
               : cost.report(client, sessionID, partial, verified ? RafikiVerify.statusLine(verified.result.status) : undefined)
           // SIGTERM or SIGINT: the turn is stopped and saved, the line is
           // printed, then the run exits with 143 or 130 (rafiki/run-signal.ts).

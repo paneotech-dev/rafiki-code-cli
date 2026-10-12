@@ -6,6 +6,7 @@
 // key's spend at the end less its spend at the start (/key/info), never a
 // price list estimate (core/brand/meter.ts).
 import * as Account from "@opencode-ai/core/brand/account"
+import { Brand } from "@opencode-ai/core/brand/brand"
 import * as Cost from "@opencode-ai/core/brand/cost"
 import * as Meter from "@opencode-ai/core/brand/meter"
 import type { OpencodeClient } from "@opencode-ai/sdk/v2"
@@ -102,6 +103,72 @@ export function line(collected: Collected, state: Meter.State, pending = false, 
   })
 }
 
+// The usage of one request as the JSON output of rafikicode run gives it:
+// plain input (the cached part taken out), output, reasoning, and the cached
+// input read and written.
+export function usageOf(tokens: Partial<Cost.Tokens> | undefined) {
+  const value = Cost.tokens(tokens)
+  return {
+    input: value.input,
+    output: value.output,
+    reasoning: value.reasoning,
+    cache_read: value.cache.read,
+    cache_write: value.cache.write,
+  }
+}
+
+// The cost fields of a step_finish event. A step of the gateway provider
+// costs what the gateway counted, when it put the figure in the usage block
+// (rafiki/served.ts); a step of another provider costs what its price list
+// gives. No figure is null with cost_source "unknown", never 0: the Rafiki
+// tiers have no local price list, and the key's spend in the task event is
+// the real total.
+export function stepCostFields(input: { cost: number | undefined; providerID: string | undefined }) {
+  const cost = typeof input.cost === "number" && Number.isFinite(input.cost) && input.cost > 0 ? input.cost : undefined
+  if (cost === undefined) return { cost: null, cost_source: "unknown" as const }
+  return { cost, cost_source: input.providerID === undefined || input.providerID === Brand.provider.id ? ("gateway" as const) : ("price_list" as const) }
+}
+
+export interface Measured {
+  collected: Collected
+  state: Meter.State
+  pending: boolean
+  partial?: string
+}
+
+// The task event of the JSON output, from the same figures as the line:
+// the tiers, the requests and their usage, and the key's spend difference
+// read from the gateway before and after the task (null when it could not be
+// read). Undefined when the task made no call on a Rafiki tier, as the line.
+export function taskEvent(measured: Measured) {
+  const { collected, state } = measured
+  const summary = Cost.summarize(collected.calls)
+  if (summary.path.length === 0) return undefined
+  const steps = collected.steps.filter((step) => Cost.total(step) > 0)
+  const usage = steps.map((step) => usageOf(step)).reduce(
+    (sum, step) => ({
+      input: sum.input + step.input,
+      output: sum.output + step.output,
+      reasoning: sum.reasoning + step.reasoning,
+      cache_read: sum.cache_read + step.cache_read,
+      cache_write: sum.cache_write + step.cache_write,
+    }),
+    usageOf(undefined),
+  )
+  const spend = Meter.sessionSpend(state)
+  return {
+    tiers: summary.path,
+    requests: steps.length,
+    usage,
+    cost: spend ?? null,
+    cost_source: spend === undefined ? ("unknown" as const) : ("key_spend" as const),
+    pending: measured.pending,
+    partial: measured.partial ?? null,
+    key: state.last ? { spend: state.last.spend, max_budget: state.last.maxBudget } : null,
+    credits: Meter.notEnforced(state) ? { not_enforced: true } : state.balance ? { usd: state.balance.usd } : null,
+  }
+}
+
 type Read = () => Promise<Account.KeyInfoResult>
 type Balance = () => Promise<number | Account.Wallet | undefined>
 
@@ -138,11 +205,15 @@ export function tracker(
       return text && verify ? `${text} · ${verify}` : text
     },
     async measure(client: OpencodeClient, sessionID: string, partial?: string) {
+      const measured = await this.measured(client, sessionID, partial)
+      return line(measured.collected, measured.state, measured.pending, measured.partial)
+    },
+    async measured(client: OpencodeClient, sessionID: string, partial?: string): Promise<Measured> {
       const collected = await collect(client, sessionID)
       const answered = collected.steps.some((step) => Cost.total(step) > 0)
       const [first, credits] = await Promise.all([start, balance().catch(() => undefined)])
       let state = Meter.update(Meter.empty(), { balance: credits, at: now() })
-      if (!first.ok) return line(collected, { ...state, stale: true }, false, partial)
+      if (!first.ok) return { collected, state: { ...state, stale: true }, pending: false, partial }
       state = Meter.update(state, { key: Meter.reading(first.info, first.at), at: first.at })
       let pending = false
       for (let attempt = 0; ; attempt++) {
@@ -159,7 +230,7 @@ export function tracker(
         }
         await new Promise((resolve) => setTimeout(resolve, options.retryMs ?? 1500))
       }
-      return line(collected, state, pending, partial)
+      return { collected, state, pending, partial }
     },
     // Prints the line once per run, however the run ends.
     async report(client: OpencodeClient, sessionID: string, partial?: string, verify?: string) {
@@ -170,6 +241,16 @@ export function tracker(
         if (text) UI.println(UI.Style.TEXT_DIM + text + UI.Style.TEXT_NORMAL)
       } catch {
         // The answer was already printed; a missing line is not an error.
+      }
+    },
+    // The JSON output's counterpart of report(): the task event, once per run.
+    async event(client: OpencodeClient, sessionID: string, partial?: string) {
+      if (reported) return undefined
+      reported = true
+      try {
+        return taskEvent(await this.measured(client, sessionID, partial))
+      } catch {
+        return undefined
       }
     },
   }
