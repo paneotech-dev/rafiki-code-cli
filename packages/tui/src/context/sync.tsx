@@ -149,7 +149,13 @@ export const {
 
     const fullSyncedSessions = new Set<string>()
     const syncingSessions = new Map<string, Promise<void>>()
-    const hydratingSessions = new Map<string, { messages: Set<string>; parts: Set<string> }>()
+    // What arrived live while a session was being read: the read answer is
+    // older for these and must not overwrite them. The todo list is one of
+    // them: the session read waits for its slowest request (the diff of a
+    // large worktree can take seconds), and a todo update in that time was
+    // replaced by the list as it was when the read started, which then stayed
+    // on screen until the next update.
+    const hydratingSessions = new Map<string, { messages: Set<string>; parts: Set<string>; todo?: boolean }>()
     const touchMessage = (sessionID: string, messageID: string) => {
       hydratingSessions.get(sessionID)?.messages.add(messageID)
     }
@@ -271,9 +277,12 @@ export const {
           break
         }
 
-        case "todo.updated":
+        case "todo.updated": {
+          const tracker = hydratingSessions.get(event.properties.sessionID)
+          if (tracker) tracker.todo = true
           setStore("todo", event.properties.sessionID, event.properties.todos)
           break
+        }
 
         case "session.diff":
           setStore("session_diff", event.properties.sessionID, event.properties.diff)
@@ -605,7 +614,10 @@ export const {
           if (fullSyncedSessions.has(sessionID)) return
           const syncing = syncingSessions.get(sessionID)
           if (syncing) return syncing
-          const tracker = { messages: new Set<string>(), parts: new Set<string>() }
+          const tracker: { messages: Set<string>; parts: Set<string>; todo?: boolean } = {
+            messages: new Set<string>(),
+            parts: new Set<string>(),
+          }
           hydratingSessions.set(sessionID, tracker)
           const task = (async () => {
             const [session, messages, todo, diff] = await Promise.all([
@@ -619,7 +631,7 @@ export const {
                 const match = search(draft.session, sessionID, (s) => s.id)
                 if (match.found) draft.session[match.index] = session.data!
                 if (!match.found) draft.session.splice(match.index, 0, session.data!)
-                draft.todo[sessionID] = todo.data ?? []
+                if (!tracker.todo) draft.todo[sessionID] = todo.data ?? []
                 const currentMessages = draft.message[sessionID] ?? []
                 const infos = (messages.data ?? []).flatMap((message) => {
                   if (!tracker.messages.has(message.info.id)) return [message.info]

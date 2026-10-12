@@ -1,0 +1,26 @@
+{
+  "note": "A conversation as stored by rafikicode 0.1.9: a task part from before the task tool recorded the child session, one with it, and a todo list.",
+  "session": { "id": "ses_old_parent", "title": "Old conversation", "time": { "created": 1759300000000, "updated": 1759300600000 } },
+  "messages": [
+    { "id": "msg_old_1", "role": "user", "time": { "created": 1759300000000 } },
+    { "id": "msg_old_2", "role": "assistant", "time": { "created": 1759300001000, "completed": 1759300300000 } },
+    { "id": "msg_old_3", "role": "user", "time": { "created": 1759300400000 } },
+    { "id": "msg_old_4", "role": "assistant", "time": { "created": 1759300401000, "completed": 1759300600000 } }
+  ],
+  "parts": {
+    "msg_old_2": [
+      { "id": "prt_old_1", "type": "step-start" },
+      { "id": "prt_old_2", "type": "tool", "tool": "task", "callID": "call_old_1", "state": { "status": "completed", "input": { "description": "Read the auth code", "prompt": "read it", "subagent_type": "explore" }, "title": "Read the auth code", "output": "done", "metadata": {}, "time": { "start": 1759300002000, "end": 1759300062000 } } }
+    ],
+    "msg_old_4": [
+      { "id": "prt_old_3", "type": "tool", "tool": "task", "callID": "call_old_2", "state": { "status": "error", "input": { "description": "Fix the tests", "subagent_type": "general" }, "error": "Tool execution aborted", "metadata": { "sessionId": "ses_old_child", "interrupted": true }, "time": { "start": 1759300402000, "end": 1759300500000 } } },
+      { "id": "prt_old_4", "type": "text", "text": "Stopped." }
+    ]
+  },
+  "todo": {
+    "ses_old_parent": [
+      { "content": "Read the code", "status": "completed", "priority": "high" },
+      { "content": "Fix the tests", "status": "in_progress", "priority": "high" }
+    ]
+  }
+}

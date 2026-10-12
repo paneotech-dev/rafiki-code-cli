@@ -73,20 +73,20 @@ counted with `git diff --numstat -M` against the upstream base.
 
 <!-- upstream-files:start -->
 
-Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 201. Changed lines: 7625 (4718 added, 2907 removed).
+Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 204. Changed lines: 7795 (4865 added, 2930 removed).
 
 | Class | Files | Added | Removed |
 | --- | ---: | ---: | ---: |
-| Source: a call into this fork's modules | 51 | 1027 | 223 |
-| Source: product name, file names and wording | 42 | 294 | 196 |
-| Source: behaviour changed in place | 19 | 706 | 243 |
+| Source: a call into this fork's modules | 53 | 1083 | 232 |
+| Source: product name, file names and wording | 42 | 354 | 209 |
+| Source: behaviour changed in place | 20 | 737 | 244 |
 | Tests of upstream, adapted | 35 | 669 | 178 |
 | Generated files | 3 | 377 | 188 |
 | Package identity and packaging | 9 | 20 | 479 |
 | Documentation | 23 | 197 | 1182 |
 | Repository tooling and workflows | 6 | 23 | 8 |
 | Editor extension | 13 | 1405 | 210 |
-| Total | 201 | 4718 | 2907 |
+| Total | 204 | 4865 | 2930 |
 
 ### Source: a call into this fork's modules
 
@@ -122,6 +122,7 @@ On a conflict: Take upstream's side of the conflict, then put the call back at t
 | `packages/opencode/src/provider/error.ts` | 15 | 2 | Gateway errors are classified by `rafiki/gateway-errors.ts`; a message names this product's sign in step. |
 | `packages/opencode/src/provider/provider.ts` | 4 | 1 | `BrandGuard.request` in front of every provider request keeps the key on the gateway (`test/rafiki/key-guard.test.ts`); the model priority list is extended from the brand module. |
 | `packages/opencode/src/provider/transform.ts` | 8 | 1 | The cache marker is set by tier (`rafiki/cache-prefix.ts`); the output limit of the gateway provider is the model's own. |
+| `packages/opencode/src/server/routes/instance/httpapi/handlers/session.ts` | 4 | 1 | A part update that marks a queued message "send now" asks the running turn to take it next (`rafiki/steer.ts`). |
 | `packages/opencode/src/server/routes/instance/httpapi/public.ts` | 2 | 1 | The published OpenAPI document passes through `Brand.document`. |
 | `packages/opencode/src/server/routes/instance/httpapi/server.ts` | 8 | 4 | `BrandServe.listenerGuard` refuses requests from other origins. |
 | `packages/opencode/src/session/compaction.ts` | 25 | 41 | Pruning of old tool output follows the rule and the default of `rafiki/prune.ts` (on for Rafiki tiers, `RAFIKICODE_PRUNE`), and a replaced output is shown with its marker. After an automatic compaction the project memory is read again and the agent is asked to record what the summary holds (`rafiki/memory.ts`). |
@@ -130,8 +131,8 @@ On a conflict: Take upstream's side of the conflict, then put the call back at t
 | `packages/opencode/src/session/llm/native-runtime.ts` | 3 | 0 | The native runtime is refused when it would send the key anywhere but the gateway (`BrandGuard.allowed`). |
 | `packages/opencode/src/session/llm/request.ts` | 7 | 2 | The system text is split into a stable and a changing part (`rafiki/cache-prefix.ts`); the user agent is this product's. |
 | `packages/opencode/src/session/message-v2.ts` | 2 | 1 | A replaced old tool output is sent as the marker of `rafiki/prune.ts`, which names the call and how to run it again. |
-| `packages/opencode/src/session/processor.ts` | 12 | 2 | Retries, error wording and resuming a cut stream go through `rafiki/resilience.ts` and `rafiki/resume.ts`; the tier that answered is recorded on the message through `rafiki/served.ts`. |
-| `packages/opencode/src/session/prompt.ts` | 90 | 10 | The order of the system text (`rafiki/cache-prefix.ts`), continuation messages (`rafiki/resume.ts`) and the one retry, then the error, for an empty answer cut by the length limit (`rafiki/reasoning.ts`). Old tool output is pruned before the first request of a turn (`rafiki/prune.ts`). The project memory goes last in the stable system text, read once per session (`rafiki/memory.ts`). Before a turn that changed files ends, the project's checks run and a failure is sent back for a fix round; the working practice that goes with them opens the system text (`rafiki/verify-turn.ts`). |
+| `packages/opencode/src/session/processor.ts` | 18 | 3 | Retries, error wording and resuming a cut stream go through `rafiki/resilience.ts` and `rafiki/resume.ts`; the tier that answered is recorded on the message through `rafiki/served.ts`. A step stops at a safe point when a message marked "send now" waits (`rafiki/steer.ts`). |
+| `packages/opencode/src/session/prompt.ts` | 95 | 10 | The order of the system text (`rafiki/cache-prefix.ts`), continuation messages (`rafiki/resume.ts`) and the one retry, then the error, for an empty answer cut by the length limit (`rafiki/reasoning.ts`). Old tool output is pruned before the first request of a turn (`rafiki/prune.ts`). The project memory goes last in the stable system text, read once per session (`rafiki/memory.ts`). Before a turn that changed files ends, the project's checks run and a failure is sent back for a fix round; the working practice that goes with them opens the system text (`rafiki/verify-turn.ts`). A prompt marked "send now" asks the running turn to take it at its next safe point, and tool calls are counted so a step is never cut during one (`rafiki/steer.ts`). |
 | `packages/opencode/src/session/retry.ts` | 6 | 2 | Which gateway errors are never retried and how long to wait (`rafiki/gateway-errors.ts`, `rafiki/resilience.ts`). |
 | `packages/opencode/src/session/revert.ts` | 2 | 0 | A cut turn is recovered before a revert (`rafiki/resume.ts`). |
 | `packages/opencode/src/session/system.ts` | 6 | 1 | System prompts pass through `Brand.prompt`; the date line leaves the environment block because `rafiki/cache-prefix.ts` places it after the stable part; the gateway provider's prompt starts with `Brand.identity`. |
@@ -141,9 +142,10 @@ On a conflict: Take upstream's side of the conflict, then put the call back at t
 | `packages/opencode/src/tool/shell.ts` | 10 | 2 | Before a command that publishes code, the tool asks the "publish" question built by `rafiki/publish-guard.ts`. The shell question carries the working folder, and the process of each command is recorded for auto mode (`rafiki/auto-mode.ts`). |
 | `packages/opencode/src/tool/write.ts` | 2 | 0 | A write to a file in `.rafiki/memory/` is refused: the project memory changes only through `memory_update` (`rafiki/memory.ts`). |
 | `packages/tui/src/component/dialog-model.tsx` | 40 | 4 | Tiers that are not listed are hidden (`Brand.provider.listed`); each tier states its price in credits, and Rafiki Max is confirmed once per session and checked against the key (`component/tier-choice.tsx`). |
-| `packages/tui/src/config/keybind.ts` | 5 | 1 | The key that opens the History panel (`recent_open`, `<leader>o`, `feature-plugins/rafiki-history.tsx`). Shift+Tab cycles the permission mode (`permission_mode_cycle`); the previous agent has no key by default. |
-| `packages/tui/src/context/sync.tsx` | 11 | 1 | Auto mode answers for a server that does not apply it, but never for a guarded action or a push (`core/brand/guarded.ts`); passes the permission config to `context/permission.tsx`. |
-| `packages/tui/src/feature-plugins/builtins.ts` | 8 | 0 | Registers the spend plugin (`feature-plugins/rafiki-cost.tsx`), the History plugin (`feature-plugins/rafiki-history.tsx`) and the GitHub setup (`feature-plugins/rafiki-github.tsx`). |
+| `packages/tui/src/config/keybind.ts` | 7 | 1 | The key that opens the History panel (`recent_open`, `<leader>o`, `feature-plugins/rafiki-history.tsx`). Shift+Tab cycles the permission mode (`permission_mode_cycle`); the previous agent has no key by default. The send now key (`session_send_now`, `<leader>return`). |
+| `packages/tui/src/context/sync.tsx` | 27 | 5 | Auto mode answers for a server that does not apply it, but never for a guarded action or a push (`core/brand/guarded.ts`); passes the permission config to `context/permission.tsx`. A todo update that arrives while a session is read is not replaced by the older list read. |
+| `packages/tui/src/feature-plugins/builtins.ts` | 12 | 0 | Registers the spend plugin (`feature-plugins/rafiki-cost.tsx`), the History plugin (`feature-plugins/rafiki-history.tsx`) and the GitHub setup (`feature-plugins/rafiki-github.tsx`). Registers the project description (`feature-plugins/rafiki-about.tsx`) and Agents (`feature-plugins/rafiki-agents.tsx`). |
+| `packages/tui/src/feature-plugins/sidebar/todo.tsx` | 19 | 3 | Placed under the project description and Agents, and shows the running subagent's list (`feature-plugins/rafiki-agents.tsx`). |
 | `packages/tui/src/routes/session/subagent-footer.tsx` | 6 | 14 | The context figure is what the last request sent (`core/brand/context.ts`); the amount from the model price table is not shown. |
 
 ### Source: product name, file names and wording
@@ -185,11 +187,11 @@ On a conflict: Take upstream's side, then replace the literal with the value fro
 | `packages/tui/src/component/dialog-provider.tsx` | 3 | 2 | Messages name this product's configuration file. |
 | `packages/tui/src/component/dialog-status.tsx` | 2 | 1 | A message names this product's command. |
 | `packages/tui/src/component/error-component.tsx` | 7 | 6 | The crash screen names this product and links to its issue tracker. |
-| `packages/tui/src/component/prompt/index.tsx` | 29 | 18 | The message shown without a provider names the sign in command; the context figure is what the last request sent (`core/brand/context.ts`), the amount from the model price table is not shown (the spend is read from the gateway by `feature-plugins/rafiki-cost.tsx`), and an empty provider label (`Brand.provider.label`) is not drawn. The permission mode in the status row and the footer (`context/permission.tsx`). |
+| `packages/tui/src/component/prompt/index.tsx` | 65 | 22 | The message shown without a provider names the sign in command; the context figure is what the last request sent (`core/brand/context.ts`), the amount from the model price table is not shown (the spend is read from the gateway by `feature-plugins/rafiki-cost.tsx`), and an empty provider label (`Brand.provider.label`) is not drawn. The permission mode in the status row and the footer (`context/permission.tsx`). Send now: Enter on an empty prompt, the `session.send_now` command and a marked prompt (`component/prompt/send-now.ts`). |
 | `packages/tui/src/context/local.tsx` | 26 | 4 | The labels shown without a provider name the sign in command; the provider name is not repeated after a model name that starts with it (`Brand.provider.label`); a new session never starts on Rafiki Max from the recent list, and the cycling shortcuts never move to it before it was confirmed (`core/brand/tier.ts`). |
 | `packages/tui/src/context/theme.tsx` | 8 | 7 | The default theme name and the project directory names come from the brand module. |
 | `packages/tui/src/feature-plugins/home/tips-view.tsx` | 19 | 25 | Tips name this product's commands and paths; tips about upstream services are removed. |
-| `packages/tui/src/feature-plugins/sidebar/footer.tsx` | 4 | 3 | The footer names this product and its sign in command. |
+| `packages/tui/src/feature-plugins/sidebar/footer.tsx` | 28 | 12 | The footer names this product and its sign in command. The heading reads "Rafiki Code by PANEOTECH", with the folder and version under it. |
 | `packages/tui/src/logo.ts` | 1 | 11 | The logo is exported from `brand/wordmark.ts`. |
 | `packages/tui/src/theme/index.ts` | 2 | 1 | The default theme is registered under the name from the brand module. |
 | `packages/tui/src/util/error.ts` | 5 | 4 | Messages name this product's commands and configuration file. |
@@ -218,7 +220,8 @@ On a conflict: Merge by hand and read both sides. These are the files to thin ne
 | `packages/opencode/src/snapshot/index.ts` | 33 | 4 | A snapshot is bounded (10,000 files, 10 seconds) and skipped in the home folder or a filesystem root (`rafiki/workspace.ts`), so the first model request never waits on a scan of an unbounded tree. Upstream stages one pathspec per file, which grows with the square of the count. |
 | `packages/tui/src/context/permission.tsx` | 37 | 8 | The permission mode (ask, auto, plan) read and saved per project through `core/brand/permission-mode.ts`, replacing the upstream auto toggle. |
 | `packages/tui/src/feature-plugins/sidebar/context.tsx` | 26 | 24 | The block describes the last request (`core/brand/context.ts`): tokens sent, the cached part, the share of the window of the tier that answered, tokens received; the amount from the model price table is removed, the spend block of `feature-plugins/rafiki-cost.tsx` reads it from the gateway. |
-| `packages/tui/src/routes/session/index.tsx` | 8 | 1 | The message footer names the tier asked for when the gateway answered on another one. |
+| `packages/tui/src/routes/session/dialog-message.tsx` | 25 | 0 | A queued message offers "Send now" (`component/prompt/send-now.ts`). |
+| `packages/tui/src/routes/session/index.tsx` | 14 | 2 | The message footer names the tier asked for when the gateway answered on another one. A queued message says how to send it now (`core/brand/steer.ts`). |
 | `packages/tui/src/routes/session/permission.tsx` | 39 | 4 | Product name in the permission text. The "publish" question has its own text and no "Allow always" option. A guarded action of auto mode says why it asks and has no "Allow always" option. |
 
 ### Tests of upstream, adapted

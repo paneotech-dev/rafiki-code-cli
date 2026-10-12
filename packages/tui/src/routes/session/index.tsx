@@ -79,6 +79,7 @@ import { usePluginRuntime } from "../../plugin/runtime"
 import { DialogRetryAction } from "../../component/dialog-retry-action"
 import { getRevertDiffFiles } from "../../util/revert-diff"
 import { OPENCODE_BASE_MODE, useBindings, useCommandShortcut, useOpencodeKeymap } from "../../keymap"
+import * as Steer from "@opencode-ai/core/brand/steer"
 import { usePathFormatter } from "../../context/path-format"
 import { LocationProvider } from "../../context/location"
 
@@ -1273,6 +1274,7 @@ export function Session() {
                               <DialogMessage
                                 messageID={message.id}
                                 sessionID={route.sessionID}
+                                queued={pending() !== undefined && index() > pending()!}
                                 setPrompt={(promptInfo) => prompt?.set(promptInfo)}
                               />
                             ))
@@ -1387,6 +1389,8 @@ function UserMessage(props: {
   const queued = createMemo(() => props.pending !== undefined && props.index > props.pending)
   const color = createMemo(() => local.agent.color(props.message.agent))
   const queuedFg = createMemo(() => selectedForeground(theme, color()))
+  // How to send it now instead of after the running step (core/brand/steer.ts).
+  const sendNowShortcut = useCommandShortcut("session.send_now")
   const metadataVisible = createMemo(() => queued() || ctx.showTimestamps())
 
   const compaction = createMemo(() => props.parts.find((x) => x.type === "compaction"))
@@ -1447,7 +1451,8 @@ function UserMessage(props: {
               }
             >
               <text fg={theme.textMuted}>
-                <span style={{ bg: color(), fg: queuedFg(), bold: true }}> QUEUED </span>
+                <span style={{ bg: color(), fg: queuedFg(), bold: true }}> QUEUED </span>{" "}
+                {Steer.hint(sendNowShortcut())}
               </text>
             </Show>
           </box>

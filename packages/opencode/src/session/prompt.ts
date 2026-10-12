@@ -62,6 +62,7 @@ import { LLMEvent } from "@opencode-ai/llm"
 import * as RafikiReasoning from "@/rafiki/reasoning"
 import * as RafikiResume from "@/rafiki/resume"
 import * as RafikiVerify from "@/rafiki/verify-turn"
+import * as RafikiSteer from "@/rafiki/steer"
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -1061,6 +1062,7 @@ const layer = Layer.effect(
       const session = yield* sessions.get(input.sessionID).pipe(Effect.orDie)
       yield* revert.cleanup(session)
       const message = yield* createUserMessage(input)
+      if (RafikiSteer.marked(input.parts)) RafikiSteer.request(input.sessionID, message.info.id)
       yield* sessions.touch(input.sessionID)
 
       const permissions: PermissionV1.Rule[] = []
@@ -1109,6 +1111,7 @@ const layer = Layer.effect(
           const { user: lastUser, assistant: lastAssistant, finished: lastFinished, tasks } = MessageV2.latest(msgs)
 
           if (!lastUser) throw new Error("No user message found in stream. This should never happen.")
+          RafikiSteer.settle(sessionID, lastUser.id)
 
           const lastAssistantMsg = msgs.findLast(
             (msg) => msg.info.role === "assistant" && msg.info.id === lastAssistant?.id,
@@ -1315,6 +1318,8 @@ const layer = Layer.effect(
               Effect.provideService(Truncate.Service, truncate),
               Effect.provideService(RuntimeFlags.Service, flags),
             )
+
+            RafikiSteer.guard(tools, sessionID)
 
             if (lastUser.format?.type === "json_schema") {
               tools["StructuredOutput"] = createStructuredOutputTool({

@@ -38,6 +38,7 @@ import {
 } from "../groups/session"
 import { PermissionNotFoundError } from "../errors"
 import * as SessionError from "./session-errors"
+import * as RafikiSteer from "@/rafiki/steer"
 
 const tryParseJson = (text: string) =>
   Effect.try({
@@ -407,7 +408,9 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       ) {
         return yield* new HttpApiError.BadRequest({})
       }
-      return yield* session.updatePart(payload)
+      const part = yield* session.updatePart(payload)
+      if (RafikiSteer.marked([part])) RafikiSteer.request(part.sessionID, part.messageID)
+      return part
     })
 
     return handlers
