@@ -463,6 +463,11 @@
       "why": "A global dispose also reads the global configuration again, so a new sign-in from the terminal interface (`tier-choice.tsx`) reaches the provider with its new key."
     },
     {
+      "path": "packages/opencode/src/server/routes/instance/httpapi/handlers/session.ts",
+      "class": "hook",
+      "why": "A part update that marks a queued message \"send now\" asks the running turn to take it next (`rafiki/steer.ts`)."
+    },
+    {
       "path": "packages/opencode/src/server/routes/instance/httpapi/public.ts",
       "class": "hook",
       "why": "The published OpenAPI document passes through `Brand.document`."
@@ -493,29 +498,24 @@
       "why": "The native runtime is refused when it would send the key anywhere but the gateway (`BrandGuard.allowed`)."
     },
     {
-      "path": "packages/opencode/src/session/message-v2.ts",
-      "class": "hook",
-      "why": "A replaced old tool output is sent as the marker of `rafiki/prune.ts`, which names the call and how to run it again."
-    },
-    {
-      "path": "packages/opencode/src/snapshot/index.ts",
-      "class": "logic",
-      "why": "A snapshot is bounded (10,000 files, 10 seconds) and skipped in the home folder or a filesystem root (`rafiki/workspace.ts`), so the first model request never waits on a scan of an unbounded tree. Upstream stages one pathspec per file, which grows with the square of the count."
-    },
-    {
       "path": "packages/opencode/src/session/llm/request.ts",
       "class": "hook",
       "why": "The system text is split into a stable and a changing part (`rafiki/cache-prefix.ts`); the user agent is this product's."
     },
     {
+      "path": "packages/opencode/src/session/message-v2.ts",
+      "class": "hook",
+      "why": "A replaced old tool output is sent as the marker of `rafiki/prune.ts`, which names the call and how to run it again."
+    },
+    {
       "path": "packages/opencode/src/session/processor.ts",
       "class": "hook",
-      "why": "Retries, error wording and resuming a cut stream go through `rafiki/resilience.ts` and `rafiki/resume.ts`; the tier that answered is recorded on the message through `rafiki/served.ts`."
+      "why": "Retries, error wording and resuming a cut stream go through `rafiki/resilience.ts` and `rafiki/resume.ts`; the tier that answered is recorded on the message through `rafiki/served.ts`. A step stops at a safe point when a message marked \"send now\" waits (`rafiki/steer.ts`)."
     },
     {
       "path": "packages/opencode/src/session/prompt.ts",
       "class": "hook",
-      "why": "The order of the system text (`rafiki/cache-prefix.ts`), continuation messages (`rafiki/resume.ts`) and the one retry, then the error, for an empty answer cut by the length limit (`rafiki/reasoning.ts`). Old tool output is pruned before the first request of a turn (`rafiki/prune.ts`). The project memory goes last in the stable system text, read once per session (`rafiki/memory.ts`). Before a turn that changed files ends, the project's checks run and a failure is sent back for a fix round; the working practice that goes with them opens the system text (`rafiki/verify-turn.ts`)."
+      "why": "The order of the system text (`rafiki/cache-prefix.ts`), continuation messages (`rafiki/resume.ts`) and the one retry, then the error, for an empty answer cut by the length limit (`rafiki/reasoning.ts`). Old tool output is pruned before the first request of a turn (`rafiki/prune.ts`). The project memory goes last in the stable system text, read once per session (`rafiki/memory.ts`). Before a turn that changed files ends, the project's checks run and a failure is sent back for a fix round; the working practice that goes with them opens the system text (`rafiki/verify-turn.ts`). A prompt marked \"send now\" asks the running turn to take it at its next safe point, and tool calls are counted so a step is never cut during one (`rafiki/steer.ts`)."
     },
     {
       "path": "packages/opencode/src/session/retry.ts",
@@ -541,6 +541,11 @@
       "path": "packages/opencode/src/skill/index.ts",
       "class": "logic",
       "why": "The built in configuration skill is this product's, hidden skills are removed, and skill discovery honours the switch that disables project configuration."
+    },
+    {
+      "path": "packages/opencode/src/snapshot/index.ts",
+      "class": "logic",
+      "why": "A snapshot is bounded (10,000 files, 10 seconds) and skipped in the home folder or a filesystem root (`rafiki/workspace.ts`), so the first model request never waits on a scan of an unbounded tree. Upstream stages one pathspec per file, which grows with the square of the count."
     },
     {
       "path": "packages/opencode/src/tool/apply_patch.ts",
@@ -765,7 +770,12 @@
     {
       "path": "packages/tui/src/component/prompt/index.tsx",
       "class": "text",
-      "why": "The message shown without a provider names the sign in command; the context figure is what the last request sent (`core/brand/context.ts`), the amount from the model price table is not shown (the spend is read from the gateway by `feature-plugins/rafiki-cost.tsx`), and an empty provider label (`Brand.provider.label`) is not drawn. The permission mode in the status row and the footer (`context/permission.tsx`)."
+      "why": "The message shown without a provider names the sign in command; the context figure is what the last request sent (`core/brand/context.ts`), the amount from the model price table is not shown (the spend is read from the gateway by `feature-plugins/rafiki-cost.tsx`), and an empty provider label (`Brand.provider.label`) is not drawn. The permission mode in the status row and the footer (`context/permission.tsx`). Send now: Enter on an empty prompt, the `session.send_now` command and a marked prompt (`component/prompt/send-now.ts`)."
+    },
+    {
+      "path": "packages/tui/src/config/keybind.ts",
+      "class": "hook",
+      "why": "The key that opens the History panel (`recent_open`, `<leader>o`, `feature-plugins/rafiki-history.tsx`). Shift+Tab cycles the permission mode (`permission_mode_cycle`); the previous agent has no key by default. The send now key (`session_send_now`, `<leader>return`)."
     },
     {
       "path": "packages/tui/src/context/local.tsx",
@@ -780,7 +790,7 @@
     {
       "path": "packages/tui/src/context/sync.tsx",
       "class": "hook",
-      "why": "Auto mode answers for a server that does not apply it, but never for a guarded action or a push (`core/brand/guarded.ts`); passes the permission config to `context/permission.tsx`."
+      "why": "Auto mode answers for a server that does not apply it, but never for a guarded action or a push (`core/brand/guarded.ts`); passes the permission config to `context/permission.tsx`. A todo update that arrives while a session is read is not replaced by the older list read."
     },
     {
       "path": "packages/tui/src/context/theme.tsx",
@@ -788,14 +798,9 @@
       "why": "The default theme name and the project directory names come from the brand module."
     },
     {
-      "path": "packages/tui/src/config/keybind.ts",
-      "class": "hook",
-      "why": "The key that opens the History panel (`recent_open`, `<leader>o`, `feature-plugins/rafiki-history.tsx`). Shift+Tab cycles the permission mode (`permission_mode_cycle`); the previous agent has no key by default."
-    },
-    {
       "path": "packages/tui/src/feature-plugins/builtins.ts",
       "class": "hook",
-      "why": "Registers the spend plugin (`feature-plugins/rafiki-cost.tsx`), the History plugin (`feature-plugins/rafiki-history.tsx`) and the GitHub setup (`feature-plugins/rafiki-github.tsx`)."
+      "why": "Registers the spend plugin (`feature-plugins/rafiki-cost.tsx`), the History plugin (`feature-plugins/rafiki-history.tsx`) and the GitHub setup (`feature-plugins/rafiki-github.tsx`). Registers the project description (`feature-plugins/rafiki-about.tsx`) and Agents (`feature-plugins/rafiki-agents.tsx`)."
     },
     {
       "path": "packages/tui/src/feature-plugins/home/tips-view.tsx",
@@ -810,7 +815,12 @@
     {
       "path": "packages/tui/src/feature-plugins/sidebar/footer.tsx",
       "class": "text",
-      "why": "The footer names this product and its sign in command."
+      "why": "The footer names this product and its sign in command. The heading reads \"Rafiki Code by PANEOTECH\", with the folder and version under it."
+    },
+    {
+      "path": "packages/tui/src/feature-plugins/sidebar/todo.tsx",
+      "class": "hook",
+      "why": "Placed under the project description and Agents, and shows the running subagent's list (`feature-plugins/rafiki-agents.tsx`)."
     },
     {
       "path": "packages/tui/src/logo.ts",
@@ -818,9 +828,14 @@
       "why": "The logo is exported from `brand/wordmark.ts`."
     },
     {
+      "path": "packages/tui/src/routes/session/dialog-message.tsx",
+      "class": "logic",
+      "why": "A queued message offers \"Send now\" (`component/prompt/send-now.ts`)."
+    },
+    {
       "path": "packages/tui/src/routes/session/index.tsx",
       "class": "logic",
-      "why": "The message footer names the tier asked for when the gateway answered on another one."
+      "why": "The message footer names the tier asked for when the gateway answered on another one. A queued message says how to send it now (`core/brand/steer.ts`)."
     },
     {
       "path": "packages/tui/src/routes/session/permission.tsx",

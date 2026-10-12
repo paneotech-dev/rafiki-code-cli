@@ -58,6 +58,8 @@ import { useTuiConfig } from "../../config"
 import { usePromptWorkspace } from "./workspace"
 import { usePromptMove } from "./move"
 import { readLocalAttachment } from "./local-attachment"
+import * as SendNow from "./send-now"
+import * as Steer from "@opencode-ai/core/brand/steer"
 import { useLocation } from "../../context/location"
 
 registerOpencodeSpinner()
@@ -159,6 +161,9 @@ export function Prompt(props: PromptProps) {
   const dialog = useDialog()
   const toast = useToast()
   const status = createMemo(() => sync.data.session_status?.[props.sessionID ?? ""] ?? { type: "idle" })
+  // Messages waiting for the running turn (send-now.ts).
+  const queuedCount = createMemo(() => (props.sessionID ? SendNow.queued(sync.data, props.sessionID).length : 0))
+
   const history = usePromptHistory()
   const stash = usePromptStash()
   const keymap = useOpencodeKeymap()
@@ -393,6 +398,17 @@ export function Prompt(props: PromptProps) {
         },
       },
       {
+        title: "Send queued message now",
+        name: "session.send_now",
+        category: "Session",
+        enabled: status().type !== "idle" && (Boolean(store.prompt.input) || queuedCount() > 0),
+        run: async () => {
+          if (store.prompt.input) await submit({ now: true })
+          else await sendQueuedNow()
+          dialog.clear()
+        },
+      },
+      {
         title: "Interrupt session",
         name: "session.interrupt",
         category: "Session",
@@ -577,6 +593,7 @@ export function Prompt(props: PromptProps) {
       "prompt.stash.list",
       "prompt.skills",
       "session.interrupt",
+      "session.send_now",
       "workspace.set",
       "session.move",
     ]),
@@ -930,8 +947,18 @@ export function Prompt(props: PromptProps) {
     }
   })
 
+  async function sendQueuedNow() {
+    if (!props.sessionID) return false
+    const sent = await SendNow.sendQueued(sdk.client, sync.data, props.sessionID).catch((error) => {
+      toast.show({ title: "Send now failed", message: errorMessage(error), variant: "error" })
+      return false
+    })
+    if (sent) toast.show({ message: SendNow.TOAST, variant: "info" })
+    return sent
+  }
+
   let submitting = false
-  async function submit() {
+  async function submit(options: { now?: boolean } = {}) {
     // Prevent overlapping invocations (e.g. a double-pressed Enter, or the
     // input's native onSubmit racing another dispatch). Without this guard,
     // a second call slips past the empty-input check before the first call
@@ -941,13 +968,13 @@ export function Prompt(props: PromptProps) {
     if (submitting) return false
     submitting = true
     try {
-      return await submitInner()
+      return await submitInner(options)
     } finally {
       submitting = false
     }
   }
 
-  async function submitInner() {
+  async function submitInner(options: { now?: boolean }) {
     workspace.clearNotice()
 
     // IME: double-defer may fire before onContentChange flushes the last
@@ -960,7 +987,8 @@ export function Prompt(props: PromptProps) {
     if (props.disabled) return false
     if (workspace.creating() || move.creating()) return false
     if (auto()?.visible) return false
-    if (!store.prompt.input) return false
+    // Enter on an empty prompt while a message waits for the running turn sends it now.
+    if (!store.prompt.input) return status().type !== "idle" && queuedCount() > 0 ? sendQueuedNow() : false
     const agent = local.agent.current()
     if (!agent) return false
     const trimmed = store.prompt.input.trim()
@@ -1094,6 +1122,9 @@ export function Prompt(props: PromptProps) {
       })
     } else {
       move.startSubmit()
+      // Sent while a turn runs, marked to go now (send-now.ts).
+      const now = options.now === true && props.sessionID !== undefined && status().type !== "idle"
+      if (now) toast.show({ message: SendNow.TOAST, variant: "info" })
       sdk.client.session
         .prompt(
           {
@@ -1107,6 +1138,7 @@ export function Prompt(props: PromptProps) {
               {
                 type: "text",
                 text: inputText,
+                ...(now ? { metadata: Steer.metadata() } : {}),
               },
               ...nonTextParts,
             ],

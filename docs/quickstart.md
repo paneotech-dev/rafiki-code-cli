@@ -189,6 +189,12 @@ The output starts with `> build · rafiki-pro`. To make a tier your default, add
 
 While a task runs the prompt row shows the tier, what your key has spent in this session and the share of the key's budget used, all read from the gateway, and the sidebar adds the credits left in your account and what the last request sent. See [What a task costs](./cost.md).
 
+## While a task runs
+
+A message you type while the agent works is queued: it is shown with a `QUEUED` badge and goes out when the running step ends. To send it now, press Enter again on the empty prompt, press `ctrl+x` then Enter, pick "Send queued message now" in the command list (`ctrl+p`), or click the queued message and pick "Send now". The running turn stops after the tool call in progress (a file being written is always finished first), keeps what it did, and takes your message next.
+
+The sidebar (`ctrl+x b` shows or hides it) starts with two sentences about the project, read from `.rafiki/memory/project.md`, else from the first paragraph of `AGENTS.md` or `README.md`; an edit of the memory shows within a few seconds. Under it, `Agents` lists the subagents of the conversation with their state, time and progress (the share of their own todo list that is done, or the steps taken when they keep none); click one to open it. `Todo` follows, with the list of the running subagent while it has one. The footer reads `Rafiki Code by PANEOTECH`, with the folder and the version under it.
+
 ## Pick up where you left off
 
 In the terminal interface the sidebar has a `History` section: your latest conversations in every folder (title, folder, tier and when you last worked on it) and the folders you worked in, newest first. Click one, or press `ctrl+x o` for the full list and pick one with the arrow keys and Enter (type to search). A conversation of the folder you are in opens at once; one of another folder, or a folder, starts the interface again there, with the conversation open or a new session. Click `History` to fold the section. From a shell, `rafikicode --resume` reopens the last session and `rafikicode <folder> --session <id>` a given one.

@@ -7,6 +7,20 @@ import { useTuiPaths } from "../../context/runtime"
 
 const id = "internal:sidebar-footer"
 
+// The heading of the footer: the product and its maker, seen every time.
+export function byline() {
+  return `${Brand.product} by ${Brand.vendor}`
+}
+
+// The line under it: the folder (and branch) and the version, within the
+// width of the sidebar; a long folder keeps its end.
+export function where(folder: string, version: string, width = 36) {
+  const tail = ` · ${version}`
+  const room = width - tail.length
+  const shown = folder.length <= room ? folder : "…" + folder.slice(folder.length - room + 1)
+  return shown + tail
+}
+
 function View(props: { api: TuiPluginApi; sessionID: string }) {
   const paths = useTuiPaths()
   const theme = () => props.api.theme.current
@@ -65,17 +79,18 @@ function View(props: { api: TuiPluginApi; sessionID: string }) {
           </box>
         </box>
       </Show>
-      <text>
-        <span style={{ fg: theme().textMuted }}>{path().parent}/</span>
-        <span style={{ fg: theme().text }}>{path().name}</span>
-      </text>
-      <text fg={theme().textMuted}>
-        <span style={{ fg: theme().success }}>•</span>{" "}
-        <span style={{ fg: theme().text }}>
-          <b>{Brand.product}</b>
-        </span>{" "}
-        <span>{props.api.app.version}</span>
-      </text>
+      <box>
+        <text fg={theme().textMuted} wrapMode="none">
+          <span style={{ fg: theme().success }}>•</span>{" "}
+          <span style={{ fg: theme().text }}>
+            <b>{byline()}</b>
+          </span>
+        </text>
+        <text fg={theme().textMuted} wrapMode="none">
+          {"  "}
+          {where(path().parent ? `${path().parent}/${path().name}` : path().name, props.api.app.version)}
+        </text>
+      </box>
     </box>
   )
 }

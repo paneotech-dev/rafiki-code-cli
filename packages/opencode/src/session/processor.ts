@@ -28,6 +28,7 @@ import { Usage, type LLMEvent } from "@opencode-ai/llm"
 import * as RafikiResilience from "@/rafiki/resilience"
 import * as RafikiResume from "@/rafiki/resume"
 import * as RafikiServed from "@/rafiki/served"
+import * as RafikiSteer from "@/rafiki/steer"
 
 const DOOM_LOOP_THRESHOLD = 3
 export type Result = "compact" | "stop" | "continue"
@@ -670,7 +671,11 @@ const layer = Layer.effect(
 
             yield* stream.pipe(
               Stream.tap((event) => handleEvent(event)),
-              Stream.takeUntil(() => ctx.needsCompaction),
+              Stream.takeUntil(
+                () =>
+                  ctx.needsCompaction ||
+                  RafikiSteer.stop(ctx.sessionID, streamInput.user.id, Object.keys(ctx.toolcalls).length),
+              ),
               Stream.runDrain,
             )
           }).pipe(
