@@ -3,17 +3,19 @@ import type { BuiltinTuiPlugin } from "../builtins"
 import { createMemo, For, Show, createSignal } from "solid-js"
 import { TodoItem } from "../../component/todo-item"
 import * as RafikiAgents from "../rafiki-agents"
+import { useSync } from "../../context/sync"
 
 const id = "internal:sidebar-todo"
 
 function View(props: { api: TuiPluginApi; session_id: string }) {
   const [open, setOpen] = createSignal(true)
   const theme = () => props.api.theme.current
+  const sync = useSync()
   // The list of the running subagent while it has one with work left (the
   // work happens there, the conversation's own list does not move), else
   // the conversation's latest list (rafiki-agents.tsx).
   const agent = createMemo(() => {
-    const from = RafikiAgents.source(props.api)
+    const from = RafikiAgents.source(props.api, () => sync.data.session)
     const item = RafikiAgents.active(from, props.session_id)
     if (!item?.sessionID) return undefined
     return from.todo(item.sessionID).some((todo) => todo.status !== "completed" && todo.status !== "cancelled")

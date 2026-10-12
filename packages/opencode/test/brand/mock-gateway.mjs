@@ -79,7 +79,7 @@ export function createMockGateway(options = {}) {
     // { "rafiki-fast": "rafiki-pro" }: answer a request for the first on the
     // second, the way the gateway does after a fallback (every chunk names it).
     answeredBy: options.answeredBy,
-    // (body) => { content, toolCall, delayMs } | undefined: a reply of its
+    // (body) => { content, toolCall, delayMs, wordDelayMs } | undefined: a reply of its
     // own for the requests it picks (the risk check of auto mode, a script of
     // tool calls), after an optional delay; undefined leaves the request to
     // the rules above.
@@ -170,7 +170,7 @@ export function createMockGateway(options = {}) {
     }
   }
 
-  function stream(res, model, text, headers, empty) {
+  async function stream(res, model, text, headers, empty, wordDelayMs = 0) {
     const id = "chatcmpl-mock-" + Date.now()
     const created = Math.floor(Date.now() / 1000)
     res.writeHead(200, {
@@ -186,7 +186,12 @@ export function createMockGateway(options = {}) {
       res.write(chunk({ reasoning_content: "Planning the answer..." }, null))
       res.write(chunk({}, "length"))
     } else {
-      for (const word of text.split(" ")) res.write(chunk({ content: word + " " }, null))
+      for (const word of text.split(" ")) {
+        if (res.destroyed || res.writableEnded) return
+        res.write(chunk({ content: word + " " }, null))
+        if (wordDelayMs) await new Promise((resolve) => setTimeout(resolve, wordDelayMs))
+      }
+      if (res.destroyed || res.writableEnded) return
       res.write(chunk({}, "stop"))
     }
     res.write(
@@ -294,7 +299,7 @@ export function createMockGateway(options = {}) {
       if (custom?.delayMs) await new Promise((resolve) => setTimeout(resolve, custom.delayMs))
       if (custom && (res.destroyed || res.writableEnded)) return
       if (custom && !custom.toolCall) {
-        if (body.stream === true) return stream(res, model, custom.content ?? "", headers, false)
+        if (body.stream === true) return stream(res, model, custom.content ?? "", headers, false, custom.wordDelayMs)
         return json(res, 200, completion(model, custom.content ?? "", false), headers)
       }
       let wanted = custom?.toolCall ?? (opts.toolCall && !opts.toolCallEach && !messages.some((m) => m && m.role === "tool") ? opts.toolCall : undefined)
