@@ -16,6 +16,7 @@ import { isOverflow } from "./overflow"
 import { PartID } from "./schema"
 import type { SessionID } from "./schema"
 import { SessionRetry } from "./retry"
+import * as RafikiTpm from "@/rafiki/tpm"
 import { SessionStatus } from "./status"
 import { SessionSummary } from "./summary"
 import type { Provider } from "@/provider/provider"
@@ -633,8 +634,33 @@ const layer = Layer.effect(
           error: errorMessage(e),
           stack: e instanceof Error ? e.stack : undefined,
         })
-        const error = RafikiResilience.describe(parse(e), e)
+        let error = RafikiResilience.describe(parse(e), e)
+        // A request over the key's tokens per minute limit after the session
+        // was already compacted for it: compacting again cannot help.
+        if (
+          SessionV1.ContextOverflowError.isInstance(error) &&
+          RafikiTpm.isOverflow(error.data.message) &&
+          !ctx.assistantMessage.summary &&
+          RafikiTpm.marked(ctx.sessionID)
+        ) {
+          RafikiTpm.clear(ctx.sessionID)
+          error = new SessionV1.APIError({
+            message: RafikiTpm.stillTooLarge(yield* Effect.promise(() => RafikiTpm.limit())),
+            statusCode: 429,
+            isRetryable: false,
+            responseBody: error.data.responseBody,
+          }).toObject()
+        }
         if (SessionV1.ContextOverflowError.isInstance(error)) {
+          if (RafikiTpm.isOverflow(error.data.message) && !ctx.assistantMessage.summary) {
+            RafikiTpm.mark(ctx.sessionID)
+            yield* status.set(ctx.sessionID, {
+              type: "retry",
+              attempt: 1,
+              message: RafikiTpm.refusedLine(yield* Effect.promise(() => RafikiTpm.limit())),
+              next: Date.now(),
+            })
+          }
           if ((yield* config.get()).compaction?.auto === false && !ctx.assistantMessage.summary) {
             ctx.assistantMessage.error = error
             ctx.assistantMessage.finish = "error"
@@ -643,7 +669,8 @@ const layer = Layer.effect(
             return
           }
           ctx.needsCompaction = true
-          yield* events.publish(Session.Event.Error, { sessionID: ctx.sessionID, error })
+          // The tokens per minute case already said why in one line; it is not an error.
+          if (!RafikiTpm.isOverflow(error.data.message)) yield* events.publish(Session.Event.Error, { sessionID: ctx.sessionID, error })
           return
         }
         ctx.assistantMessage.error = error
@@ -713,6 +740,8 @@ const layer = Layer.effect(
 
           if (ctx.needsCompaction) return "compact"
           if (ctx.blocked || ctx.assistantMessage.error) return "stop"
+          // Answered: a later refusal over the tokens per minute limit may compact again.
+          if (!ctx.assistantMessage.summary) RafikiTpm.clear(ctx.sessionID)
           return "continue"
         })
       })

@@ -440,7 +440,7 @@
     {
       "path": "packages/opencode/src/provider/error.ts",
       "class": "hook",
-      "why": "Gateway errors are classified by `rafiki/gateway-errors.ts`; a message names this product's sign in step."
+      "why": "Gateway errors are classified by `rafiki/gateway-errors.ts`; a message names this product's sign in step. A 429 that refuses a request larger than the key's tokens per minute limit becomes a context overflow (`rafiki/tpm.ts`)."
     },
     {
       "path": "packages/opencode/src/provider/provider.ts",
@@ -480,7 +480,7 @@
     {
       "path": "packages/opencode/src/session/compaction.ts",
       "class": "hook",
-      "why": "Pruning of old tool output follows the rule and the default of `rafiki/prune.ts` (on for Rafiki tiers, `RAFIKICODE_PRUNE`), and a replaced output is shown with its marker. After an automatic compaction the project memory is read again and the agent is asked to record what the summary holds (`rafiki/memory.ts`)."
+      "why": "Pruning of old tool output follows the rule and the default of `rafiki/prune.ts` (on for Rafiki tiers, `RAFIKICODE_PRUNE`), and a replaced output is shown with its marker. After an automatic compaction the project memory is read again and the agent is asked to record what the summary holds (`rafiki/memory.ts`). The conversation given to the compaction request is cut to fit under the key's tokens per minute limit (`rafiki/tpm.ts`)."
     },
     {
       "path": "packages/opencode/src/session/instruction.ts",
@@ -510,12 +510,12 @@
     {
       "path": "packages/opencode/src/session/processor.ts",
       "class": "hook",
-      "why": "Retries, error wording and resuming a cut stream go through `rafiki/resilience.ts` and `rafiki/resume.ts`; the tier that answered is recorded on the message through `rafiki/served.ts`. A step stops at a safe point when a message marked \"send now\" waits (`rafiki/steer.ts`)."
+      "why": "Retries, error wording and resuming a cut stream go through `rafiki/resilience.ts` and `rafiki/resume.ts`; the tier that answered is recorded on the message through `rafiki/served.ts`. A step stops at a safe point when a message marked \"send now\" waits (`rafiki/steer.ts`). A refusal over the key's tokens per minute limit compacts once and then stops with a message (`rafiki/tpm.ts`)."
     },
     {
       "path": "packages/opencode/src/session/prompt.ts",
       "class": "hook",
-      "why": "The order of the system text (`rafiki/cache-prefix.ts`), continuation messages (`rafiki/resume.ts`) and the one retry, then the error, for an empty answer cut by the length limit (`rafiki/reasoning.ts`). Old tool output is pruned before the first request of a turn (`rafiki/prune.ts`). The project memory goes last in the stable system text, read once per session (`rafiki/memory.ts`). Before a turn that changed files ends, the project's checks run and a failure is sent back for a fix round; the working practice that goes with them opens the system text (`rafiki/verify-turn.ts`). A prompt marked \"send now\" asks the running turn to take it at its next safe point, and tool calls are counted so a step is never cut during one (`rafiki/steer.ts`)."
+      "why": "The order of the system text (`rafiki/cache-prefix.ts`), continuation messages (`rafiki/resume.ts`) and the one retry, then the error, for an empty answer cut by the length limit (`rafiki/reasoning.ts`). Old tool output is pruned before the first request of a turn (`rafiki/prune.ts`). The project memory goes last in the stable system text, read once per session (`rafiki/memory.ts`). Before a turn that changed files ends, the project's checks run and a failure is sent back for a fix round; the working practice that goes with them opens the system text (`rafiki/verify-turn.ts`). A prompt marked \"send now\" asks the running turn to take it at its next safe point, and tool calls are counted so a step is never cut during one (`rafiki/steer.ts`). The session compacts before a request that would come near the key's tokens per minute limit (`rafiki/tpm.ts`)."
     },
     {
       "path": "packages/opencode/src/session/retry.ts",

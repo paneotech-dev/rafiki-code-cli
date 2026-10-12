@@ -60,6 +60,8 @@ import { SessionReminders } from "./reminders"
 import { SessionTools } from "./tools"
 import { LLMEvent } from "@opencode-ai/llm"
 import * as RafikiReasoning from "@/rafiki/reasoning"
+import * as RafikiTpm from "@/rafiki/tpm"
+import * as RafikiGateway from "@/rafiki/gateway-errors"
 import * as RafikiResume from "@/rafiki/resume"
 import * as RafikiVerify from "@/rafiki/verify-turn"
 import * as RafikiSteer from "@/rafiki/steer"
@@ -1244,6 +1246,30 @@ const layer = Layer.effect(
           ) {
             yield* compaction.create({ sessionID, agent: lastUser.agent, model: lastUser.model, auto: true })
             continue
+          }
+
+          // A request over the key's tokens per minute limit is refused however
+          // long it waits: compact first when the next one would come near it.
+          if (
+            lastFinished &&
+            lastFinished.summary !== true &&
+            RafikiGateway.isRafikiProvider(model.providerID) &&
+            (yield* config.get()).compaction?.auto !== false &&
+            !RafikiTpm.marked(sessionID)
+          ) {
+            const cap = yield* Effect.promise(() => RafikiTpm.limit())
+            const next = RafikiTpm.estimate(msgs, lastFinished)
+            if (RafikiTpm.over(next, cap)) {
+              RafikiTpm.mark(sessionID)
+              yield* status.set(sessionID, {
+                type: "retry",
+                attempt: 1,
+                message: RafikiTpm.beforeLine(next, cap!),
+                next: Date.now(),
+              })
+              yield* compaction.create({ sessionID, agent: lastUser.agent, model: lastUser.model, auto: true })
+              continue
+            }
           }
 
           const agent = yield* agents.get(lastUser.agent)

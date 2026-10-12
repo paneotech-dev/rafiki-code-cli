@@ -22,6 +22,8 @@ import { EventV2Bridge } from "@/event-v2-bridge"
 import { ProviderV2 } from "@opencode-ai/core/provider"
 import { ModelV2 } from "@opencode-ai/core/model"
 import { buildPrompt } from "@opencode-ai/core/session/compaction"
+import * as RafikiTpm from "@/rafiki/tpm"
+import * as RafikiGateway from "@/rafiki/gateway-errors"
 import { SessionCompactionEvent } from "@opencode-ai/schema/session-compaction-event"
 import * as RafikiMemory from "@/rafiki/memory"
 
@@ -358,7 +360,12 @@ const layer = Layer.effect(
       )
       const msgs = structuredClone(selected.head)
       yield* plugin.trigger("experimental.chat.messages.transform", {}, { messages: msgs })
-      const conversation = msgs.map(serialize).filter(Boolean).join("\n\n")
+      // The compaction request must fit under the key's tokens per minute limit
+      // too, or it is refused like the request it is making room for.
+      const conversation = RafikiTpm.fit(
+        msgs.map(serialize).filter(Boolean).join("\n\n"),
+        RafikiGateway.isRafikiProvider(model.providerID) ? yield* Effect.promise(() => RafikiTpm.limit()) : undefined,
+      )
       const nextPrompt =
         compacting.prompt ??
         [

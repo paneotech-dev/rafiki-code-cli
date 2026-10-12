@@ -26,7 +26,11 @@
 // token prices under litellm_params), for the models the key may use; the
 // prices option replaces the list, and prices: false makes the route a 404.
 // The usage option replaces the usage block of every chat answer, so a test
-// can report cached tokens. The answeredBy option answers a tier on another
+// can report cached tokens; a function (body, tokens) => usage reports the
+// request's own size (tokens counts the request body at 4 bytes a token). The
+// refuse option, (body, tokens) => { status, type, message, headers } |
+// undefined, refuses the chat requests it picks, after the key checks: a test
+// can play the gateway's tokens per minute limit with it. The answeredBy option answers a tier on another
 // one, like the gateway after a fallback.
 import http from "node:http"
 import fs from "node:fs"
@@ -84,6 +88,7 @@ export function createMockGateway(options = {}) {
     // tool calls), after an optional delay; undefined leaves the request to
     // the rules above.
     respond: options.respond,
+    refuse: options.refuse,
   }
   // token -> { alias, models, max_budget, budget_duration, rpm_limit, tpm_limit, spend, metadata, deleted }
   const keys = new Map()
@@ -140,6 +145,7 @@ export function createMockGateway(options = {}) {
       req.on("data", (part) => parts.push(part))
       req.on("end", () => {
         const bytes = Buffer.concat(parts)
+        req.rawLength = bytes.length
         try {
           const parsed = JSON.parse(bytes.toString("utf8") || "{}")
           if (opts.bodies && req.url?.startsWith("/v1/chat/completions")) bodies.push({ raw: bytes, json: parsed, session: req.headers["x-session-id"] })
@@ -151,11 +157,11 @@ export function createMockGateway(options = {}) {
     })
   }
 
-  function usageBlock() {
-    return opts.costInUsage ? { ...opts.usage, cost: opts.cost } : opts.usage
+  function usageBlock(usage = opts.usage) {
+    return opts.costInUsage ? { ...usage, cost: opts.cost } : usage
   }
 
-  function completion(model, text, empty) {
+  function completion(model, text, empty, usage = usageBlock()) {
     return {
       id: "chatcmpl-mock-" + Date.now(),
       object: "chat.completion",
@@ -166,11 +172,11 @@ export function createMockGateway(options = {}) {
           ? { index: 0, message: { role: "assistant", content: "", reasoning_content: "Planning the answer..." }, finish_reason: "length" }
           : { index: 0, message: { role: "assistant", content: text }, finish_reason: "stop" },
       ],
-      usage: usageBlock(),
+      usage,
     }
   }
 
-  async function stream(res, model, text, headers, empty, wordDelayMs = 0) {
+  async function stream(res, model, text, headers, empty, usage = usageBlock(), wordDelayMs = 0) {
     const id = "chatcmpl-mock-" + Date.now()
     const created = Math.floor(Date.now() / 1000)
     res.writeHead(200, {
@@ -196,7 +202,7 @@ export function createMockGateway(options = {}) {
     }
     res.write(
       "data: " +
-        JSON.stringify({ id, object: "chat.completion.chunk", created, model, choices: [], usage: usageBlock() }) +
+        JSON.stringify({ id, object: "chat.completion.chunk", created, model, choices: [], usage }) +
         "\n\n",
     )
     res.write("data: [DONE]\n\n")
@@ -268,7 +274,10 @@ export function createMockGateway(options = {}) {
       const messages = Array.isArray(body.messages) ? body.messages : []
       const last = messages.at(-1)
       const token = bearer(req)
-      const check = authorize(req, model)
+      const tokens = Math.ceil((req.rawLength ?? 0) / 4)
+      const authorized = authorize(req, model)
+      const check = authorized.status ? authorized : (opts.refuse?.(body, tokens) ?? authorized)
+      const usage = usageBlock(typeof opts.usage === "function" ? opts.usage(body, tokens) : opts.usage)
       record({
         method: req.method,
         path: u.pathname,
@@ -285,10 +294,17 @@ export function createMockGateway(options = {}) {
         max_tokens: body.max_tokens ?? body.max_completion_tokens,
         reasoning_effort: body.reasoning_effort,
         last_user: typeof last?.content === "string" ? last.content.slice(0, 120) : undefined,
+        tokens,
         status: check.status ?? 200,
         error_type: check.type,
       })
-      if (check.status) return gatewayError(res, check.status, check.type, check.message, check.param ?? null)
+      if (check.status) {
+        if (check.headers) {
+          res.writeHead(check.status, { "content-type": "application/json", ...check.headers })
+          return res.end(JSON.stringify({ error: { message: check.message, type: check.type, param: check.param ?? null, code: String(check.status) } }))
+        }
+        return gatewayError(res, check.status, check.type, check.message, check.param ?? null)
+      }
       if (!MODELS.includes(model)) return json(res, 404, { error: { message: `unknown model ${model}` } })
       const headers = {}
       if (check.key) {
@@ -299,8 +315,8 @@ export function createMockGateway(options = {}) {
       if (custom?.delayMs) await new Promise((resolve) => setTimeout(resolve, custom.delayMs))
       if (custom && (res.destroyed || res.writableEnded)) return
       if (custom && !custom.toolCall) {
-        if (body.stream === true) return stream(res, model, custom.content ?? "", headers, false, custom.wordDelayMs)
-        return json(res, 200, completion(model, custom.content ?? "", false), headers)
+        if (body.stream === true) return stream(res, model, custom.content ?? "", headers, false, usage, custom.wordDelayMs)
+        return json(res, 200, completion(model, custom.content ?? "", false, usage), headers)
       }
       let wanted = custom?.toolCall ?? (opts.toolCall && !opts.toolCallEach && !messages.some((m) => m && m.role === "tool") ? opts.toolCall : undefined)
       let callId = custom?.toolCall ? `call_mock_r${messages.filter((m) => m && m.role === "tool").length + 1}` : "call_mock_1"
@@ -318,7 +334,7 @@ export function createMockGateway(options = {}) {
             created: Math.floor(Date.now() / 1000),
             model,
             choices: [{ index: 0, message: { role: "assistant", content: null, tool_calls: [call] }, finish_reason: "tool_calls" }],
-            usage: usageBlock(),
+            usage,
           }, headers)
         }
         res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive", ...headers })
@@ -328,15 +344,15 @@ export function createMockGateway(options = {}) {
           res.write("data: " + JSON.stringify({ id, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta, finish_reason: finish }] }) + "\n\n")
         send({ role: "assistant", content: null, tool_calls: [{ index: 0, ...call }] }, null)
         send({}, "tool_calls")
-        res.write("data: " + JSON.stringify({ id, object: "chat.completion.chunk", created, model, choices: [], usage: usageBlock() }) + "\n\n")
+        res.write("data: " + JSON.stringify({ id, object: "chat.completion.chunk", created, model, choices: [], usage }) + "\n\n")
         res.write("data: [DONE]\n\n")
         return res.end()
       }
       // A fallback: the gateway answers on another tier and names it in the body.
       const answered = opts.answeredBy?.[model] ?? model
       const empty = typeof opts.emptyLength === "function" ? Boolean(opts.emptyLength(body)) : Boolean(opts.emptyLength)
-      if (body.stream === true) return stream(res, answered, opts.reply, headers, empty)
-      return json(res, 200, completion(answered, opts.reply, empty), headers)
+      if (body.stream === true) return stream(res, answered, opts.reply, headers, empty, usage)
+      return json(res, 200, completion(answered, opts.reply, empty, usage), headers)
     }
 
     // Admin half. The real gateway wants the master key; the mock only wants a bearer.
@@ -419,8 +435,8 @@ export function createMockGateway(options = {}) {
         models: Array.isArray(body.models) ? body.models : MODELS,
         max_budget: typeof body.max_budget === "number" ? body.max_budget : null,
         budget_duration: null,
-        rpm_limit: 60,
-        tpm_limit: 200000,
+        rpm_limit: body.rpm_limit === undefined ? 60 : body.rpm_limit,
+        tpm_limit: body.tpm_limit === undefined ? 200000 : body.tpm_limit,
         spend: 0,
         metadata: body.metadata ?? {},
         expires: null,
@@ -455,6 +471,8 @@ export function createMockGateway(options = {}) {
     requests,
     bodies,
     keys,
+    // The options, live: a test may change refuse or usage between runs.
+    options: opts,
     close: () => new Promise((resolve) => server.close(() => resolve())),
   }
 }

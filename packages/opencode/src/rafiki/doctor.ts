@@ -97,7 +97,7 @@ export async function folderLines(
   return lines
 }
 
-export const NAMES = ["config", "project", "trust", "credential", "gateway", "key", "tiers", "console", "path", "version"] as const
+export const NAMES = ["config", "project", "trust", "credential", "gateway", "key", "tiers", "limits", "console", "path", "version"] as const
 
 // Time budget for each network call; a doctor run must never hang.
 export const DEFAULT_TIMEOUT_MS = 8000
@@ -536,6 +536,8 @@ export interface KeyInfo {
   expires?: string | null
   models?: string[] | null
   metadata?: Record<string, unknown> | null
+  rpm_limit?: number | null
+  tpm_limit?: number | null
 }
 
 export interface KeyResult {
@@ -646,6 +648,17 @@ export async function checkKey(root: string, key: string, consoleURL: string, f:
     return { line: warn("key", `key ${shortAlias(alias)}, spent ${spend} USD of ${budget}${expires}`, NOT_CODE_KEY, NOT_CODE_KEY_MEANING), info }
   }
   return { line: ok("key", `key ${alias}, spent ${spend} USD of ${budget}${expires}`), info }
+}
+
+// The key's requests and tokens per minute limits, as the gateway enforces
+// them. A single request over the tokens limit is refused however long one
+// waits; the session compacts before that (rafiki/tpm.ts).
+export function checkLimits(info: KeyInfo): Line {
+  const perMinute = (value: unknown, unit: string) =>
+    typeof value === "number" && Number.isFinite(value) && value > 0
+      ? `${Math.round(value).toLocaleString("en-US")} ${unit} per minute`
+      : `no ${unit} per minute limit`
+  return ok("limits", `${perMinute(info.rpm_limit, "requests")}, ${perMinute(info.tpm_limit, "tokens")}`)
 }
 
 // LiteLLM spells "every model" as an empty list or one of these markers.
@@ -946,6 +959,8 @@ export async function run(options: Options = {}): Promise<Report> {
 
   if (credential.key && info) lines.push(await checkTiers(root, credential.key, info, consoleURL, f, timeoutMs))
   else lines.push(skip("tiers", !credential.key ? "no credential to check" : gateway.network ? "gateway unreachable" : "key check failed"))
+  if (credential.key && info) lines.push(checkLimits(info))
+  else lines.push(skip("limits", !credential.key ? "no credential to check" : gateway.network ? "gateway unreachable" : "key check failed"))
 
   lines.push(await checkConsole(consoleURL, credential.key, env, f, timeoutMs, accepted))
   // util/which also searches the tool cache directory, where downloaded helpers

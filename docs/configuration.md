@@ -143,7 +143,7 @@ Last request sent 24,530 tokens
 - `cached` is the part of that input the provider read from its cache, which costs less. It is inside the tokens sent, not added to them.
 - The tokens received are the answer to that request: output and reasoning.
 - The percentage is the tokens sent over the window of the tier that answered. `rafiki-fast`, `rafiki-pro` and `rafiki-max` each have a window of 1,000,000 tokens (the documented windows of the models behind them, checked on 4 October 2026). A share under one per cent reads `<1%`.
-- A long session is compacted (summarised, so the next requests send less) only near the end of the window of its tier: at the window less the output a request may ask for, about 936,000 tokens on `rafiki-fast` and `rafiki-pro` and 968,000 on `rafiki-max`. Each turn sends the whole conversation, so the cost of a turn grows with the session; start a new session (or run `/compact`) to keep long work cheaper. Old tool output is shortened well before that, see below.
+- A long session is compacted (summarised, so the next requests send less) only near the end of the window of its tier: at the window less the output a request may ask for, about 936,000 tokens on `rafiki-fast` and `rafiki-pro` and 968,000 on `rafiki-max`. Each turn sends the whole conversation, so the cost of a turn grows with the session; start a new session (or run `/compact`) to keep long work cheaper. Old tool output is shortened well before that, see below. A session is also compacted earlier when its next request would come near the key's tokens per minute limit (shown by `rafikicode doctor` on its `limits` line), since the gateway refuses a single request larger than that limit however long it waits; one line says so.
 
 ## Long sessions: old tool output
 
