@@ -92,7 +92,10 @@ export function toLLMEvents(
         return Effect.fail(new ProviderError.ResponseStreamError("Provider finish_reason: network_error"))
       return Effect.sync(() => {
         const served = RafikiServed.metadata(event.response)
-        const original = served ? { ...providerMetadata(event.providerMetadata), ...served } : providerMetadata(event.providerMetadata)
+        const original = RafikiServed.withCost(
+          served ? { ...providerMetadata(event.providerMetadata), ...served } : providerMetadata(event.providerMetadata),
+          (event.usage as { raw?: unknown } | undefined)?.raw,
+        )
         const metadata =
           state.copilotTotalNanoAiu === undefined
             ? original

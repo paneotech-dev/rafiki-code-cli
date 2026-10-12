@@ -88,3 +88,31 @@ export function runLine(agent: string, asked: string, answered: string) {
   if (answered === asked) return `> ${agent} · ${answered}`
   return `> ${agent} · ${answered} (${asked} was asked for, the gateway answered on ${answered})`
 }
+
+// The cost of one request as the gateway counted it. A gateway set to put
+// the cost in the usage block of its answers (LiteLLM's
+// include_cost_in_streaming_usage) sends it as `usage.cost`, in USD; the
+// edge passes the body through, while it strips the x-litellm headers.
+// Undefined when the usage block carries no such figure.
+export function gatewayCost(raw: unknown): number | undefined {
+  if (!raw || typeof raw !== "object") return undefined
+  const cost = (raw as { cost?: unknown }).cost
+  return typeof cost === "number" && Number.isFinite(cost) && cost >= 0 ? cost : undefined
+}
+
+// The step metadata carrying the gateway's cost, under the same key as the
+// tier that answered.
+export function withCost(metadata: ProviderMetadata | undefined, raw: unknown): ProviderMetadata | undefined {
+  const cost = gatewayCost(raw)
+  if (cost === undefined) return metadata
+  return { ...metadata, [KEY]: { ...metadata?.[KEY], cost } }
+}
+
+// The cost to record for a step: the gateway's figure for an answer of the
+// gateway provider when it sent one, else what the client worked out (zero
+// for the Rafiki tiers, which have no local price list).
+export function stepCost(input: { providerID: string; computed: number; metadata?: ProviderMetadata }): number {
+  if (input.providerID !== Brand.provider.id) return input.computed
+  const cost = input.metadata?.[KEY]?.["cost"]
+  return typeof cost === "number" && Number.isFinite(cost) && cost >= 0 ? cost : input.computed
+}

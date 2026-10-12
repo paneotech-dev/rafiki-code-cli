@@ -458,6 +458,12 @@ const layer = Layer.effect(
               usage: value.usage ?? new Usage({}),
               metadata: value.providerMetadata,
             })
+            // The gateway's own cost of the request when it sends one (rafiki/served.ts).
+            usage.cost = RafikiServed.stepCost({
+              providerID: ctx.assistantMessage.providerID,
+              computed: usage.cost,
+              metadata: value.providerMetadata,
+            })
             ctx.assistantMessage.finish = value.reason
             ctx.assistantMessage.cost += usage.cost
             ctx.assistantMessage.tokens = usage.tokens

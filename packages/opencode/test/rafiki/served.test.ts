@@ -158,3 +158,22 @@ describe("from a gateway answer to the recorded figures", () => {
     expect(result.modelID).toBe("rafiki-pro")
   })
 })
+
+describe("the gateway's cost of a request", () => {
+  test("read from usage.cost of the raw usage block, nothing invented otherwise", () => {
+    expect(RafikiServed.gatewayCost({ prompt_tokens: 10, cost: 0.0031 })).toBe(0.0031)
+    expect(RafikiServed.gatewayCost({ prompt_tokens: 10 })).toBeUndefined()
+    expect(RafikiServed.gatewayCost({ cost: "0.1" })).toBeUndefined()
+    expect(RafikiServed.gatewayCost({ cost: -1 })).toBeUndefined()
+    expect(RafikiServed.gatewayCost(undefined)).toBeUndefined()
+  })
+
+  test("kept with the step metadata and used for the gateway provider only", () => {
+    const metadata = RafikiServed.withCost({ [RafikiServed.KEY]: { modelId: "rafiki-fast" } }, { cost: 0.002 })
+    expect(metadata).toEqual({ [RafikiServed.KEY]: { modelId: "rafiki-fast", cost: 0.002 } })
+    expect(RafikiServed.withCost(undefined, {})).toBeUndefined()
+    expect(RafikiServed.stepCost({ providerID: Brand.provider.id, computed: 0, metadata })).toBe(0.002)
+    expect(RafikiServed.stepCost({ providerID: Brand.provider.id, computed: 0 })).toBe(0)
+    expect(RafikiServed.stepCost({ providerID: "openai", computed: 0.5, metadata })).toBe(0.5)
+  })
+})
