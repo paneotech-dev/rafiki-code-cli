@@ -19,8 +19,12 @@
 //   home    unset, missing or not writable: a private folder under the
 //           temporary folder, then under the current folder; HOME (and
 //           USERPROFILE on Windows) point there for this process.
-//   temp    missing, not writable or with too little room: <home>/.rafikicode/tmp;
-//           TMPDIR, TEMP and TMP point there for this process.
+//   temp    missing, not writable, with too little room, or mounted noexec (a
+//           file written there cannot be run, so the interface's native
+//           library cannot be loaded from it): <home>/.rafikicode/tmp;
+//           TMPDIR, TEMP and TMP point there for this process. Noexec is found
+//           by running a tiny file there, not by reading mount options, and the
+//           answer is kept in <home>/.rafikicode/exec-check.json.
 //   config  a file where the folder should be: moved aside and recreated. Not
 //           creatable: a fallback under the home folder, then the temporary
 //           folder. Present but read only: kept, since a stored sign in is read
@@ -45,6 +49,7 @@
 import fs from "fs"
 import os from "os"
 import path from "path"
+import { spawnSync } from "child_process"
 import { Brand } from "@opencode-ai/core/brand/brand"
 
 export type Status = "ok" | "fixed" | "warn" | "fail"
@@ -71,7 +76,14 @@ export interface IO {
   free(target: string): number | undefined
   // Moves a file out of the way. Returns where it went, or undefined.
   aside(target: string): string | undefined
+  // Whether a file written in target can be run. "noexec" only when running it
+  // was refused; anything that could not be tested is "unknown", which is never
+  // a finding. home is where the answer may be cached. Optional: without it
+  // nothing is tested.
+  runnable?(target: string, home: string): Runnable
 }
+
+export type Runnable = "ok" | "noexec" | "unknown"
 
 // Room the temporary folder needs: the render library unpacked at every start
 // of the interface is a few MB, and tools write there too.
@@ -112,6 +124,99 @@ export const realIO: IO = {
       return undefined
     }
   },
+  runnable(target, home) {
+    if (process.platform === "win32") return "ok"
+    return cachedRunnable(target, home ? path.join(home, Brand.configDirName, CACHE_FILE) : undefined)
+  },
+}
+
+// Writes a tiny script into dir and runs it. A mount flagged noexec takes the
+// write and refuses the run, with EACCES or EPERM from execve (for root too),
+// or 126 from a shell. Anything else (no /bin/sh, a full disk) is "unknown".
+export function probeRunnable(dir: string): Runnable {
+  const file = path.join(dir, `.${Brand.name}-exec-probe-${process.pid}`)
+  try {
+    fs.writeFileSync(file, "#!/bin/sh\nexit 0\n", { mode: 0o700 })
+    fs.chmodSync(file, 0o700)
+  } catch {
+    return "unknown"
+  }
+  try {
+    const run = spawnSync(file, [], { stdio: "ignore", timeout: 5000 })
+    if (run.error) {
+      const code = (run.error as NodeJS.ErrnoException).code
+      return code === "EACCES" || code === "EPERM" ? "noexec" : "unknown"
+    }
+    if (run.status === 0) return "ok"
+    return run.status === 126 ? "noexec" : "unknown"
+  } finally {
+    try {
+      fs.unlinkSync(file)
+    } catch {}
+  }
+}
+
+export const CACHE_FILE = "exec-check.json"
+// A cached answer is believed for a week, and only while the folder is the same
+// folder on the same mount with the same mount options.
+const CACHE_AGE = 7 * 24 * 60 * 60 * 1000
+
+// What identifies the folder and its mount: device and inode, and the mount
+// options when the system publishes them. A remount with noexec changes the
+// options, a new tmpfs changes the device, so either makes the cached answer
+// stale.
+function identity(dir: string) {
+  try {
+    const stat = fs.statSync(dir)
+    let options = ""
+    try {
+      let best = ""
+      for (const line of fs.readFileSync("/proc/self/mountinfo", "utf8").split("\n")) {
+        const fields = line.split(" ")
+        if (fields.length < 6) continue
+        const point = fields[4].replace(/\\040/g, " ")
+        const inside = point === "/" || dir === point || dir.startsWith(point + "/")
+        if (inside && point.length >= best.length) {
+          best = point
+          options = fields[5]
+        }
+      }
+    } catch {}
+    return `${stat.dev}:${stat.ino}:${options}`
+  } catch {
+    return undefined
+  }
+}
+
+// The probe, with its answer kept in cacheFile so a start does not run a
+// program every time. A broken or unwritable cache only costs the probe.
+export function cachedRunnable(
+  dir: string,
+  cacheFile: string | undefined,
+  probe: (dir: string) => Runnable = probeRunnable,
+  now = Date.now(),
+): Runnable {
+  const id = identity(dir)
+  let cache: Record<string, { id: string; verdict: Runnable; at: number }> = {}
+  if (cacheFile && id) {
+    try {
+      cache = JSON.parse(fs.readFileSync(cacheFile, "utf8"))
+      const hit = cache[dir]
+      if (hit && hit.id === id && now - hit.at >= 0 && now - hit.at < CACHE_AGE && (hit.verdict === "ok" || hit.verdict === "noexec"))
+        return hit.verdict
+    } catch {
+      cache = {}
+    }
+  }
+  const verdict = probe(dir)
+  if (cacheFile && id && verdict !== "unknown") {
+    try {
+      cache[dir] = { id, verdict, at: now }
+      fs.mkdirSync(path.dirname(cacheFile), { recursive: true, mode: 0o700 })
+      fs.writeFileSync(cacheFile, JSON.stringify(cache))
+    } catch {}
+  }
+  return verdict
 }
 
 // Free bytes from what statfs answered, or undefined when the answer cannot be
@@ -231,6 +336,8 @@ export function check(input: Input): Result {
     if (!io.writable(dir)) return "cannot be written"
     const free = io.free(dir)
     if (free !== undefined && free < TEMP_NEEDS) return `has ${mb(free)} MB free`
+    if (platform !== "win32" && io.runnable?.(dir, home) === "noexec")
+      return "does not allow running programs (mounted noexec)"
     return undefined
   }
   const tempWhy = tempProblem(temp)
@@ -253,7 +360,11 @@ export function check(input: Input): Result {
         name: "temp",
         status: "warn",
         detail: `${temp} ${tempWhy}, and ${fallback} cannot be used either`,
-        line: `The temporary folder ${temp} ${tempWhy}, and ${fallback} cannot be used either. Free some space, or set TMPDIR to a folder with room.`,
+        line: `The temporary folder ${temp} ${tempWhy}, and ${fallback} cannot be used either. ${
+          tempWhy.includes("noexec")
+            ? "Set TMPDIR to a folder you own that allows running programs."
+            : "Free some space, or set TMPDIR to a folder with room."
+        }`,
       })
     }
   }

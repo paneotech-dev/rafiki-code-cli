@@ -780,6 +780,32 @@ $modernTerminal = -not [string]::IsNullOrWhiteSpace($env:WT_SESSION) -or -not [s
 if ($onWindows -and -not $modernTerminal -and $Host.Name -eq 'ConsoleHost') {
     Write-Note "This window looks like the old Windows console (conhost), which cannot draw the full screen interface. Open Windows Terminal (from the Microsoft Store, or: winget install --id Microsoft.WindowsTerminal) and run $App there, or use $App run `"your task`" here."
 }
+# The last line, for this window. Through iex the installer runs in this
+# session and has already put $Prefix first on its $env:Path; run as a file, or
+# with -NoModifyPath, this session's path was not changed. Either way the name
+# is looked up the way the prompt will look it up, and when it does not find the
+# program just installed, the last line says what to type here.
+$installedExe = Join-Path $Prefix $BinName
+if (-not ($RafikicodeInstallAsFile -or $NoModifyPath)) {
+    $sep = [IO.Path]::PathSeparator
+    if (($env:Path -split [regex]::Escape($sep)) -inotcontains $Prefix) { $env:Path = "$Prefix$sep$env:Path" }
+}
+# The first folder on the path that holds the program, as the prompt finds it.
+$resolved = $null
+foreach ($dir in ($env:Path -split [regex]::Escape([string] [IO.Path]::PathSeparator))) {
+    if ([string]::IsNullOrWhiteSpace($dir)) { continue }
+    $candidate = Join-Path $dir $BinName
+    if (Test-Path -LiteralPath $candidate -PathType Leaf) { $resolved = $candidate; break }
+}
+$findsIt = ($null -ne $resolved) -and (-not $RafikicodeInstallAsFile) -and ([IO.Path]::GetFullPath($resolved) -ieq [IO.Path]::GetFullPath($installedExe))
+if (-not $findsIt) {
+    $hint = "`$env:Path = `"$Prefix;`$env:Path`""
+    if ($null -ne (Get-Variable -Name tempFallback -ErrorAction SilentlyContinue) -and $tempFallback -ne '') {
+        $hint += "; `$env:TEMP = `"$tempFallback`"; `$env:TMP = `"$tempFallback`""
+    }
+    Write-Step ''
+    Write-Step "To use $App in this terminal now, run: $hint"
+}
 }
 } catch {
     if ("$($_.Exception.Message)" -ne 'rafikicode-install-failed') {

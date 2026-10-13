@@ -351,6 +351,40 @@ if [ -n "${RAFIKICODE_CONTAINER_BINARY:-}" ] && [ -x "$RAFIKICODE_CONTAINER_BINA
     fi
 fi
 
+# The same binary under a /tmp mounted noexec, as on cPanel style hosts, with no
+# TMPDIR, in a real terminal: the folder doctor finds that a file there cannot
+# be run, says so in one line, and the interface opens from ~/.rafikicode/tmp.
+# Then the restarted interface is killed the way a host's memory limit kills it:
+# the parent must say so in one line and exit non-zero, never return silently.
+if [ -n "${RAFIKICODE_CONTAINER_BINARY:-}" ] && [ -x "$RAFIKICODE_CONTAINER_BINARY" ]; then
+    cat > "$WORK/noexec-case.sh" <<'CASEEOF'
+cd ~
+echo TMPDIR=${TMPDIR:-unset}
+# After 8 seconds the restarted interface (the process carrying
+# RAFIKICODE_FOLDERS_CHECKED) is ended: with TERM, as a person closing it
+# would, or with KILL, as a memory limit does.
+signal=TERM
+[ "$1" = kill ] && signal=KILL
+(sleep 8; for p in /proc/[0-9]*; do
+    grep -qa RAFIKICODE_FOLDERS_CHECKED=1 "$p/environ" 2>/dev/null && kill -$signal "${p#/proc/}"
+done) &
+RAFIKICODE_API_KEY=sk-test script -qec "timeout --foreground -s KILL 40 /opt/rk/rafikicode; echo EXIT=\$?" /dev/null
+echo
+cat ~/.rafikicode/exec-check.json
+CASEEOF
+    noexec_args="-t --tmpfs /tmp:rw,noexec,mode=1777 -v $RAFIKICODE_CONTAINER_BINARY:/opt/rk/rafikicode:ro -v $WORK/noexec-case.sh:/i/noexec-case.sh:ro"
+    if cell real-noexec-tmp debian:12-slim "$noexec_args" "$mkuser && su - tester -c 'sh /i/noexec-case.sh'"; then
+        [[ "$out" == *"TMPDIR=unset"* ]] \
+            && [[ "$out" == *"The temporary folder /tmp does not allow running programs (mounted noexec), so rafikicode uses /home/tester/.rafikicode/tmp instead."* ]] \
+            && [[ "$out" == *"Ask anything"* ]] && [[ "$out" != *"render library"* ]] \
+            && [[ "$out" == *'"/tmp":{'*'"verdict":"noexec"'* ]]; check $? "real-noexec-tmp: a noexec /tmp is replaced, and the interface opens"
+    fi
+    if cell real-noexec-killed debian:12-slim "$noexec_args" "$mkuser && su - tester -c 'sh /i/noexec-case.sh kill'"; then
+        [[ "$out" == *"rafikicode was stopped by the system (SIGKILL)"* ]] \
+            && [[ "$out" == *"EXIT=137"* ]]; check $? "real-noexec-killed: a killed interface says why in one line and exits 137"
+    fi
+fi
+
 [ "$list" = "true" ] && exit 0
 echo
 echo "container install tests: ${pass} passed, ${fail} failed"

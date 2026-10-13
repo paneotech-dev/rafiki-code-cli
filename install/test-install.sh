@@ -1137,5 +1137,46 @@ out=$(env HOME="$h" SHELL=/bin/bash PATH="$safe_path" RAFIKICODE_INSTALL_DIR="$h
     && [[ "$out" == *"Add this line to $h/.bash_profile, above any line that says return:"* ]] \
     && [[ "$out" == *"export PATH=$h/.rafikicode/bin:\$PATH"* ]]; check $? "a check that still fails prints the file and the exact line to add"
 
+# The last line, for the terminal the install ran in: its PATH is the one this
+# script inherited, so when that does not find the program, the last line says
+# what to type there. Never when it already finds it.
+# A PATH with no other rafikicode on it, so the line is not about a shadowing one.
+hint_path=$(printf '%s' "$safe_path" | tr ':' '\n' | while IFS= read -r d; do [ -x "$d/rafikicode" ] || printf '%s\n' "$d"; done | paste -sd: -)
+last_line() { printf '%s\n' "$1" | sed '/^[[:space:]]*$/d' | tail -n 1; }
+h=$(fresh_home home-hint-bash)
+: > "$h/.bashrc"
+: > "$h/.bash_profile"
+out=$(env HOME="$h" SHELL=/bin/bash PATH="$hint_path" RAFIKICODE_INSTALL_DIR="$h/.rafikicode/bin" \
+    "$BASH_BIN" "$INSTALLER" --no-login 2>&1 | plain) && rc=0 || rc=$?
+[ "$rc" = "0" ] && [ "$(last_line "$out")" = "To use rafikicode in this terminal now, run: source ~/.bashrc" ] \
+    && [ "$(env -i HOME="$h" PATH=/usr/bin:/bin TERM=dumb "$BASH_BIN" -ic 'source ~/.bashrc; command -v rafikicode' 2>/dev/null | tail -n 1)" = "$h/.rafikicode/bin/rafikicode" ]; check $? "this terminal cannot find it yet: the last line says source ~/.bashrc, and that works"
+
+out=$(env HOME="$h" SHELL=/bin/bash PATH="$h/.rafikicode/bin:$safe_path" RAFIKICODE_INSTALL_DIR="$h/.rafikicode/bin" \
+    "$BASH_BIN" "$INSTALLER" --no-login 2>&1 | plain) && rc=0 || rc=$?
+[ "$rc" = "0" ] && [[ "$out" != *"in this terminal now"* ]]; check $? "this terminal already finds it: no line about this terminal"
+
+h=$(fresh_home home-hint-zsh)
+: > "$h/.zshrc"
+out=$(env HOME="$h" SHELL=/bin/zsh PATH="$hint_path" RAFIKICODE_INSTALL_DIR="$h/.rafikicode/bin" \
+    "$BASH_BIN" "$INSTALLER" --no-login 2>&1 | plain) && rc=0 || rc=$?
+[ "$(last_line "$out")" = "To use rafikicode in this terminal now, run: source ~/.zshrc" ]; check $? "zsh: the last line names ~/.zshrc"
+
+h=$(fresh_home home-hint-nomodify)
+out=$(env HOME="$h" SHELL=/bin/bash PATH="$hint_path" RAFIKICODE_INSTALL_DIR="$h/.rafikicode/bin" \
+    "$BASH_BIN" "$INSTALLER" --no-login --no-modify-path 2>&1 | plain) && rc=0 || rc=$?
+[ "$rc" = "0" ] && [ "$(last_line "$out")" = "To use rafikicode in this terminal now, run: export PATH=$h/.rafikicode/bin:\$PATH" ]; check $? "no startup file written: the last line is the export line"
+
+h=$(fresh_home home-hint-tmp)
+: > "$h/.bashrc"
+out=$(env HOME="$h" SHELL=/bin/bash PATH="$hint_path" TMPDIR="$WORK/tmp-is-a-file" RAFIKICODE_INSTALL_DIR="$h/.rafikicode/bin" \
+    "$BASH_BIN" "$INSTALLER" --no-login 2>&1 | plain) && rc=0 || rc=$?
+[ "$rc" = "0" ] && [ "$(last_line "$out")" = "To use rafikicode in this terminal now, run: source ~/.bashrc" ] \
+    && [ "$(env -i HOME="$h" PATH=/usr/bin:/bin TERM=dumb "$BASH_BIN" -ic 'source ~/.bashrc; echo "$TMPDIR"' 2>/dev/null | tail -n 1)" = "$h/.rafikicode/tmp" ]; check $? "a replaced temporary folder: sourcing the file named on the last line sets TMPDIR too"
+
+h=$(fresh_home home-hint-tmp-nomodify)
+out=$(env HOME="$h" SHELL=/bin/bash PATH="$hint_path" TMPDIR="$WORK/tmp-is-a-file" RAFIKICODE_INSTALL_DIR="$h/.rafikicode/bin" \
+    "$BASH_BIN" "$INSTALLER" --no-login --no-modify-path 2>&1 | plain) && rc=0 || rc=$?
+[ "$(last_line "$out")" = "To use rafikicode in this terminal now, run: export PATH=$h/.rafikicode/bin:\$PATH && export TMPDIR=\$HOME/.rafikicode/tmp" ]; check $? "no startup file and a replaced temporary folder: both export lines"
+
 echo "install tests: ${pass} passed, ${fail} failed"
 [ "$fail" = "0" ]

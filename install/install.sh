@@ -2268,6 +2268,53 @@ if [ -n "$workspace_dir" ]; then start_line="cd ~/RafikiCode && ${run_cmd}"; fi
 
 self_check
 
+# The last line of the install, for the terminal it ran in. `curl ... | bash`
+# runs in a child of that terminal's shell, so nothing written to a startup file
+# reaches it: typing the name there answers "command not found". So, when the
+# PATH of that shell (which this script inherited unchanged) does not find the
+# program just installed, the very last line says what to type there: source
+# the startup file that now carries the PATH line (and the TMPDIR line, when the
+# temporary folder had to be replaced), or the export lines themselves when no
+# such file was written.
+terminal_hint() {
+    local found="" family file="" tilde cmd="" tmp_line=""
+    found=$(command -v "$APP" 2>/dev/null || true)
+    if [ -n "$found" ] && [ "$found" -ef "${INSTALL_DIR}/${BIN_NAME}" ]; then return 0; fi
+    family=$(shell_family)
+    [ -n "$tmp_fallback" ] && tmp_line="export TMPDIR=\$HOME/.${APP}/tmp"
+    if [ "$no_modify_path" != "true" ]; then
+        local candidates
+        case "$family" in
+            fish) candidates="$HOME_DIR/.config/fish/config.fish" ;;
+            zsh) candidates="${ZDOTDIR:-$HOME_DIR}/.zshrc ${ZDOTDIR:-$HOME_DIR}/.zshenv" ;;
+            sh) candidates="$HOME_DIR/.profile $HOME_DIR/.ashrc" ;;
+            *) candidates="$HOME_DIR/.bashrc $HOME_DIR/.bash_profile $HOME_DIR/.bash_login $HOME_DIR/.profile" ;;
+        esac
+        for file in $candidates; do
+            if [ -f "$file" ] && grep -Fq "$INSTALL_DIR" "$file" 2>/dev/null; then break; fi
+            file=""
+        done
+    fi
+    if [ -n "$file" ]; then
+        tilde="$file"
+        case "$file" in "$HOME_DIR"/*) tilde="~${file#"$HOME_DIR"}" ;; esac
+        if [ "$family" = "sh" ]; then cmd=". $tilde"; else cmd="source $tilde"; fi
+        # The TMPDIR line goes into the same files as the PATH line; if this one
+        # does not carry it, it is added to the command.
+        if [ -n "$tmp_line" ] && ! grep -q "TMPDIR" "$file" 2>/dev/null; then
+            if [ "$family" = "fish" ]; then cmd="$cmd; set -gx TMPDIR \$HOME/.${APP}/tmp"; else cmd="$cmd && $tmp_line"; fi
+        fi
+    elif [ "$family" = "fish" ]; then
+        cmd="fish_add_path ${INSTALL_DIR}"
+        [ -n "$tmp_line" ] && cmd="$cmd; set -gx TMPDIR \$HOME/.${APP}/tmp"
+    else
+        cmd="export PATH=${INSTALL_DIR}:\$PATH"
+        [ -n "$tmp_line" ] && cmd="$cmd && $tmp_line"
+    fi
+    if [ -n "$shadowed" ] && [ "$family" != "fish" ]; then cmd="$cmd && hash -r"; fi
+    printf '\nTo use %s in this terminal now, run: %s\n' "$APP" "$cmd"
+}
+
 # Finish by signing in, instead of printing a command for someone to type.
 #
 # `login` is an OAuth device flow: it prints a short code and a link and then
@@ -2300,6 +2347,7 @@ if can_sign_in; then
         if [ -n "$tmp_fallback" ]; then
             print_message info "${MUTED}${TMPDIR_ORIG:-/tmp} ${tmp_fallback_why:-cannot be used}; new terminals use ~/.${APP}/tmp. In this one, run:${NC} export TMPDIR=\$HOME/.${APP}/tmp"
         fi
+        terminal_hint
         exit 0
     fi
     print_message warning "Sign in did not finish. You can do it whenever you like:"
@@ -2346,3 +2394,4 @@ fi
 step=$((step + 1))
 print_message info "  ${step}. Start ${APP} in your workspace folder, or in any project folder:"
 print_message info "       ${start_line}"
+terminal_hint

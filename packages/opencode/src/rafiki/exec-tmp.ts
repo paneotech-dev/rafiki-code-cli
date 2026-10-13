@@ -37,6 +37,7 @@ import path from "path"
 import { spawnSync } from "child_process"
 import { xdgCache } from "xdg-basedir"
 import { Brand } from "@opencode-ai/core/brand/brand"
+import * as ChildExit from "./child-exit"
 
 // Why a directory cannot hold the render library. "ok" is the only usable one.
 export type Verdict = "ok" | "noexec" | "full" | "unwritable" | "nomem" | "unknown"
@@ -328,6 +329,14 @@ export function explain(
   const current = process.env["TMPDIR"] || os.tmpdir()
   const picked = choose([current, ...dirs], [], check)
   if (!picked.dir) return { cause: message(picked.tried), step: step() }
+  // The temporary directory this process unpacked into refused, and another
+  // one works: that refusal is the cause, not some other problem.
+  const first = picked.tried[0]
+  if (first && first.dir === current && first.verdict !== "ok" && first.verdict !== "unknown")
+    return {
+      cause: `Probable cause: the temporary directory ${current} is ${reasons[first.verdict]}, and ${Brand.product} unpacks the library that draws its terminal interface there. ${picked.dir} works.`,
+      step: [`Point ${Brand.name} at the directory that works:`, "", `  TMPDIR=${picked.dir} ${Brand.name}`].join(os.EOL),
+    }
   return { cause: otherCause(input, picked.dir), step: selfCheck(), report: true }
 }
 
@@ -344,10 +353,10 @@ function restart(dir: string): void {
   for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => {})
   const run = spawnSync(process.execPath, args, {
     stdio: "inherit",
-    env: { ...process.env, TMPDIR: dir, [Brand.env.tmpdirChecked]: "1" },
+    env: { ...process.env, TMPDIR: dir, TEMP: dir, TMP: dir, [Brand.env.tmpdirChecked]: "1" },
   })
   if (run.error) return
-  process.exit(run.status ?? 1)
+  ChildExit.passOn(run)
 }
 
 // Called once from src/index.ts before anything is parsed. Does nothing at all

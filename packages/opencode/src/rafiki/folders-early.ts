@@ -15,6 +15,7 @@
 // repaired is still said, on stderr.
 import { spawnSync } from "child_process"
 import * as Folders from "./folders"
+import * as ChildExit from "./child-exit"
 
 const AGAIN = "RAFIKICODE_FOLDERS_CHECKED"
 const FIXED = "RAFIKICODE_FOLDERS_FIXED"
@@ -50,7 +51,7 @@ function run() {
     },
   })
   if (child.error) return
-  process.exit(child.status ?? 1)
+  ChildExit.passOn(child)
 }
 
 try {
