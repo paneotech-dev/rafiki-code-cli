@@ -27,6 +27,7 @@ import { createOpencodeClient, type OpencodeClient, type ToolPart } from "@openc
 import { FormatError, FormatUnknownError } from "../error"
 import * as RafikiGateway from "@/rafiki/gateway-errors"
 import * as RafikiTpm from "@/rafiki/tpm"
+import * as RafikiContext from "@/rafiki/context-size"
 import * as RafikiPermission from "@/rafiki/permission-hint"
 import * as Publish from "@opencode-ai/core/brand/publish"
 import * as PermissionMode from "@opencode-ai/core/brand/permission-mode"
@@ -900,6 +901,15 @@ export const RunCommand = effectCmd({
               const line = event.properties.status.message
               if (toggles.get(line) === true) continue
               toggles.set(line, true)
+              if (emit("notice", { message: line })) continue
+              UI.println(UI.Style.TEXT_WARNING_BOLD + "!", UI.Style.TEXT_NORMAL + line)
+              continue
+            }
+
+            // A single request over compaction.warn_at (rafiki/context-size.ts):
+            // the same one line the interface shows.
+            if (event.type === "tui.toast.show" && RafikiContext.isWarning(event.properties.message)) {
+              const line = event.properties.message
               if (emit("notice", { message: line })) continue
               UI.println(UI.Style.TEXT_WARNING_BOLD + "!", UI.Style.TEXT_NORMAL + line)
               continue

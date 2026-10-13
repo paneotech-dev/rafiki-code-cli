@@ -563,6 +563,44 @@ describe("session.compaction.isOverflow", () => {
   )
 })
 
+// The compaction point (src/rafiki/context-size.ts): 150000 tokens of context on
+// the Rafiki tiers, whatever their 1M window; compaction.threshold elsewhere.
+describe("session.compaction.isOverflow: the compaction point", () => {
+  const rafiki = () => ({ ...createModel({ context: 1_000_000, output: 64_000 }), providerID: "rafiki" }) as Provider.Model
+  const at = (total: number) => ({ input: total, output: 0, reasoning: 0, cache: { read: 0, write: 0 } })
+
+  it.live(
+    "a Rafiki tier compacts at 150000 tokens, not near its 1M window",
+    provideTmpdirInstance(() =>
+      Effect.gen(function* () {
+        const compact = yield* SessionCompaction.Service
+        expect(yield* compact.isOverflow({ tokens: at(149_999), model: rafiki() })).toBe(false)
+        expect(yield* compact.isOverflow({ tokens: at(150_000), model: rafiki() })).toBe(true)
+        // Another provider keeps the window less the output reserve.
+        expect(yield* compact.isOverflow({ tokens: at(150_000), model: createModel({ context: 1_000_000, output: 64_000 }) })).toBe(false)
+      }),
+    ),
+  )
+
+  it.live(
+    "compaction.threshold sets the point on any provider",
+    provideTmpdirInstance(
+      () =>
+        Effect.gen(function* () {
+          const compact = yield* SessionCompaction.Service
+          const other = createModel({ context: 1_000_000, output: 64_000 })
+          expect(yield* compact.isOverflow({ tokens: at(99_999), model: other })).toBe(false)
+          expect(yield* compact.isOverflow({ tokens: at(100_000), model: other })).toBe(true)
+          expect(yield* compact.isOverflow({ tokens: at(100_000), model: rafiki() })).toBe(true)
+          // Never later than the window less the output reserve.
+          const small = createModel({ context: 64_000, output: 32_000 })
+          expect(yield* compact.isOverflow({ tokens: at(32_000), model: small })).toBe(true)
+        }),
+      { config: { compaction: { threshold: 100_000 } } },
+    ),
+  )
+})
+
 describe("session.compaction.create", () => {
   it.live(
     "creates a compaction user message and part",

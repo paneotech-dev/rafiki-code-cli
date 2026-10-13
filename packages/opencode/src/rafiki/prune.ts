@@ -21,7 +21,7 @@ import { Brand } from "@opencode-ai/core/brand/brand"
 import type { SessionV1 } from "@opencode-ai/core/v1/session"
 import { Token } from "@/util/token"
 
-export const PROTECT_TOKENS = 40_000
+export const PROTECT_TOKENS = 20_000
 export const MINIMUM_TOKENS = 20_000
 export const LARGE_TOKENS = 500
 

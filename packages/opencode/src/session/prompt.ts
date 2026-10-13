@@ -61,6 +61,8 @@ import { SessionTools } from "./tools"
 import { LLMEvent } from "@opencode-ai/llm"
 import * as RafikiReasoning from "@/rafiki/reasoning"
 import * as RafikiTpm from "@/rafiki/tpm"
+import * as RafikiContext from "@/rafiki/context-size"
+import { TuiEvent } from "@/server/tui-event"
 import * as RafikiGateway from "@/rafiki/gateway-errors"
 import * as RafikiResume from "@/rafiki/resume"
 import * as RafikiVerify from "@/rafiki/verify-turn"
@@ -1239,10 +1241,20 @@ const layer = Layer.effect(
             continue
           }
 
+          // Compact before sending when the next request would reach the
+          // compaction point (150000 tokens on the Rafiki tiers,
+          // rafiki/context-size.ts): the previous request plus what was added
+          // since, so a turn that brings back large tool output compacts first
+          // instead of sending it once at full size.
+          const nextTokens = lastFinished ? RafikiTpm.estimate(msgs, lastFinished) : 0
           if (
             lastFinished &&
             lastFinished.summary !== true &&
-            (yield* compaction.isOverflow({ tokens: lastFinished.tokens, model }))
+            ((yield* compaction.isOverflow({ tokens: lastFinished.tokens, model })) ||
+              (yield* compaction.isOverflow({
+                tokens: { ...lastFinished.tokens, total: nextTokens },
+                model,
+              })))
           ) {
             yield* compaction.create({ sessionID, agent: lastUser.agent, model: lastUser.model, auto: true })
             continue
@@ -1269,6 +1281,20 @@ const layer = Layer.effect(
               })
               yield* compaction.create({ sessionID, agent: lastUser.agent, model: lastUser.model, auto: true })
               continue
+            }
+          }
+
+          // A single large request (over compaction.warn_at, 200000 tokens by
+          // default) gets one line suggesting /compact or a new session.
+          if (lastFinished && lastFinished.summary !== true) {
+            const threshold = RafikiContext.warnAt({ compaction: (yield* config.get()).compaction })
+            if (RafikiContext.shouldWarn(sessionID, nextTokens, threshold)) {
+              yield* events.publish(TuiEvent.ToastShow, {
+                title: RafikiContext.TITLE,
+                message: RafikiContext.warningLine(nextTokens),
+                variant: "warning",
+                duration: 10_000,
+              })
             }
           }
 

@@ -73,20 +73,20 @@ counted with `git diff --numstat -M` against the upstream base.
 
 <!-- upstream-files:start -->
 
-Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 204. Changed lines: 8053 (5118 added, 2935 removed).
+Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 208. Changed lines: 8160 (5223 added, 2937 removed).
 
 | Class | Files | Added | Removed |
 | --- | ---: | ---: | ---: |
-| Source: a call into this fork's modules | 53 | 1328 | 236 |
-| Source: product name, file names and wording | 42 | 354 | 209 |
-| Source: behaviour changed in place | 20 | 737 | 244 |
-| Tests of upstream, adapted | 35 | 677 | 179 |
-| Generated files | 3 | 377 | 188 |
+| Source: a call into this fork's modules | 54 | 1375 | 238 |
+| Source: product name, file names and wording | 42 | 362 | 209 |
+| Source: behaviour changed in place | 21 | 739 | 244 |
+| Tests of upstream, adapted | 36 | 715 | 179 |
+| Generated files | 4 | 387 | 188 |
 | Package identity and packaging | 9 | 20 | 479 |
 | Documentation | 23 | 197 | 1182 |
 | Repository tooling and workflows | 6 | 23 | 8 |
 | Editor extension | 13 | 1405 | 210 |
-| Total | 204 | 5118 | 2935 |
+| Total | 208 | 5223 | 2937 |
 
 ### Source: a call into this fork's modules
 
@@ -100,7 +100,7 @@ On a conflict: Take upstream's side of the conflict, then put the call back at t
 | `packages/core/src/models-dev.ts` | 9 | 2 | The upstream model catalogue is fetched only while the provider scope is open (`core/brand/brand.ts`, `Brand.providers.open()`): the official build offers the rafiki provider alone, so a run contacts no catalogue host. |
 | `packages/core/src/plugin/skill.ts` | 13 | 5 | The built in configuration skill is the one from `brand/skill.ts` when the upstream skill is hidden. |
 | `packages/core/src/ripgrep.ts` | 43 | 2 | When the ripgrep binary can be neither found nor downloaded, glob, file search and grep run on the built-in search (`core/brand/search-fallback.ts`), with one warning line, instead of failing. |
-| `packages/core/src/v1/config/migrate.ts` | 3 | 1 | Carries the `channel` key (update channel, `rafiki/update.ts`) into the new configuration shape. Skips the `permission.mode` and `permission.auto_check` settings (`core/brand/permission-mode.ts`), which are not rules. |
+| `packages/core/src/v1/config/migrate.ts` | 5 | 1 | Carries the `channel` key (update channel, `rafiki/update.ts`) into the new configuration shape. Skips the `permission.mode` and `permission.auto_check` settings (`core/brand/permission-mode.ts`), which are not rules. Carries `compaction.threshold` and `compaction.warn_at` (`rafiki/context-size.ts`). |
 | `packages/core/src/v1/config/permission.ts` | 35 | 2 | The `mode` and `auto_check` settings of the permission config (`core/brand/permission-mode.ts`), checked next to the rules. |
 | `packages/opencode/script/schema.ts` | 15 | 1 | Descriptions in the published schema are rewritten with `Brand.prompt`. |
 | `packages/opencode/src/acp/agent.ts` | 4 | 3 | Authentication and the key check go through `rafiki/acp.ts`. |
@@ -108,7 +108,7 @@ On a conflict: Take upstream's side of the conflict, then put the call back at t
 | `packages/opencode/src/cli/cmd/acp.ts` | 5 | 1 | The internal server gets a generated password (`rafiki/acp.ts`). |
 | `packages/opencode/src/cli/cmd/attach.ts` | 16 | 4 | Terminal check before the interface loads (`rafiki/startup.ts`), credentials from the server file (`rafiki/server-file.ts`), and option text. |
 | `packages/opencode/src/cli/cmd/models.ts` | 6 | 1 | A sign in hint when no provider is connected, and tiers that are not listed are hidden (`Brand.provider.listed`). |
-| `packages/opencode/src/cli/cmd/run.ts` | 214 | 15 | Exit codes and messages for gateway errors, a missing key and rejected permissions, the attach check, the cost line, the `--resume` alias and server file credentials, each a call into `src/rafiki/`; an answer on another tier is announced through `rafiki/served.ts`, and a run on Rafiki Max is checked against the key first (`rafiki/tier-check.ts`). A command that publishes code is refused unless the run allows it (`--allow-push`, `RAFIKICODE_ALLOW_PUSH`, a `publish` permission in config), `--auto` or not (`core/brand/publish.ts`). A turn tried again after it spent its output budget reasoning is announced in one line (`rafiki/reasoning.ts`), and SIGTERM or SIGINT stop and save the session before exiting 143 or 130 (`rafiki/run-signal.ts`). The checks after a change are reported on the `Task:` line, in a `verify` JSON event and with exit code 8 when they still fail (`rafiki/verify.ts`). `--auto` is auto mode (`core/brand/permission-mode.ts`): a guarded action is refused with the reason and how to allow it. |
+| `packages/opencode/src/cli/cmd/run.ts` | 224 | 15 | Exit codes and messages for gateway errors, a missing key and rejected permissions, the attach check, the cost line, the `--resume` alias and server file credentials, each a call into `src/rafiki/`; an answer on another tier is announced through `rafiki/served.ts`, and a run on Rafiki Max is checked against the key first (`rafiki/tier-check.ts`). A command that publishes code is refused unless the run allows it (`--allow-push`, `RAFIKICODE_ALLOW_PUSH`, a `publish` permission in config), `--auto` or not (`core/brand/publish.ts`). A turn tried again after it spent its output budget reasoning is announced in one line (`rafiki/reasoning.ts`), and SIGTERM or SIGINT stop and save the session before exiting 143 or 130 (`rafiki/run-signal.ts`). The checks after a change are reported on the `Task:` line, in a `verify` JSON event and with exit code 8 when they still fail (`rafiki/verify.ts`). `--auto` is auto mode (`core/brand/permission-mode.ts`): a guarded action is refused with the reason and how to allow it. A request over `compaction.warn_at` prints one line suggesting /compact (`rafiki/context-size.ts`). |
 | `packages/opencode/src/cli/cmd/run/variant.shared.ts` | 3 | 1 | The provider name is not repeated after a model name that starts with it (`Brand.provider.label`). |
 | `packages/opencode/src/cli/cmd/serve.ts` | 7 | 6 | The server password is made and stored by `rafiki/server-file.ts`; text names this product. |
 | `packages/opencode/src/cli/cmd/upgrade.ts` | 257 | 10 | The `update` alias, the method choices this product supports, `--pre` and the update channel of `rafiki/update.ts`, and the refusals and clean up from `rafiki/update.ts` and `rafiki/autoupdate.ts`. The version npm, Homebrew or winget offers, the `--version` check after an upgrade and the copy a new shell runs come from `rafiki/channels.ts`. |
@@ -131,8 +131,9 @@ On a conflict: Take upstream's side of the conflict, then put the call back at t
 | `packages/opencode/src/session/llm/native-runtime.ts` | 3 | 0 | The native runtime is refused when it would send the key anywhere but the gateway (`BrandGuard.allowed`). |
 | `packages/opencode/src/session/llm/request.ts` | 7 | 2 | The system text is split into a stable and a changing part (`rafiki/cache-prefix.ts`); the user agent is this product's. |
 | `packages/opencode/src/session/message-v2.ts` | 2 | 1 | A replaced old tool output is sent as the marker of `rafiki/prune.ts`, which names the call and how to run it again. |
+| `packages/opencode/src/session/overflow.ts` | 8 | 1 | A session is compacted no later than the compaction point of `rafiki/context-size.ts` (150000 tokens on the Rafiki tiers, `compaction.threshold`, `RAFIKICODE_COMPACT_AT`), below the window less the output reserve. |
 | `packages/opencode/src/session/processor.ts` | 54 | 4 | Retries, error wording and resuming a cut stream go through `rafiki/resilience.ts` and `rafiki/resume.ts`; the tier that answered is recorded on the message through `rafiki/served.ts`. A step stops at a safe point when a message marked "send now" waits (`rafiki/steer.ts`). A refusal over the key's tokens per minute limit compacts once and then stops with a message (`rafiki/tpm.ts`). |
-| `packages/opencode/src/session/prompt.ts` | 121 | 10 | The order of the system text (`rafiki/cache-prefix.ts`), continuation messages (`rafiki/resume.ts`) and the one retry, then the error, for an empty answer cut by the length limit (`rafiki/reasoning.ts`). Old tool output is pruned before the first request of a turn (`rafiki/prune.ts`). The project memory goes last in the stable system text, read once per session (`rafiki/memory.ts`). Before a turn that changed files ends, the project's checks run and a failure is sent back for a fix round; the working practice that goes with them opens the system text (`rafiki/verify-turn.ts`). A prompt marked "send now" asks the running turn to take it at its next safe point, and tool calls are counted so a step is never cut during one (`rafiki/steer.ts`). The session compacts before a request that would come near the key's tokens per minute limit (`rafiki/tpm.ts`). |
+| `packages/opencode/src/session/prompt.ts` | 148 | 11 | The order of the system text (`rafiki/cache-prefix.ts`), continuation messages (`rafiki/resume.ts`) and the one retry, then the error, for an empty answer cut by the length limit (`rafiki/reasoning.ts`). Old tool output is pruned before the first request of a turn (`rafiki/prune.ts`). The project memory goes last in the stable system text, read once per session (`rafiki/memory.ts`). Before a turn that changed files ends, the project's checks run and a failure is sent back for a fix round; the working practice that goes with them opens the system text (`rafiki/verify-turn.ts`). A prompt marked "send now" asks the running turn to take it at its next safe point, and tool calls are counted so a step is never cut during one (`rafiki/steer.ts`). The session compacts before a request that would come near the key's tokens per minute limit (`rafiki/tpm.ts`). The compaction check before a request uses the size the request would have, and a request over `compaction.warn_at` shows one line suggesting /compact (`rafiki/context-size.ts`). |
 | `packages/opencode/src/session/retry.ts` | 6 | 2 | Which gateway errors are never retried and how long to wait (`rafiki/gateway-errors.ts`, `rafiki/resilience.ts`). |
 | `packages/opencode/src/session/revert.ts` | 2 | 0 | A cut turn is recovered before a revert (`rafiki/resume.ts`). |
 | `packages/opencode/src/session/system.ts` | 6 | 1 | System prompts pass through `Brand.prompt`; the date line leaves the environment block because `rafiki/cache-prefix.ts` places it after the stable part; the gateway provider's prompt starts with `Brand.identity`. |
@@ -158,7 +159,7 @@ On a conflict: Take upstream's side, then replace the literal with the value fro
 | `packages/core/src/oauth/page.ts` | 11 | 26 | The sign in result page names this product and shows its name where upstream draws its wordmark. |
 | `packages/core/src/plugin/agent.ts` | 2 | 1 | The plan agent may edit plans under each project directory name in `Brand.project.dirs`. |
 | `packages/core/src/plugin/command/initialize.txt` | 3 | 3 | Prompt text names this product and its configuration file. |
-| `packages/core/src/v1/config/config.ts` | 38 | 1 | The `compaction.prune` description gives this product's default (on for Rafiki tiers). The `verify` key configures the checks after a change (`rafiki/verify.ts`). The `channel` key is the update channel (`rafiki/update.ts`). |
+| `packages/core/src/v1/config/config.ts` | 46 | 1 | The `compaction.prune` description gives this product's default (on for Rafiki tiers). The `verify` key configures the checks after a change (`rafiki/verify.ts`). The `channel` key is the update channel (`rafiki/update.ts`). The `compaction.threshold` and `compaction.warn_at` keys set the compaction point and the large request line (`rafiki/context-size.ts`). |
 | `packages/opencode/src/cli/cmd/agent.ts` | 2 | 1 | New agents are written under this product's project directory. |
 | `packages/opencode/src/cli/cmd/debug/index.ts` | 2 | 1 | The version line names this product. |
 | `packages/opencode/src/cli/cmd/mcp.ts` | 7 | 5 | Messages name this product; the configuration file candidates come from the brand module. |
@@ -203,6 +204,7 @@ On a conflict: Merge by hand and read both sides. These are the files to thin ne
 
 | File | Added | Removed | Why |
 | --- | ---: | ---: | --- |
+| `packages/core/src/config/compaction.ts` | 2 | 0 | The `threshold` and `warn_at` keys (`rafiki/context-size.ts`) are carried into the new configuration shape. |
 | `packages/core/src/effect/layer-node.ts` | 6 | 0 | An undefined layer dependency raises an error that names the chain. Not specific to this product. |
 | `packages/core/src/ripgrep/binary.ts` | 3 | 0 | The ripgrep download gives up after 60 seconds, so a network that drops connections hands over to the built-in search instead of holding a search up. |
 | `packages/opencode/script/build.ts` | 112 | 15 | Output and user agent use the package name; every target the build host can execute is started once, each binary is hashed, and a coverage report is written (`script/platform-coverage.ts`). Every darwin binary is signed ad hoc once it is final, with rcodesign when the host is not a Mac, and its signature checked page by page (`script/macos-signature.ts`). The order of the `abi` filter is a fix that is not specific to this product. The compiled entry is `src/main.ts`, which runs the folder checks and the crash handlers before anything else is loaded. |
@@ -257,6 +259,7 @@ On a conflict: Take upstream's side, then apply the expectation of this product 
 | `packages/opencode/test/server/auth.test.ts` | 2 | 2 | Default user name. |
 | `packages/opencode/test/server/httpapi-cors.test.ts` | 3 | 2 | A foreign origin is refused with 403. |
 | `packages/opencode/test/server/httpapi-instance-route-auth.test.ts` | 2 | 2 | Default user name. |
+| `packages/opencode/test/session/compaction.test.ts` | 38 | 0 | Checks the compaction point of `rafiki/context-size.ts`: 150000 tokens on a Rafiki tier, `compaction.threshold` on any provider. |
 | `packages/opencode/test/session/instruction.test.ts` | 4 | 2 | The house style entry. |
 | `packages/opencode/test/session/llm-native-recorded.test.ts` | 1 | 0 | Providers that are disabled by default here are enabled for the test. |
 | `packages/opencode/test/session/message-v2.test.ts` | 5 | 1 | Expects the marker of `rafiki/prune.ts` for a replaced tool output. |
@@ -274,7 +277,8 @@ On a conflict: Never merge by hand. Take either side, finish the merge, then reg
 | --- | ---: | ---: | --- |
 | `bun.lock` | 33 | 33 | Differs by the name of the workspace package only. |
 | `packages/opencode/test/cli/help/__snapshots__/help-snapshots.test.ts.snap` | 316 | 127 | The help text of this product's command list. |
-| `packages/sdk/openapi.json` | 28 | 28 | Descriptions name this product (`Brand.document`). |
+| `packages/sdk/js/src/v2/gen/types.gen.ts` | 2 | 0 | The `compaction.threshold` and `compaction.warn_at` keys. |
+| `packages/sdk/openapi.json` | 36 | 28 | Descriptions name this product (`Brand.document`). The `compaction.threshold` and `compaction.warn_at` keys. |
 
 ### Package identity and packaging
 
