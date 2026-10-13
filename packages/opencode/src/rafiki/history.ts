@@ -8,6 +8,7 @@ import { spawnSync } from "child_process"
 import path from "path"
 import * as History from "@opencode-ai/core/brand/history"
 import * as ExecTmp from "./exec-tmp"
+import * as ChildExit from "./child-exit"
 
 // The command line for the program started again: the binary itself, or the
 // runtime and the entry file in a run from source.
@@ -29,5 +30,5 @@ export function reopen(input: { spawn?: typeof spawnSync; exit?: (code: number) 
   for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => {})
   const run = (input.spawn ?? spawnSync)(file, args, { stdio: "inherit", cwd, env: process.env })
   if (run.error) return
-  ;(input.exit ?? process.exit)(run.status ?? 1)
+  ChildExit.passOn(run, input.exit ?? process.exit)
 }

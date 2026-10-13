@@ -122,6 +122,94 @@ describe("the folder doctor: the folders rafikicode needs", () => {
     expect(byName(nowhere, "temp").line).toContain("Free some space, or set TMPDIR to a folder with room.")
   })
 
+  test("case 3: a temporary folder mounted noexec is replaced like a full one, since the interface's library cannot run from it", () => {
+    const noexecUnder = (prefixes: string[]) => {
+      const { io } = memory({ dirs: ["/home/ana", "/tmp"] })
+      const asked: string[] = []
+      io.runnable = (target) => {
+        asked.push(target)
+        return prefixes.some((item) => target === item || target.startsWith(item + "/")) ? "noexec" : "ok"
+      }
+      return { io, asked }
+    }
+    const tmp = noexecUnder(["/tmp"])
+    const result = run({ HOME: "/home/ana" }, tmp.io)
+    expect(result.env).toMatchObject({
+      TMPDIR: "/home/ana/.rafikicode/tmp",
+      TEMP: "/home/ana/.rafikicode/tmp",
+      TMP: "/home/ana/.rafikicode/tmp",
+    })
+    expect(byName(result, "temp").line).toBe(
+      "The temporary folder /tmp does not allow running programs (mounted noexec), so rafikicode uses /home/ana/.rafikicode/tmp instead.",
+    )
+    // The replacement is tested the same way before it is used.
+    expect(tmp.asked).toEqual(["/tmp", "/home/ana/.rafikicode/tmp"])
+
+    // The home folder noexec as well: one line saying what to set, and the start carries on.
+    const both = run({ HOME: "/home/ana" }, noexecUnder(["/tmp", "/home/ana"]).io)
+    expect(byName(both, "temp").status).toBe("warn")
+    expect(byName(both, "temp").line).toContain("Set TMPDIR to a folder you own that allows running programs.")
+    expect(both.env["TMPDIR"]).toBeUndefined()
+
+    // A probe that could not tell is not a finding, and Windows is never probed.
+    const unknown = memory({ dirs: ["/home/ana", "/tmp"] })
+    unknown.io.runnable = () => "unknown"
+    expect(byName(run({ HOME: "/home/ana" }, unknown.io), "temp").status).toBe("ok")
+    const win = noexecUnder(["/w"])
+    expect(byName(run({ USERPROFILE: "/home/ana", TEMP: "/w/temp" }, win.io, "win32"), "temp").status).toBe("ok")
+    expect(win.asked).toEqual([])
+  })
+
+  test("the noexec probe really runs a file, and its answer is cached per folder and mount", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "rafikicode-noexec-cache-"))
+    try {
+      expect(Folders.probeRunnable(dir)).toBe("ok")
+      expect(fs.readdirSync(dir)).toEqual([])
+      const cache = path.join(dir, "cache", Folders.CACHE_FILE)
+      let calls = 0
+      const probe = (target: string) => {
+        calls++
+        return Folders.probeRunnable(target)
+      }
+      expect(Folders.cachedRunnable(dir, cache, probe, 1000)).toBe("ok")
+      expect(Folders.cachedRunnable(dir, cache, probe, 2000)).toBe("ok")
+      expect(calls).toBe(1)
+      // A stored "noexec" is believed until it is a week old.
+      const stored = JSON.parse(fs.readFileSync(cache, "utf8"))
+      stored[dir].verdict = "noexec"
+      fs.writeFileSync(cache, JSON.stringify(stored))
+      expect(Folders.cachedRunnable(dir, cache, probe, 3000)).toBe("noexec")
+      expect(calls).toBe(1)
+      expect(Folders.cachedRunnable(dir, cache, probe, 1000 + 8 * 24 * 60 * 60 * 1000)).toBe("ok")
+      expect(calls).toBe(2)
+      // Another mount or another folder under the same path is probed again.
+      const again = JSON.parse(fs.readFileSync(cache, "utf8"))
+      again[dir] = { ...again[dir], id: "0:0:other", verdict: "noexec" }
+      fs.writeFileSync(cache, JSON.stringify(again))
+      expect(Folders.cachedRunnable(dir, cache, probe, 4000)).toBe("ok")
+      expect(calls).toBe(3)
+      // A broken cache file only costs the probe.
+      fs.writeFileSync(cache, "{not json")
+      expect(Folders.cachedRunnable(dir, cache, probe, 5000)).toBe("ok")
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test.if(process.platform === "linux" && process.getuid?.() === 0)("a real tmpfs mounted noexec is found by the probe", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "rafikicode-noexec-mount-"))
+    const mounted = Bun.spawnSync(["mount", "-t", "tmpfs", "-o", "noexec,size=1M", "tmpfs", dir]).exitCode === 0
+    try {
+      if (!mounted) return
+      fs.writeFileSync(path.join(dir, "w"), "x")
+      expect(Folders.probeRunnable(dir)).toBe("noexec")
+      expect(Folders.realIO.runnable!(dir, "")).toBe("noexec")
+    } finally {
+      if (mounted) Bun.spawnSync(["umount", dir])
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   test("case 4: a data, cache or state folder that is a file is moved aside and recreated", () => {
     const { io, files } = memory({ dirs: ["/home/ana", "/tmp"], files: ["/home/ana/.local/share/rafikicode"] })
     const result = run({ HOME: "/home/ana", TMPDIR: "/tmp" }, io)

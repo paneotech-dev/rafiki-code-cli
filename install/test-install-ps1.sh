@@ -124,6 +124,16 @@ out=$(ps installs-in-caller.ps1 2>&1)
 rc=$?
 [ "$rc" = 0 ] && [[ "$out" == *"Verified: rafikicode 9.9.9"* ]] && [[ "$out" == *"first, LASTEXITCODE=0"* ]]
 check $? "through iex, an install succeeds and returns to the caller"
+# The last line: through iex this session's path already finds the program, so
+# nothing is said about this terminal; as a file with -NoModifyPath, it does not,
+# and the last line is the command to type here.
+[[ "$out" != *"in this terminal now"* ]]
+check $? "through iex, the session path is refreshed and no line about this terminal is printed"
+rm -f "$WORK/home/.rafikicode/bin/rafikicode.exe"
+nomod=$(ps install.ps1 -Version 9.9.9 -NoModifyPath 2>&1)
+last=$(printf '%s\n' "$nomod" | sed '/^[[:space:]]*$/d' | tail -n 1)
+[[ "$last" == 'To use rafikicode in this terminal now, run: $env:Path = "'*'rafikicode'*';$env:Path"'* ]]
+check $? "as a file with -NoModifyPath, the last line says what to run in this terminal"
 [[ "$out" == *"       rafikicode login"* ]] && [[ "$out" == *"       rafikicode doctor"* ]] \
     && [[ "$out" == *'       cd $HOME\RafikiCode'* ]] && [[ "$out" == *"workspace folder: True"* ]]
 check $? "the next steps name login, doctor and the RafikiCode folder, which exists"

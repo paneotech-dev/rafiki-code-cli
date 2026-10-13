@@ -44,6 +44,7 @@ import { InstallationEvent } from "@opencode-ai/schema/installation-event"
 import { TuiEvent } from "@opencode-ai/schema/tui-event"
 import { RafikiUpdate } from "./update"
 import * as ExecTmp from "./exec-tmp"
+import * as ChildExit from "./child-exit"
 
 // At most one check in this many milliseconds.
 export const INTERVAL = 24 * 60 * 60 * 1000
@@ -382,7 +383,7 @@ function restart(): void {
     env: { ...process.env, [Brand.env.updateApplied]: "1" },
   })
   if (run.error) return
-  process.exit(run.status ?? 1)
+  ChildExit.passOn(run)
 }
 
 // Installs a staged update. Called from src/index.ts before anything is parsed,
