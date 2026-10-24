@@ -4,9 +4,14 @@ import { SessionV1 } from "@opencode-ai/core/v1/session"
 import type { Provider } from "@/provider/provider"
 import { ProviderTransform } from "@/provider/transform"
 import type { MessageV2 } from "./message-v2"
+import * as RafikiContext from "@/rafiki/context-size"
 
 const COMPACTION_BUFFER = 20_000
 
+// The context size in tokens at which a session is compacted: the window less
+// the output a request may ask for (or the input limit less a reserve), and no
+// later than the compaction point of rafiki/context-size.ts (150000 tokens on
+// the Rafiki tiers, compaction.threshold, RAFIKICODE_COMPACT_AT).
 export function usable(input: { cfg: ConfigV1.Info; model: Provider.Model; outputTokenMax?: number }) {
   const context = input.model.limit.context
   if (context === 0) return 0
@@ -14,9 +19,11 @@ export function usable(input: { cfg: ConfigV1.Info; model: Provider.Model; outpu
   const reserved =
     input.cfg.compaction?.reserved ??
     Math.min(COMPACTION_BUFFER, ProviderTransform.maxOutputTokens(input.model, input.outputTokenMax))
-  return input.model.limit.input
+  const window = input.model.limit.input
     ? Math.max(0, input.model.limit.input - reserved)
     : Math.max(0, context - ProviderTransform.maxOutputTokens(input.model, input.outputTokenMax))
+  const point = RafikiContext.compactAt({ compaction: input.cfg.compaction, providerID: input.model.providerID })
+  return point === undefined ? window : Math.min(window, point)
 }
 
 export function isOverflow(input: {

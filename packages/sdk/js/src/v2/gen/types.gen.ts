@@ -2020,6 +2020,8 @@ export type Config = {
     tail_turns?: number
     preserve_recent_tokens?: number
     reserved?: number
+    threshold?: number
+    warn_at?: number
   }
   experimental?: {
     disable_paste_summary?: boolean

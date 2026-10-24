@@ -1,7 +1,7 @@
 // Pruning of old tool output (src/rafiki/prune.ts): a long session sends
 // fewer bytes per request, and the model still gets what it needs.
 //
-// The end to end test runs nine turns of one session with `rafikicode run`
+// The end to end test runs seven turns of one session with `rafikicode run`
 // (`--session` after the first) against the mock gateway, twice side by side:
 // pruning on (the default on a Rafiki tier) and off (RAFIKICODE_PRUNE=0).
 // Every turn the gateway asks for one tool call: a failing command with a
@@ -19,7 +19,7 @@ import { createMockGateway } from "../brand/mock-gateway.mjs"
 
 const root = path.resolve(import.meta.dir, "../..")
 const KEY = "sk-prune-stub"
-const TURNS = 9
+const TURNS = 7
 // One line of about 45,000 characters (about 11,000 tokens), under the 50 KB
 // and 2,000 line limits, so the tool returns it whole.
 const big = (tag: string) => `seq -s ' ' -f '${tag}-%05g' 1 3750`
@@ -245,7 +245,7 @@ describe("the rule", () => {
 
   const size = 11_000 * TOKENS
 
-  test("the latest turn and the newest 40,000 tokens are kept; older large outputs go in one batch", () => {
+  test("the latest turn and the newest 20,000 tokens are kept; older large outputs go in one batch", () => {
     const msgs = [
       user("u1"),
       assistant("a1", [{ tool: "bash", size }]),
@@ -258,12 +258,31 @@ describe("the rule", () => {
       user("u5"),
     ]
     const found = Prune.select(msgs)
-    expect(found.parts.map((part) => String(part.id))).toEqual(["a2-0", "a1-0"])
-    expect(found.pruned).toBe(22_000)
+    expect(found.parts.map((part) => String(part.id))).toEqual(["a3-1", "a3-0", "a2-0", "a1-0"])
+    expect(found.pruned).toBe(44_000)
+  })
+
+  test("the newest 20,000 tokens of tool output are kept, not 40,000", () => {
+    expect(Prune.PROTECT_TOKENS).toBe(20_000)
+    // Two older turns of 15,000 tokens each, before the latest turn: the newer
+    // one is kept in full, the older one goes (it would have stayed under 40,000).
+    const msgs = [
+      user("u1"),
+      assistant("a1", [{ tool: "bash", size: 15_000 * TOKENS }]),
+      user("u2"),
+      assistant("a2", [{ tool: "bash", size: 15_000 * TOKENS }]),
+      user("u3"),
+      assistant("a3", [{ tool: "bash", size: 15_000 * TOKENS }]),
+      user("u4"),
+    ]
+    const found = Prune.select(msgs, { minimum: 0 })
+    expect(found.parts.map((part) => String(part.id))).toEqual(["a1-0"])
+    expect(found.pruned).toBe(15_000)
+    expect(Prune.select(msgs, { minimum: 0, protect: 40_000 }).parts).toEqual([])
   })
 
   test("nothing happens below the 20,000 token minimum", () => {
-    const msgs = [user("u1"), assistant("a1", [{ tool: "bash", size }]), user("u2"), assistant("a2", [{ tool: "bash", size: 40_000 * TOKENS }]), user("u3"), assistant("a3", [{ tool: "bash", size }]), user("u4")]
+    const msgs = [user("u1"), assistant("a1", [{ tool: "bash", size }]), user("u2"), assistant("a2", [{ tool: "bash", size: 20_000 * TOKENS }]), user("u3"), assistant("a3", [{ tool: "bash", size }]), user("u4")]
     const found = Prune.select(msgs)
     expect(found.pruned).toBe(11_000)
     expect(found.parts).toEqual([])
@@ -286,7 +305,7 @@ describe("the rule", () => {
       user("u1"),
       assistant("a1", old),
       user("u2"),
-      assistant("a2", [{ tool: "read", size: 40_000 * TOKENS }]),
+      assistant("a2", [{ tool: "read", size: 20_000 * TOKENS }]),
       user("u3"),
       assistant("a3", [{ tool: "read", size }]),
       user("u4"),
@@ -302,7 +321,7 @@ describe("the rule", () => {
       user("u2"),
       assistant("a2", [{ tool: "bash", size, compacted: 1 }]),
       user("u3"),
-      assistant("a3", [{ tool: "bash", size: 30_000 * TOKENS }]),
+      assistant("a3", [{ tool: "bash", size: 20_000 * TOKENS }]),
       user("u4"),
       assistant("a4", [{ tool: "bash", size }]),
       user("u5"),

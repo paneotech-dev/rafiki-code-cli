@@ -89,11 +89,20 @@ const tierLimits: Record<(typeof models)[number], { context: number; output: num
 }
 // When a session is compacted. Until 2026-10-04 every tier was registered with
 // a 128000 token window, so a session was compacted at about 64000 tokens on
-// fast and 96000 on pro and max. Since 2026-10-05 (owner's decision) a session
-// uses the whole window of its tier: no input limit is registered, so the
-// compaction check (packages/opencode/src/session/overflow.ts) compacts at the
-// window less the output a request may ask for, about 936000 tokens on fast
-// and 968000 on pro and max. A long session costs more per turn as it grows.
+// fast and 96000 on pro and max. From 2026-10-05 a session used the whole
+// window of its tier (about 936000 tokens on fast, 968000 on pro and max), and
+// every turn of a long session resent that history: a 237 request hour on pro
+// averaged 277000 input tokens per request. Since 2026-10-13 (owner's
+// decision) a session on any tier is compacted once its context reaches
+// compactAt tokens. The point is not registered as an input limit: the window
+// stays the real 1M, which the interface measures "% used" against, and the
+// compaction check (packages/opencode/src/session/overflow.ts) takes the lower
+// of this point and the window less the output a request may ask for.
+// compaction.threshold in the config and RAFIKICODE_COMPACT_AT move it.
+const compactAt = 150_000
+// A single request above this many tokens shows one line suggesting /compact
+// or a new session (compaction.warn_at, RAFIKICODE_WARN_AT).
+const warnAt = 200_000
 
 const outputFloor = 1_024
 
@@ -335,6 +344,14 @@ export const Brand = {
     // turns it off, for every model; it wins over compaction.prune in the
     // config. Unset, Rafiki tiers prune and other providers do not.
     prune: "RAFIKICODE_PRUNE",
+    // Context size in tokens at which a session is compacted (compaction.threshold
+    // in the config, which it wins over). Unset, 150000 on the Rafiki tiers.
+    // 0 or off compacts only near the end of the window.
+    compactAt: "RAFIKICODE_COMPACT_AT",
+    // Size in tokens of a single request above which one line suggests /compact
+    // or a new session (compaction.warn_at, which it wins over; default 200000;
+    // 0 or off turns the line off).
+    warnAt: "RAFIKICODE_WARN_AT",
     // Project memory (.rafiki/memory/): 0, off or false turns it off, 1, on or
     // true turns it on; it wins over memory.enabled in the config.
     memory: "RAFIKICODE_MEMORY",
@@ -487,6 +504,9 @@ export const Brand = {
   gateway: { url: gatewayDefault },
   console: { url: consoleDefault },
   models,
+  // Context size in tokens at which a Rafiki session is compacted, and the
+  // request size above which one line suggests /compact (see compactAt above).
+  context: { compactAt, warnAt },
   // Lowest index is the least preferred; the default picker takes the last entry first.
   priority: [...models].reverse(),
   defaultModel: `${providerID}/${models[0]}`,

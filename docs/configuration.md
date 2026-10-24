@@ -60,7 +60,7 @@ Every top-level key the CLI honors, with the meaning from the configuration sche
 | `formatter` | enable built-in formatters or configure overrides |
 | `watcher` | filesystem watcher settings |
 | `snapshot` | enable snapshots used for undo and revert |
-| `compaction` | conversation compaction behavior for long sessions. `compaction.prune` (`true` or `false`) turns the replacement of old tool output on or off, see [Long sessions: old tool output](#long-sessions-old-tool-output) |
+| `compaction` | conversation compaction behavior for long sessions. `compaction.threshold` (tokens, default `150000` on the Rafiki tiers) is the size of the context at which a session is compacted, see [Context](#context-and-tokens-in-the-terminal-interface); `compaction.warn_at` (tokens, default `200000`, `0` turns it off) is the size of a single request above which one line suggests `/compact` or a new session; `compaction.prune` (`true` or `false`) turns the replacement of old tool output on or off, see [Long sessions: old tool output](#long-sessions-old-tool-output) |
 | `memory` | project memory in `.rafiki/memory/`: `memory.enabled` (`true` by default) and `memory.max_bytes` (the size cap, 8,192 by default). See [Project memory](./memory.md) |
 | `verify` | the checks that run after a turn that changed files: `verify.enabled` (`true` by default), `verify.commands` (commands to run instead of the detected ones), `verify.timeout` (seconds for one round, 120 by default) and `verify.rounds` (fix rounds after a failure, 2 by default). See [Checks after a change](#checks-after-a-change) |
 | `attachment` | attachment processing settings |
@@ -82,6 +82,8 @@ The structure of the nested keys (`permission`, `agent`, `mcp`, and so on) is un
 | `RAFIKICODE_PERMISSION_MODE` | `ask`, `auto` or `plan`: the permission mode of this process, over `permission.mode` and the mode last picked for the project. Picking a mode with Shift+Tab during the session wins over it. See [Permission modes](#permission-modes) |
 | `RAFIKICODE_ALLOW_PUSH` | `1` lets `rafikicode run` publish code (`git push`, `gh pr create`, `gh repo create`, `gh release`), like `run --allow-push`. Without it a run refuses them. See [Pushing code from a run](./headless-and-ci.md#pushing-code-from-a-run) |
 | `RAFIKICODE_VERIFY` | `0`, `off` or `false` turns the checks after a change off for this run; `1`, `on` or `true` turns them on. Wins over `verify.enabled`. See [Checks after a change](#checks-after-a-change) |
+| `RAFIKICODE_COMPACT_AT` | the size of the context in tokens at which a session is compacted, over `compaction.threshold`. Unset, `150000` on the Rafiki tiers. `0` or `off` compacts only near the end of the model's window. See [Context](#context-and-tokens-in-the-terminal-interface) |
+| `RAFIKICODE_WARN_AT` | the size in tokens of a single request above which one line suggests `/compact` or a new session, over `compaction.warn_at`. Unset, `200000`. `0` or `off` turns the line off. See [Context](#context-and-tokens-in-the-terminal-interface) |
 | `RAFIKICODE_PRUNE` | `0`, `off` or `false` stops replacing old tool output; `1`, `on` or `true` turns it on, on any provider. Wins over `compaction.prune`. Unset, it is on for the Rafiki tiers. See [Long sessions: old tool output](#long-sessions-old-tool-output) |
 | `RAFIKICODE_MEMORY` | `0`, `off` or `false` turns the project memory off for this run; `1`, `on` or `true` turns it on. Wins over `memory.enabled`. See [Project memory](./memory.md) |
 | `RAFIKICODE_CONSOLE_URL` | override the Rafiki AI console base URL used by `login`, `logout`, `whoami` and `doctor`. Default `https://console.rafikiai.io`. The key is sent there, so only an https URL is used (plain http only for 127.0.0.1, [::1] or localhost); any other value is ignored with a warning, and so is a console URL on plain http elsewhere returned at sign in |
@@ -143,7 +145,8 @@ Last request sent 24,530 tokens
 - `cached` is the part of that input the provider read from its cache, which costs less. It is inside the tokens sent, not added to them.
 - The tokens received are the answer to that request: output and reasoning.
 - The percentage is the tokens sent over the window of the tier that answered. `rafiki-fast`, `rafiki-pro` and `rafiki-max` each have a window of 1,000,000 tokens (the documented windows of the models behind them, checked on 4 October 2026). A share under one per cent reads `<1%`.
-- A long session is compacted (summarised, so the next requests send less) only near the end of the window of its tier: at the window less the output a request may ask for, about 936,000 tokens on `rafiki-fast` and `rafiki-pro` and 968,000 on `rafiki-max`. Each turn sends the whole conversation, so the cost of a turn grows with the session; start a new session (or run `/compact`) to keep long work cheaper. Old tool output is shortened well before that, see below. A session is also compacted earlier when its next request would come near the key's tokens per minute limit (shown by `rafikicode doctor` on its `limits` line), since the gateway refuses a single request larger than that limit however long it waits; one line says so.
+- A long session is compacted (summarised, so the next requests send less) once its context reaches 150,000 tokens, on every Rafiki tier, well before the end of the 1M window. The check runs before each request, on the size the request would have, so a request over that size is not sent: the session is compacted first. Each turn sends the whole conversation, so without this the cost of a turn grows with the session up to the full window. `compaction.threshold` in the configuration, or `RAFIKICODE_COMPACT_AT` for one run, moves the point (`RAFIKICODE_COMPACT_AT=off` compacts only near the end of the window, at the window less the output a request may ask for); a session is never compacted later than that. The percentage stays the share of the real 1M window, so a session is compacted at about 15%. Old tool output is shortened before that, see below. A session is also compacted earlier when its next request would come near the key's tokens per minute limit (shown by `rafikicode doctor` on its `limits` line), since the gateway refuses a single request larger than that limit however long it waits; one line says so.
+- When a single request would send more than 200,000 tokens (`compaction.warn_at`, `RAFIKICODE_WARN_AT`), one line in the interface and in `rafikicode run` says so and suggests `/compact` or a new session. With compaction at 150,000 tokens this rarely happens: a turn that adds a very large message, or a higher `compaction.threshold`.
 
 ## Long sessions: old tool output
 
@@ -156,7 +159,7 @@ Every turn sends the whole conversation again, and most of it is usually tool ou
 The rule is conservative:
 
 - The latest turn is never touched, and neither is the turn before it.
-- The newest 40,000 tokens of tool output stay in full.
+- The newest 20,000 tokens of tool output stay in full.
 - Only outputs of about 500 tokens (2,000 characters) or more are replaced.
 - Errors, commands that exited with a non-zero code, file edits and writes, skills and the todo list are always kept.
 - Nothing is replaced until at least 20,000 tokens can be removed at once, so the conversation changes in rare batches.

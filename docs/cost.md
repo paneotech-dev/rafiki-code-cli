@@ -26,6 +26,16 @@ The prompt row shows the same in short (`24.5K sent (2%)`). The tokens sent are 
 
 In a long session the tokens sent can drop from one turn to the next: old, large tool outputs are replaced with a short note once enough of them have piled up. See [Long sessions: old tool output](configuration.md#long-sessions-old-tool-output).
 
+Every turn sends the whole conversation again, so the size of the context is what a turn costs. A session is compacted (summarised) once its context reaches 150,000 tokens, on every tier, before the request that would pass that size is sent; the share then reads about 15% of the 1M window. Until version 0.1.11 a session grew to about 936,000 tokens on Rafiki Fast and 968,000 on Rafiki Pro and Rafiki Max before it was compacted, and a long session resent hundreds of thousands of tokens on every turn, most of them read from the cache but all of them billed. `compaction.threshold` or `RAFIKICODE_COMPACT_AT` moves the point; see [Context](configuration.md#context-and-tokens-in-the-terminal-interface).
+
+A request over 200,000 tokens shows one line:
+
+```text
+Large request: about 212,000 tokens. Run /compact or start a new session to make the next turns cheaper.
+```
+
+`compaction.warn_at` or `RAFIKICODE_WARN_AT` sets the threshold, `0` turns the line off.
+
 ## Spend
 
 The right side of the prompt row shows the tier, what the key has spent since the session started, and the share of the key's budget used:

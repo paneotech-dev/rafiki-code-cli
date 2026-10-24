@@ -21524,6 +21524,14 @@
               "reserved": {
                 "type": "integer",
                 "minimum": 0
+              },
+              "threshold": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              },
+              "warn_at": {
+                "type": "integer",
+                "minimum": 0
               }
             },
             "additionalProperties": false

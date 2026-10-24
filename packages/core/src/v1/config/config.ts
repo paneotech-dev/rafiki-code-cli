@@ -168,6 +168,14 @@ export const Info = Schema.Struct({
       reserved: Schema.optional(NonNegativeInt).annotate({
         description: "Token buffer for compaction. Leaves enough window to avoid overflow during compaction.",
       }),
+      threshold: Schema.optional(PositiveInt).annotate({
+        description:
+          "Compact the session once its context reaches this many tokens, below the model's window (default: 150000 on Rafiki tiers, the window less the output reserve otherwise; RAFIKICODE_COMPACT_AT overrides it)",
+      }),
+      warn_at: Schema.optional(NonNegativeInt).annotate({
+        description:
+          "Show one line suggesting /compact or a new session when the next request would send more than this many tokens (default: 200000; 0 turns it off; RAFIKICODE_WARN_AT overrides it)",
+      }),
     }),
   ),
   memory: Schema.optional(
