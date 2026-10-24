@@ -198,6 +198,18 @@ describe("rafikicode run with criteria and the review pass", () => {
     expect(typeof last.cost).toBe("number")
   }, 240_000)
 
+  test("a review answer that cannot be read is asked for once more", async () => {
+    const result = await run({
+      calls: (turn) => (turn === 1 ? shell("echo good > value.cfg") : undefined),
+      aside: (kind, count) =>
+        kind === "criteria" ? CRITERIA : count === 1 ? "I could not decide." : verdict(true, true, true),
+    })
+    expect(result.exitCode).toBe(0)
+    expect(asides.map((item) => item.kind)).toEqual(["criteria", "review", "review"])
+    expect(userTurns.length).toBe(1)
+    expect(result.all).toMatch(/criteria met: 3 of 3 \(review on rafiki-pro, [\d.]+ USD\)/)
+  }, 240_000)
+
   test("a trivial request gets no criteria and no review", async () => {
     const result = await run({
       calls: (turn) => (turn === 1 ? shell("echo good > value.cfg") : undefined),

@@ -140,7 +140,7 @@ export const afterTurn = Effect.fnUntraced(function* (input: AfterInput) {
     output: step.status === "failed" ? step.output : undefined,
   }))
   const model = Review.reviewModel(input.settings, input.user.model, { pinned: input.pinned, env: input.env })
-  const answer = yield* input.ask({
+  const request = {
     model,
     system: Review.REVIEW_SYSTEM,
     prompt: Review.reviewPrompt({
@@ -152,9 +152,17 @@ export const afterTurn = Effect.fnUntraced(function* (input: AfterInput) {
       tests: files.filter(Review.isTestFile),
     }),
     small: false,
-  })
-  const verdict = answer ? Review.parseVerdict(answer.text, criteria.length) : undefined
-  const cost = answer?.cost ?? 0
+  }
+  // An answer that cannot be read is asked for once more.
+  let cost = 0
+  let verdict: Review.Verdict | undefined
+  for (const attempt of [1, 2]) {
+    const answer = yield* input.ask(request)
+    cost += answer?.cost ?? 0
+    verdict = answer ? Review.parseVerdict(answer.text, criteria.length) : undefined
+    if (verdict) break
+    yield* Effect.logWarning("review answer not usable", { attempt, answer: answer?.text.slice(0, 300) ?? "(failed)" })
+  }
   const total = Review.rounds(input.settings)
 
   if (verdict) {
