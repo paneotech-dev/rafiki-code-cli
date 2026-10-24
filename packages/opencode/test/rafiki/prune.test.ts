@@ -258,8 +258,8 @@ describe("the rule", () => {
       user("u5"),
     ]
     const found = Prune.select(msgs)
-    expect(found.parts.map((part) => String(part.id))).toEqual(["a3-0", "a2-0", "a1-0"])
-    expect(found.pruned).toBe(33_000)
+    expect(found.parts.map((part) => String(part.id))).toEqual(["a3-1", "a3-0", "a2-0", "a1-0"])
+    expect(found.pruned).toBe(44_000)
   })
 
   test("the newest 20,000 tokens of tool output are kept, not 40,000", () => {
