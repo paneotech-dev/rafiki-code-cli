@@ -1390,7 +1390,11 @@ const layer = Layer.effect(
             const [skills, env, instructions, mcpInstructions, modelMsgs] = yield* Effect.all([
               sys.skills(agent),
               sys.environment(model),
-              instruction.system().pipe(Effect.orDie),
+              instruction.system().pipe(
+                Effect.orDie,
+                // The first reading of the session (rafiki/cache-prefix.ts), so the prefix stays the same.
+                Effect.map((list) => CachePrefix.instructions(sessionID, list)),
+              ),
               sys.mcp(agent, session.permission),
               MessageV2.toModelMessagesEffect(RafikiResume.withContinuations(msgs), model),
             ])

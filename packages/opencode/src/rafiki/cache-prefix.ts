@@ -42,6 +42,28 @@ export function order(parts: SystemParts, now: Date = new Date()): string[] {
   ]
 }
 
+// The project instructions as the session first read them. AGENTS.md and the
+// configured files are read again before every request; an edit during the
+// session (the model's own, or the user's) would rewrite the start of the
+// prefix and send the whole conversation again at the full input price. The
+// first reading is kept until the session is compacted (refresh), when the
+// conversation is rewritten anyway, or a new session starts.
+const instructionSnapshots = new Map<string, string[]>()
+const KEEP = 64
+
+export function instructions(sessionID: string, current: string[]): string[] {
+  const known = instructionSnapshots.get(sessionID)
+  if (known) return known
+  instructionSnapshots.set(sessionID, current)
+  while (instructionSnapshots.size > KEEP) instructionSnapshots.delete(instructionSnapshots.keys().next().value!)
+  return current
+}
+
+// Forgets a session's instructions, so its next request reads them again (after compaction).
+export function refresh(sessionID: string) {
+  instructionSnapshots.delete(sessionID)
+}
+
 // Separates the volatile lines from the stable system text. A request that carries none (a title, a summary) stays as it is.
 export function split(system: readonly string[]): { stable: string[]; volatile: string[] } {
   return { stable: system.filter((part) => !isVolatile(part)), volatile: system.filter((part) => isVolatile(part)) }

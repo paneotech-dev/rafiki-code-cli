@@ -64,7 +64,7 @@ Every top-level key the CLI honors, with the meaning from the configuration sche
 | `memory` | project memory in `.rafiki/memory/`: `memory.enabled` (`true` by default) and `memory.max_bytes` (the size cap, 8,192 by default). See [Project memory](./memory.md) |
 | `verify` | the checks that run after a turn that changed files: `verify.enabled` (`true` by default), `verify.commands` (commands to run instead of the detected ones), `verify.timeout` (seconds for one round, 120 by default) and `verify.rounds` (fix rounds after a failure, 2 by default). See [Checks after a change](#checks-after-a-change) |
 | `attachment` | attachment processing settings |
-| `tool_output` | truncation thresholds for tool output |
+| `tool_output` | the cap on one tool result: `tool_output.max_bytes` (32,768 by default, about 8,000 tokens) and `tool_output.max_lines` (2,000 by default). See [Large tool results](#large-tool-results) |
 | `provider` | provider definitions. The `rafiki` entry is seeded for you; its `whitelist`, `blacklist` and model settings apply |
 | `enterprise` | enterprise sharing service settings |
 | `experimental` | switches that may change between releases |
@@ -148,6 +148,20 @@ Last request sent 24,530 tokens
 - A long session is compacted (summarised, so the next requests send less) once its context reaches 150,000 tokens, on every Rafiki tier, well before the end of the 1M window. The check runs before each request, on the size the request would have, so a request over that size is not sent: the session is compacted first. Each turn sends the whole conversation, so without this the cost of a turn grows with the session up to the full window. `compaction.threshold` in the configuration, or `RAFIKICODE_COMPACT_AT` for one run, moves the point (`RAFIKICODE_COMPACT_AT=off` compacts only near the end of the window, at the window less the output a request may ask for); a session is never compacted later than that. The percentage stays the share of the real 1M window, so a session is compacted at about 15%. Old tool output is shortened before that, see below. A session is also compacted earlier when its next request would come near the key's tokens per minute limit (shown by `rafikicode doctor` on its `limits` line), since the gateway refuses a single request larger than that limit however long it waits; one line says so.
 - When a single request would send more than 200,000 tokens (`compaction.warn_at`, `RAFIKICODE_WARN_AT`), one line in the interface and in `rafikicode run` says so and suggests `/compact` or a new session. With compaction at 150,000 tokens this rarely happens: a turn that adds a very large message, or a higher `compaction.threshold`.
 
+## Large tool results
+
+A single tool result over 32 KB (about 8,000 tokens) or 2,000 lines is not sent whole. The full text is saved to a file in the session's folder, under `tool-output` in the data folder (`~/.local/share/rafikicode/tool-output/<session id>/` on Linux), and the agent gets the start and the end of it, with a note between them:
+
+```text
+...38,000 lines truncated...
+
+The tool call succeeded but the output was truncated. The output has 40,000 lines (228,894 bytes); lines 1,001 to 39,000 are not shown in full.
+Full output saved to: /home/me/.local/share/rafikicode/tool-output/ses_.../tool_...
+Use Grep to search the full content or Read with offset/limit to view specific sections.
+```
+
+The agent reads the lines it needs from that file, or searches it, instead of carrying the whole output in every later request. Reading a file gives at most 32 KB per call, with the line to continue from. Saved files are removed after seven days. `"tool_output": {"max_bytes": 51200, "max_lines": 2000}` in your configuration moves the cap.
+
 ## Long sessions: old tool output
 
 Every turn sends the whole conversation again, and most of it is usually tool output: files read, command output, search results. On the Rafiki tiers, old and large tool outputs are replaced with a one line note, so a long session sends less on every turn without being summarised:
@@ -172,7 +186,7 @@ To turn it off, set `"compaction": {"prune": false}` in your configuration, or `
 
 Providers bill input they have seen before at a lower rate when a request starts with the same bytes as an earlier one (see `RAFIKICODE_CACHE_MARKERS` above). Replacing old output changes those bytes from the first replaced output onwards, so:
 
-- The start of every request (system prompt, project instructions, tool definitions) is never changed, and on `rafiki-max` its cache marker stays where it is. That part is read from the cache as before.
+- The start of every request (system prompt, project instructions, tool definitions, project memory) is never changed during a session. The project instructions (`AGENTS.md` and the files in `instructions`) are read once per session: an edit made during the session is used after the next compaction, or in a new session. The date goes after that part, in a message of its own, and on `rafiki-max` its cache marker stays where it is. That part is read from the cache as before.
 - The conversation before the first replaced output is still read from the cache. From there on, the request after a batch is written to the cache again, once.
 - The note is built only from the call (tool, input, size), so once an output is replaced its text never changes again and is cached like the rest. On `rafiki-max` the markers on the last two messages move forward with the conversation as usual.
 - Because a batch removes at least 20,000 tokens, the one cache rewrite costs less than the input it saves on the following turns.

@@ -1258,7 +1258,7 @@
               "exclusiveMinimum": 0,
               "type": "integer",
               "maximum": 9007199254740991,
-              "description": "Maximum bytes of tool output before it is truncated and saved to disk (default: 51200)"
+              "description": "Maximum bytes of tool output before it is truncated and saved to disk; the head and the tail are kept (default: 32768)"
             }
           },
           "additionalProperties": false,

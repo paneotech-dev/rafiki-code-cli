@@ -1,4 +1,4 @@
-import { Effect, Stream } from "effect"
+import { Effect, Fiber, Stream } from "effect"
 import os from "os"
 import { createWriteStream } from "node:fs"
 import * as Tool from "./tool"
@@ -16,6 +16,7 @@ import { Shell } from "@opencode-ai/core/shell"
 import { ShellID } from "./shell/id"
 
 import * as Truncate from "./truncate"
+import * as RafikiToolOutput from "@/rafiki/tool-output"
 import { Plugin } from "@/plugin"
 import { ChildProcess } from "effect/unstable/process"
 import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner"
@@ -224,38 +225,6 @@ function preview(text: string) {
   return "...\n\n" + text.slice(-MAX_METADATA_LENGTH)
 }
 
-function tail(text: string, maxLines: number, maxBytes: number) {
-  const lines = text.split("\n")
-  if (lines.length <= maxLines && Buffer.byteLength(text, "utf-8") <= maxBytes) {
-    return {
-      text,
-      cut: false,
-    }
-  }
-
-  const out: string[] = []
-  let bytes = 0
-  for (let i = lines.length - 1; i >= 0 && out.length < maxLines; i--) {
-    const size = Buffer.byteLength(lines[i], "utf-8") + (out.length > 0 ? 1 : 0)
-    if (bytes + size > maxBytes) {
-      if (out.length === 0) {
-        const buf = Buffer.from(lines[i], "utf-8")
-        let start = buf.length - maxBytes
-        if (start < 0) start = 0
-        while (start < buf.length && (buf[start] & 0xc0) === 0x80) start++
-        out.unshift(buf.subarray(start).toString("utf-8"))
-      }
-      break
-    }
-    out.unshift(lines[i])
-    bytes += size
-  }
-  return {
-    text: out.join("\n"),
-    cut: true,
-  }
-}
-
 const parse = Effect.fn("ShellTool.parse")(function* (command: string, ps: boolean) {
   const tree = yield* Effect.promise(() => parser().then((p) => (ps ? p.ps : p.bash).parse(command)))
   if (!tree) throw new Error("Failed to parse command")
@@ -447,6 +416,14 @@ export const ShellTool = Tool.define(
       let file = ""
       let sink: ReturnType<typeof createWriteStream> | undefined
       let cut = false
+      // The start of the output and the size of the whole, for the head and
+      // the counts once the middle has been dropped (rafiki/tool-output.ts).
+      let dropped = false
+      let start = ""
+      let startBytes = 0
+      let totalBytes = 0
+      let newlines = 0
+      let lastChunk = Date.now()
       let expired = false
       let aborted = false
 
@@ -488,16 +465,24 @@ export const ShellTool = Tool.define(
           // Auto mode lets a command stop what the session started (rafiki/auto-mode.ts).
           RafikiAutoMode.recordProcess(ctx.sessionID, Number(handle.pid))
 
-          yield* Effect.forkScoped(
+          const reader = yield* Effect.forkScoped(
             Stream.runForEach(Stream.decodeText(handle.all), (chunk) => {
               const size = Buffer.byteLength(chunk, "utf-8")
+              lastChunk = Date.now()
               list.push({ text: chunk, size })
               used += size
+              totalBytes += size
+              for (let at = chunk.indexOf("\n"); at !== -1; at = chunk.indexOf("\n", at + 1)) newlines++
+              if (startBytes < limits.maxBytes) {
+                start += chunk
+                startBytes += size
+              }
               while (used > keep && list.length > 1) {
                 const item = list.shift()
                 if (!item) break
                 used -= item.size
                 cut = true
+                dropped = true
               }
 
               last = preview(last + chunk)
@@ -507,7 +492,7 @@ export const ShellTool = Tool.define(
               } else {
                 full += chunk
                 if (Buffer.byteLength(full, "utf-8") > limits.maxBytes) {
-                  return trunc.write(full).pipe(
+                  return trunc.write(full, ctx.sessionID).pipe(
                     Effect.andThen((next) =>
                       Effect.sync(() => {
                         file = next
@@ -559,6 +544,23 @@ export const ShellTool = Tool.define(
             yield* handle.kill({ forceKillAfter: "3 seconds" }).pipe(Effect.orDie)
           }
 
+          // The command has exited, but what it printed last may still be in
+          // the pipe: read it to the end before the scope stops the reader, or
+          // the saved file and the tail would miss the end of a long output. A
+          // background process that keeps the pipe open is not waited for:
+          // the wait ends once nothing has arrived for two seconds.
+          if (exit.kind === "exit") {
+            while (true) {
+              const done = yield* Fiber.join(reader).pipe(
+                Effect.timeout("250 millis"),
+                Effect.as(true),
+                Effect.catch(() => Effect.succeed(false)),
+                Effect.catchDefect(() => Effect.succeed(true)),
+              )
+              if (done || Date.now() - lastChunk > 2_000) break
+            }
+          }
+
           return exit.kind === "exit" ? exit.code : null
         }),
       ).pipe(Effect.orDie)
@@ -571,18 +573,23 @@ export const ShellTool = Tool.define(
       }
       if (aborted) meta.push("User aborted the command")
       const raw = list.map((item) => item.text).join("")
-      const end = tail(raw, limits.maxLines, limits.maxBytes)
-      if (end.cut) cut = true
-      if (!file && end.cut) {
-        file = yield* trunc.write(raw)
+      // Over the limits: the head and the tail of the output, the counts and the file (rafiki/tool-output.ts).
+      const over = dropped || !RafikiToolOutput.fits(raw, limits.maxLines, limits.maxBytes)
+      if (over) cut = true
+      if (!file && over) {
+        file = yield* trunc.write(raw, ctx.sessionID)
       }
 
-      let output = end.text
-      if (!output) output = "(no output)"
-
+      let output = raw
       if (cut && file) {
-        output = `...output truncated...\n\nFull output saved to: ${file}\n\n` + output
+        const part = dropped
+          ? RafikiToolOutput.cut(raw, limits, { head: start, lines: totalBytes === 0 ? 0 : newlines + (raw.endsWith("\n") ? 0 : 1), bytes: totalBytes })
+          : RafikiToolOutput.cut(raw, limits)
+        output =
+          "...output truncated...\n\n" +
+          RafikiToolOutput.compose({ cut: part, file, delegate: false })
       }
+      if (!output) output = "(no output)"
 
       if (meta.length > 0) {
         output += "\n\n<shell_metadata>\n" + meta.join("\n") + "\n</shell_metadata>"
