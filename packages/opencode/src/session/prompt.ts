@@ -237,6 +237,13 @@ const layer = Layer.effect(
           const mdl = yield* provider
             .getModel(ProviderV2.ID.make(input.model.providerID), ModelV2.ID.make(input.model.modelID))
             .pipe(Effect.catch(() => provider.getModel(user.model.providerID, user.model.modelID)))
+        yield* Effect.logInfo("routing", {
+          "session.id": sessionID,
+          purpose: input.system === RafikiReview.Review.REVIEW_SYSTEM ? "review" : "criteria",
+          tier: mdl.id,
+          reason: input.model.reason ?? "",
+          session_tier: user.model.modelID,
+        })
           const agent: Agent.Info = { ...base, name: "review", prompt: input.system, temperature: 0 }
           let text = ""
           let cost = 0
@@ -1320,6 +1327,7 @@ const layer = Layer.effect(
                       ask: askAside(sessionID, lastUser),
                       sessions,
                       todos: todo,
+                      pinned: RafikiRouting.pinned(sessionID),
                     })
               if (reviewed === "again") continue
               yield* Effect.logInfo("exiting loop", { "session.id": sessionID })
@@ -1342,6 +1350,7 @@ const layer = Layer.effect(
                   ask: askAside(sessionID, lastUser),
                   sessions,
                   todos: todo,
+                  pinned: RafikiRouting.pinned(sessionID),
                 })
               : undefined
             if (part && message) message.parts.push(part)

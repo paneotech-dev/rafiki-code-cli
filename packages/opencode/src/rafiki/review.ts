@@ -20,6 +20,7 @@
 import path from "path"
 import { Brand } from "@opencode-ai/core/brand/brand"
 import type { SessionV1 } from "@opencode-ai/core/v1/session"
+import * as Routing from "./routing"
 
 export interface Settings {
   enabled?: boolean
@@ -60,22 +61,45 @@ export function rounds(settings: Settings | undefined) {
   return Math.min(Math.max(Math.floor(value), 0), MAX_ROUNDS)
 }
 
-// The model of the review: review.model ("provider/model"), else rafiki-pro on
-// the Rafiki provider, else the model of the session.
-export function reviewModel(settings: Settings | undefined, session: { providerID: string; modelID: string }) {
+type Model = { providerID: string; modelID: string }
+
+// The model of the review: review.model ("provider/model"), else the tier the
+// routing gives the review step (rafiki/routing.ts: rafiki-pro, or the
+// session's tier when it is stronger), else the model of the session.
+export function reviewModel(
+  settings: Settings | undefined,
+  session: Model,
+  input: { pinned?: boolean; env?: Record<string, string | undefined> } = {},
+): Model & { reason: string } {
   const configured = settings?.model?.trim()
   if (configured && configured.includes("/")) {
     const [providerID, ...rest] = configured.split("/")
-    return { providerID, modelID: rest.join("/") }
+    return { providerID, modelID: rest.join("/"), reason: "review.model in the configuration" }
   }
-  if (session.providerID === Brand.provider.id) return { providerID: session.providerID, modelID: "rafiki-pro" }
-  return session
+  const route = Routing.choose({
+    purpose: "review",
+    providerID: session.providerID,
+    tier: session.modelID,
+    pinned: input.pinned ?? false,
+    env: input.env,
+  })
+  return { providerID: session.providerID, modelID: route.tier, reason: route.reason }
 }
 
-// The model that writes the criteria: rafiki-fast on the Rafiki provider, else the model of the session.
-export function criteriaModel(session: { providerID: string; modelID: string }) {
-  if (session.providerID === Brand.provider.id) return { providerID: session.providerID, modelID: "rafiki-fast" }
-  return session
+// The model that writes the criteria: the cheap work tier of the routing
+// (rafiki-fast on an unpinned Rafiki session), else the model of the session.
+export function criteriaModel(
+  session: Model,
+  input: { pinned?: boolean; env?: Record<string, string | undefined> } = {},
+): Model & { reason: string } {
+  const route = Routing.choose({
+    purpose: "criteria",
+    providerID: session.providerID,
+    tier: session.modelID,
+    pinned: input.pinned ?? false,
+    env: input.env,
+  })
+  return { providerID: session.providerID, modelID: route.tier, reason: route.reason }
 }
 
 // ---------------------------------------------------------------------------

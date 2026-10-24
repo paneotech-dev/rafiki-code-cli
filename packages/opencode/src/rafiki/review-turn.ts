@@ -16,6 +16,8 @@ export { Review }
 export interface Model {
   providerID: string
   modelID: string
+  // Why this model, from the routing (rafiki/routing.ts).
+  reason?: string
 }
 
 // One request outside the conversation: its answer and its cost, or undefined when it failed.
@@ -43,6 +45,8 @@ export interface StartInput {
   ask: Ask
   sessions: Sessions
   todos: Todos
+  // Whether the session's tier is pinned (rafiki/routing.ts).
+  pinned?: boolean
   env?: Record<string, string | undefined>
 }
 
@@ -59,7 +63,7 @@ export const start = Effect.fnUntraced(function* (input: StartInput) {
   if (!request || Review.trivial(request)) return undefined
 
   const answer = yield* input.ask({
-    model: Review.criteriaModel(input.user.model),
+    model: Review.criteriaModel(input.user.model, { pinned: input.pinned, env: input.env }),
     system: Review.CRITERIA_SYSTEM,
     prompt: Review.criteriaPrompt(request),
     small: true,
@@ -110,6 +114,8 @@ export interface AfterInput {
   ask: Ask
   sessions: Sessions
   todos: Todos
+  // Whether the session's tier is pinned (rafiki/routing.ts).
+  pinned?: boolean
   env?: Record<string, string | undefined>
 }
 
@@ -133,7 +139,7 @@ export const afterTurn = Effect.fnUntraced(function* (input: AfterInput) {
     status: step.status,
     output: step.status === "failed" ? step.output : undefined,
   }))
-  const model = Review.reviewModel(input.settings, input.user.model)
+  const model = Review.reviewModel(input.settings, input.user.model, { pinned: input.pinned, env: input.env })
   const answer = yield* input.ask({
     model,
     system: Review.REVIEW_SYSTEM,

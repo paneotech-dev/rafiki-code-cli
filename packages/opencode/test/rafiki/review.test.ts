@@ -170,12 +170,27 @@ describe("settings", () => {
     expect(Review.rounds({ rounds: 0 })).toBe(0)
   })
 
-  test("the review runs on rafiki-pro on the Rafiki tiers, the criteria on rafiki-fast", () => {
-    const session = { providerID: Brand.provider.id, modelID: "rafiki-fast" }
-    expect(Review.reviewModel(undefined, session)).toEqual({ providerID: Brand.provider.id, modelID: "rafiki-pro" })
-    expect(Review.criteriaModel({ providerID: Brand.provider.id, modelID: "rafiki-pro" }).modelID).toBe("rafiki-fast")
-    expect(Review.reviewModel({ model: "other/big" }, session)).toEqual({ providerID: "other", modelID: "big" })
-    expect(Review.reviewModel(undefined, { providerID: "other", modelID: "m" })).toEqual({
+  test("the models come from the routing: the review on rafiki-pro, the criteria on rafiki-fast", () => {
+    const fast = { providerID: Brand.provider.id, modelID: "rafiki-fast" }
+    const pro = { providerID: Brand.provider.id, modelID: "rafiki-pro" }
+    const max = { providerID: Brand.provider.id, modelID: "rafiki-max" }
+    // The review is a second opinion: rafiki-pro, pinned or not, unless the session is stronger.
+    expect(Review.reviewModel(undefined, fast, { env: {} })).toMatchObject({
+      ...pro,
+      reason: "review: the review step",
+    })
+    expect(Review.reviewModel(undefined, fast, { pinned: true, env: {} }).modelID).toBe("rafiki-pro")
+    expect(Review.reviewModel(undefined, max, { env: {} }).modelID).toBe("rafiki-max")
+    // The criteria are cheap work: rafiki-fast unless the tier is pinned.
+    expect(Review.criteriaModel(pro, { env: {} })).toMatchObject({
+      ...fast,
+      reason: "acceptance criteria: rafiki-fast",
+    })
+    expect(Review.criteriaModel(pro, { pinned: true, env: {} }).modelID).toBe("rafiki-pro")
+    // RAFIKICODE_ROUTING=off keeps the session's tier for both.
+    expect(Review.reviewModel(undefined, fast, { env: { [Brand.env.routing]: "off" } }).modelID).toBe("rafiki-fast")
+    expect(Review.reviewModel({ model: "other/big" }, fast)).toMatchObject({ providerID: "other", modelID: "big" })
+    expect(Review.reviewModel(undefined, { providerID: "other", modelID: "m" })).toMatchObject({
       providerID: "other",
       modelID: "m",
     })

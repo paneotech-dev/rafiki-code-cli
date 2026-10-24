@@ -312,7 +312,7 @@ To turn the checks off, set `"verify": {"enabled": false}` in your configuration
 
 ## Acceptance criteria and the review
 
-At the start of a task that is not trivial, `rafikicode` writes 3 to 5 checkable acceptance criteria from your request, with one short request to Rafiki Fast. They appear at the top of the session's todo list (as `Criterion: ...` items) and are added to the request, so the agent works towards them. Trivial requests get none: a request under 40 characters, a question, or a small edit such as a typo or a rename.
+At the start of a task that is not trivial, `rafikicode` writes 3 to 5 checkable acceptance criteria from your request, with one short request to Rafiki Fast (to your tier when you chose one, see [Tier by task](#tier-by-task)). They appear at the top of the session's todo list (as `Criterion: ...` items) and are added to the request, so the agent works towards them. Trivial requests get none: a request under 40 characters, a question, or a small edit such as a typo or a rename.
 
 When the request reports a bug, the agent reproduces it first: it writes a test next to the existing tests of that code (a short script when the project has no test setup), runs it and sees it fail, fixes the code, runs it again until it passes, and keeps the test. The project's test command is named when one is found. One of the criteria is that reproduction. When the bug cannot be reproduced here, the agent says so and fixes it from the code.
 
@@ -329,7 +329,7 @@ In `rafikicode run`, the criteria print as `~ criteria: 1. ... 2. ...` and a rou
 |---|---|
 | `review.enabled` | `true` by default; `false` turns the criteria and the review off. `RAFIKICODE_REVIEW=0` does the same for one run, and wins over it |
 | `review.rounds` | extra rounds after a review with criteria not met, 0 or 1 (1 by default) |
-| `review.model` | the model of the review as `provider/model`; by default Rafiki Pro on the Rafiki tiers, else the session's model |
+| `review.model` | the model of the review as `provider/model`; by default Rafiki Pro on the Rafiki tiers (Rafiki Max on a Rafiki Max session, the session's tier with `RAFIKICODE_ROUTING=off`), else the session's model |
 
 Like the checks, the criteria and the review are off when project configuration is disabled, and subagents do not run them.
 
@@ -349,7 +349,8 @@ Command line flags (`--model`) win over both files for a single run.
 
 When you have not chosen a tier, Rafiki Code picks one per request by what the request is for:
 
-- Explore subagents, session titles and compaction summaries go to `rafiki-fast`.
+- Explore subagents, session titles, compaction summaries and the acceptance criteria of a task go to `rafiki-fast`.
+- The review before a task is done always runs on `rafiki-pro` (or the session's tier when it is `rafiki-max`), chosen tier or not: it is a second opinion. See [Acceptance criteria and the review](#acceptance-criteria-and-the-review).
 - A turn goes to `rafiki-pro` only on a sign that it is hard: `/deep` (or `rafikicode run --deep`), the plan agent on a wide change (a refactor, a migration, a change across the project, or five or more files named), the same check failing twice in a row after a change, or the `/review` step. Never because the conversation is long, and never to `rafiki-max`.
 - Before such a turn on a conversation over about 60,000 tokens, the session is compacted first, so `rafiki-pro` does not read the whole history at its price.
 - The next turn goes back to the session's tier. The session's tier itself never changes.
