@@ -119,10 +119,12 @@ export const Typescript: Info = {
     ["deno.json", "deno.jsonc"],
   ),
   extensions: [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts"],
-  async spawn(root, ctx) {
+  async spawn(root, ctx, flags) {
     const tsserver = Module.resolve("typescript/lib/tsserver.js", ctx.directory)
     if (!tsserver) return
-    const bin = await Npm.which("typescript-language-server")
+    const bin =
+      which("typescript-language-server") ??
+      (flags.disableLspDownload ? undefined : await Npm.which("typescript-language-server"))
     if (!bin) return
     const proc = spawn(bin, ["--stdio"], {
       cwd: root,

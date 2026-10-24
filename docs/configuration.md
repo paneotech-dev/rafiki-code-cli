@@ -56,7 +56,7 @@ Every top-level key the CLI honors, with the meaning from the configuration sche
 | `references` | named local directories or Git repositories available as external context |
 | `plugin` | ordered external plugin packages to load |
 | `mcp` | Model Context Protocol server configuration (external tool servers the agent can call) |
-| `lsp` | enable built-in language servers or configure overrides |
+| `lsp` | language servers. Unset: the TypeScript and JavaScript, Python (pyright) and PHP (intelephense) servers are on, so the errors an edit introduces come back at once (see [Checks after an edit](#checks-after-an-edit)). `false` turns them off, `true` turns every built-in server on, an object configures overrides |
 | `formatter` | enable built-in formatters or configure overrides |
 | `watcher` | filesystem watcher settings |
 | `snapshot` | enable snapshots used for undo and revert |
@@ -86,6 +86,8 @@ The structure of the nested keys (`permission`, `agent`, `mcp`, and so on) is un
 | `RAFIKICODE_REVIEW` | `0`, `off` or `false` turns the acceptance criteria and the review off for this run; `1`, `on` or `true` turns them on. Wins over `review.enabled`. See [Acceptance criteria and the review](#acceptance-criteria-and-the-review) |
 | `RAFIKICODE_VERIFY` | `0`, `off` or `false` turns the checks after a change off for this run; `1`, `on` or `true` turns them on. Wins over `verify.enabled`. See [Checks after a change](#checks-after-a-change) |
 | `RAFIKICODE_COMPACT_AT` | the size of the context in tokens at which a session is compacted, over `compaction.threshold`. Unset, `150000` on the Rafiki tiers. `0` or `off` compacts only near the gateway's limit of 200,000 input tokens. See [Context](#context-and-tokens-in-the-terminal-interface) |
+| `RAFIKICODE_STUCK` | `0`, `off` or `false` turns stuck detection off. See [When the agent is stuck](#when-the-agent-is-stuck) |
+| `RAFIKICODE_EDIT_CHECKS` | `0`, `off` or `false` turns the language checks after an edit off, and the default language servers with them. See [Checks after an edit](#checks-after-an-edit) |
 | `RAFIKICODE_ROUTING` | `0`, `off` or `false` turns the tier by task off: every request goes to the session's tier. See [Tier by task](#tier-by-task) |
 | `RAFIKICODE_WARN_AT` | the size in tokens of a single request above which one line suggests `/compact` or a new session, over `compaction.warn_at`. Unset, `200000`. `0` or `off` turns the line off. See [Context](#context-and-tokens-in-the-terminal-interface) |
 | `RAFIKICODE_PRUNE` | `0`, `off` or `false` stops replacing old tool output; `1`, `on` or `true` turns it on, on any provider. Wins over `compaction.prune`. Unset, it is on for the Rafiki tiers. See [Long sessions: old tool output](#long-sessions-old-tool-output) |
@@ -292,11 +294,15 @@ The tests of the changed files run first: for a Python module `pkg/config.py`, t
 
 All of them share one time budget, 120 seconds by default (`verify.timeout`, from 5 to 1800). A command still running when the budget runs out is stopped and reported as not finished, which is not a failure. The first failing command stops the round.
 
+In a monorepo (npm, yarn or bun workspaces, `pnpm-workspace.yaml`, `lerna.json`, `nx.json`, `turbo.json`, or a `composer.json` with `path` repositories), the checks of each package the turn touched run in that package (up to four packages), found from the package's own `package.json`, `composer.json` or `pyproject.toml`; the lockfile at the root decides the package manager. Changed files outside any package, and packages with no checks of their own, get the root's checks. `verify.commands` and an `AGENTS.md` verify section still replace all of this.
+
 A turn that changed only documentation or images (`.md`, `.txt`, `.rst`, images, the licence) is not checked. The checks run through the shell permission like any other command: when shell commands need approval, you are asked first, and a refusal is reported as `checks not run`.
 
 ### Fix rounds and the answer
 
 When a check fails, its command, exit code and the end of its output go back to the agent as a new message, and it gets another round to fix the cause, up to `verify.rounds` rounds (2 by default, 0 to 5). A round that ends with exactly the same failure as the round before (same commands, same output) gets no further round, since another one would most likely go the same way. It is asked not to weaken or delete tests, and to say so when a failure was there before its change. The checks run again after each round.
+
+A failure that was there before the turn does not count. When a check fails, it runs once more, within the same budget, with the turn's changed files put back as they were when the turn started (from the session snapshot), and the current files are restored right after. When it fails the same way (the same failing tests or errors, or the same exit code when the output names none), the check is reported as failing before the turn too: it gets no fix round, the next checks still run, and the answer says so (`checks passed: npm run lint; failing before this turn too, not caused by it: npm run test`). This needs session snapshots (on by default); without one, every failure counts. The run before the turn is kept for the turn, so later fix rounds do not repeat it.
 
 The answer then ends with one line:
 
@@ -353,7 +359,7 @@ When you have not chosen a tier, Rafiki Code picks one per request by what the r
 
 - Explore subagents, session titles, compaction summaries and the acceptance criteria of a task go to `rafiki-fast`.
 - The review before a task is done always runs on `rafiki-pro` (or the session's tier when it is `rafiki-max`), chosen tier or not: it is a second opinion. See [Acceptance criteria and the review](#acceptance-criteria-and-the-review).
-- A turn goes to `rafiki-pro` only on a sign that it is hard: `/deep` (or `rafikicode run --deep`), the plan agent on a wide change (a refactor, a migration, a change across the project, or five or more files named), the same check failing twice in a row after a change, or the `/review` step. Never because the conversation is long, and never to `rafiki-max`.
+- A turn goes to `rafiki-pro` only on a sign that it is hard: `/deep` (or `rafikicode run --deep`), the plan agent on a wide change (a refactor, a migration, a change across the project, or five or more files named), the same check failing twice in a row after a change, a turn that is stuck (see [When the agent is stuck](#when-the-agent-is-stuck)), or the `/review` step. Never because the conversation is long, and never to `rafiki-max`.
 - Before such a turn on a conversation over about 60,000 tokens, the session is compacted first, so `rafiki-pro` does not read the whole history at its price.
 - The next turn goes back to the session's tier. The session's tier itself never changes.
 
@@ -370,3 +376,15 @@ When a request is user interface work (a page, a component, a layout, CSS or Tai
 - **Screenshots.** The `screenshot` tool opens a local HTML file, a local server or the project's dev server (the `dev`, `start`, `serve` or `preview` script of `package.json`, started in the background) in the Chrome, Chromium, Edge or Brave installed on your machine, headless, at desktop (1440x900) and mobile (390x844) width. It reports sideways overflow, overlapping elements, text below the contrast minimum, images without `alt`, fields without a label, small touch targets and the console errors of the page. Nothing is downloaded or bundled: with no browser installed it says which command installs one (`sudo apt install chromium`, `brew install --cask google-chrome`, `winget install Google.Chrome`); `RAFIKICODE_BROWSER` names one in another place. The browser is stopped after every capture, and after 90 seconds at most.
 
 The pictures go to the model when its tier takes images (`rafiki-max`). On `rafiki-fast` and `rafiki-pro`, which take none today, the agent works from the measures; once the gateway passes images to a cheaper tier, the routing of [Tier by task](#tier-by-task) sends the screenshots to that tier to be described and the description comes back as text.
+
+## When the agent is stuck
+
+A turn is stuck when the same tool call fails three times the same way (the same shell command with the same exit code and output, or an edit, write or read failing the same way on the same file), or when its edits keep undoing each other (a file put back to an earlier content twice). The agent is then told so plainly, given the last error to read again, and asked to change approach. You see one line: `Stuck: \`npm test\` failed the same way 3 times; changing approach.` (a notice in the terminal interface, a `!` line in `rafikicode run`, a `stuck` event with `--format json`).
+
+A stuck turn is also a sign that it is hard for the [tier by task](#tier-by-task): when you have not chosen a tier and the turn is on `rafiki-fast`, the rest of it goes to `rafiki-pro`, and the line ends with `now on rafiki-pro`. Never to `rafiki-max`, and the next turn goes back to the session's tier. Each pattern is noted once per turn, two notes at most. `RAFIKICODE_STUCK=off` turns this off.
+
+## Checks after an edit
+
+After every edit, write or patch, the language server of the file reports its errors within 6 seconds, and the ones the edit introduced go back to the agent in the same result (`New errors after this edit in this file, please fix:`). Errors the file had before the edit are left out and counted. A server that is still starting, installing or slow is not waited for longer: it keeps going, and the next edit gets its report.
+
+The TypeScript and JavaScript (the project's own `typescript` package with `typescript-language-server`), Python (pyright) and PHP (intelephense) servers are on unless `lsp` is set. A language server that is not installed is fetched once into the cache, unless `OPENCODE_DISABLE_LSP_DOWNLOAD` is set. For a file no server reported on, a syntax check runs instead when its tool is installed: Python (`compile`), `php -l`, `node --check` for `.mjs`, `.cjs` and `.js` files without JSX, and a JSON parse of `package.json` and `composer.json`, 5 seconds each. `"lsp": false` turns the servers off; `RAFIKICODE_EDIT_CHECKS=off` turns both off.

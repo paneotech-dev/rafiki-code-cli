@@ -11,7 +11,14 @@
 //    lint, the whole test suite when no narrow test was found), all within one
 //    time budget (120 s by default). A command that does not finish in time
 //    is reported as not finished, never as a failure.
-// 3. A failure goes back to the model for another fix round, up to
+//    In a monorepo (npm, yarn or bun workspaces, pnpm-workspace.yaml, lerna,
+//    nx or turbo, composer path repositories) the checks of each package the
+//    turn touched run in that package, instead of the root's.
+// 3. A step that fails is run once more with the turn's changes set aside
+//    (the files as they were when the turn started, from the session
+//    snapshot, put back right after). When it failed the same way before the
+//    turn, it is reported as failing before the turn and does not count.
+// 4. A failure goes back to the model for another fix round, up to
 //    `verify.rounds` (2 by default). When the checks still fail, the answer
 //    ends with "checks failing: ..." and `rafikicode run` exits with code 8.
 //
@@ -24,6 +31,7 @@ import { Brand } from "@opencode-ai/core/brand/brand"
 import { Shell } from "@opencode-ai/core/shell"
 import { which } from "@opencode-ai/core/util/which"
 import type { SessionV1 } from "@opencode-ai/core/v1/session"
+import { isNote } from "./stuck"
 
 export interface Settings {
   enabled?: boolean
@@ -54,9 +62,12 @@ export interface Step {
   kind: Kind
   scope: "narrow" | "wide"
   command: string
+  // The package folder the command runs in, relative to the root (monorepos).
+  cwd?: string
 }
 
-export type StepStatus = "passed" | "failed" | "timeout" | "unavailable" | "skipped"
+// preexisting: it failed, but the same way before the turn's changes.
+export type StepStatus = "passed" | "failed" | "timeout" | "unavailable" | "skipped" | "preexisting"
 
 export interface StepResult extends Step {
   status: StepStatus
@@ -165,25 +176,32 @@ function signature(root: string, settings: Settings | undefined) {
 }
 
 // The checks of the project at root, kept until a file they were read from changes.
+// `lockRoot` is where the lockfile is: the monorepo root for a package.
 export function detect(
   root: string,
   settings?: Settings,
   probe: (python: string, root: string) => boolean = hasPytest,
+  lockRoot: string = root,
 ): Plan {
-  const sig = signature(root, settings)
+  const sig = signature(root, settings) + "|" + (lockRoot === root ? "" : signature(lockRoot, undefined))
   const known = cache.get(root)
   if (known && known.signature === sig) return known.plan
-  const plan = find(root, settings, probe)
+  const plan = find(root, settings, probe, lockRoot)
   cache.set(root, { signature: sig, plan })
   return plan
 }
 
-function find(root: string, settings: Settings | undefined, probe: (python: string, root: string) => boolean): Plan {
+function find(
+  root: string,
+  settings: Settings | undefined,
+  probe: (python: string, root: string) => boolean,
+  lockRoot: string = root,
+): Plan {
   if (settings?.commands?.length) return { source: "config", checks: settings.commands.map(custom) }
   const agents = readText(path.join(root, "AGENTS.md"))
   const section = agents ? verifySection(agents) : undefined
   if (section?.length) return { source: "agents", checks: section.map(custom) }
-  const found = [...node(root), ...python(root, probe), ...go(root), ...rust(root), ...php(root)]
+  const found = [...node(root, lockRoot), ...python(root, probe), ...go(root), ...rust(root), ...php(root)]
   const named = agents ? agentsCommands(agents) : []
   const make = makefile(root)
   // AGENTS.md and the Makefile fill in the kinds the project files did not give.
@@ -270,15 +288,16 @@ function kindOf(line: string): Kind | undefined {
 
 const NPM_PLACEHOLDER = /no test specified/
 
-function node(root: string): Check[] {
+function node(root: string, lockRoot: string = root): Check[] {
   const pkg = readJson(path.join(root, "package.json"))
   const scripts = pkg && typeof pkg.scripts === "object" && pkg.scripts ? (pkg.scripts as Record<string, unknown>) : {}
   const script = (name: string) => (typeof scripts[name] === "string" ? (scripts[name] as string) : undefined)
-  const run = exists(root, "bun.lock", "bun.lockb")
+  const lock = (...names: string[]) => exists(root, ...names) || exists(lockRoot, ...names)
+  const run = lock("bun.lock", "bun.lockb")
     ? "bun run"
-    : exists(root, "pnpm-lock.yaml")
+    : lock("pnpm-lock.yaml")
       ? "pnpm run"
-      : exists(root, "yarn.lock")
+      : lock("yarn.lock")
         ? "yarn run"
         : "npm run"
   const checks: Check[] = []
@@ -636,26 +655,36 @@ export function isRound(parts: readonly { type: string; metadata?: Record<string
 // or review round) to the end. Returns the files it changed, absolute, and
 // how many verify rounds it has had.
 export function turn(messages: SessionV1.WithParts[], directory: string) {
-  const start = messages.findLastIndex((msg) => msg.info.role === "user" && !isRound(msg.parts))
+  // A stuck note (rafiki/stuck.ts) is not a new turn either.
+  const start = messages.findLastIndex((msg) => msg.info.role === "user" && !isRound(msg.parts) && !isNote(msg))
   const since = start === -1 ? [] : messages.slice(start)
   const used = since.filter(
     (msg) => msg.info.role === "user" && msg.parts.some((part) => metaOf(part)?.kind === "feedback"),
   ).length
   const files = new Set<string>()
+  // Files the turn created: they did not exist before it.
+  const created = new Set<string>()
   for (const msg of since) {
     if (msg.info.role !== "assistant") continue
     for (const part of msg.parts) {
       if (part.type === "patch") part.files.forEach((file) => files.add(path.resolve(directory, file)))
       if (part.type !== "tool" || part.state.status !== "completed") continue
       const input = part.state.input as { filePath?: unknown }
-      if ((part.tool === "edit" || part.tool === "write") && typeof input.filePath === "string")
-        files.add(path.resolve(directory, input.filePath))
+      if ((part.tool === "edit" || part.tool === "write") && typeof input.filePath === "string") {
+        const file = path.resolve(directory, input.filePath)
+        const existed = (part.state.metadata as { exists?: unknown } | undefined)?.exists
+        if (part.tool === "write" && existed === false && !files.has(file)) created.add(file)
+        files.add(file)
+      }
       const changed = (part.state.metadata as { files?: unknown } | undefined)?.files
       if (part.tool === "apply_patch" && Array.isArray(changed))
         for (const item of changed) {
-          const entry = item as { filePath?: unknown; movePath?: unknown }
+          const entry = item as { filePath?: unknown; movePath?: unknown; type?: unknown }
           const target = typeof entry.movePath === "string" ? entry.movePath : entry.filePath
-          if (typeof target === "string") files.add(path.resolve(directory, target))
+          if (typeof target !== "string") continue
+          const file = path.resolve(directory, target)
+          if ((entry.type === "add" || typeof entry.movePath === "string") && !files.has(file)) created.add(file)
+          files.add(file)
         }
     }
   }
@@ -663,7 +692,19 @@ export function turn(messages: SessionV1.WithParts[], directory: string) {
     .flatMap((msg) => (msg.info.role === "user" ? msg.parts.map(metaOf) : []))
     .filter((meta): meta is FeedbackMeta => meta?.kind === "feedback")
     .at(-1)
-  return { files: [...files], rounds: used, last: last?.result }
+  return { files: [...files], created: [...created], rounds: used, last: last?.result }
+}
+
+// The snapshot taken when the turn started: the first step of its first answer.
+export function turnSnapshot(messages: SessionV1.WithParts[]) {
+  const start = messages.findLastIndex((msg) => msg.info.role === "user" && !isNote(msg))
+  if (start === -1) return undefined
+  for (const msg of messages.slice(start)) {
+    if (msg.info.role !== "assistant") continue
+    const part = msg.parts.find((item) => item.type === "step-start" && item.snapshot)
+    if (part && part.type === "step-start") return part.snapshot
+  }
+  return undefined
 }
 
 // Changed files relative to root, without the tool's own folders and files outside root.
@@ -672,6 +713,181 @@ export function relevant(root: string, files: string[]) {
     .map((file) => path.relative(root, file).replaceAll("\\", "/"))
     .filter((file) => file && !file.startsWith("..") && !path.isAbsolute(file))
     .filter((file) => !file.startsWith(".rafiki/") && !file.startsWith(".rafikicode/") && !file.startsWith(".opencode/"))
+}
+
+// ---------------------------------------------------------------------------
+// Monorepos: the checks of each package the turn touched.
+
+const MANIFESTS = ["package.json", "composer.json", "pyproject.toml"]
+export const PACKAGE_LIMIT = 4
+
+// True when root is a monorepo whose packages have checks of their own.
+export function monorepo(root: string) {
+  const pkg = readJson(path.join(root, "package.json"))
+  if (pkg && pkg.workspaces) return true
+  if (exists(root, "pnpm-workspace.yaml", "lerna.json", "nx.json", "turbo.json")) return true
+  const composer = readJson(path.join(root, "composer.json"))
+  const repositories = composer?.repositories
+  const list = Array.isArray(repositories)
+    ? repositories
+    : repositories && typeof repositories === "object"
+      ? Object.values(repositories)
+      : []
+  return list.some((item) => item && typeof item === "object" && (item as { type?: unknown }).type === "path")
+}
+
+// The package folder of a file (relative to root, with forward slashes): the
+// nearest folder below root with a manifest, or undefined for the root's own files.
+export function packageOf(root: string, file: string) {
+  const parts = file.split("/").slice(0, -1)
+  for (let end = parts.length; end > 0; end--) {
+    const dir = parts.slice(0, end)
+    if (dir.some((part) => SKIP_DIRS.has(part))) continue
+    const rel = dir.join("/")
+    if (MANIFESTS.some((name) => fs.existsSync(path.join(root, rel, name)))) return rel
+  }
+  return undefined
+}
+
+// The steps for a set of changed files: per package in a monorepo, else the root's.
+export function plan(
+  root: string,
+  files: string[],
+  settings?: Settings,
+  probe: (python: string, root: string) => boolean = hasPytest,
+): Step[] {
+  const top = detect(root, settings, probe)
+  if (top.source !== "detected" || !monorepo(root)) return select(top, root, files)
+  const groups = new Map<string, string[]>()
+  const rest: string[] = []
+  for (const file of files) {
+    const pkg = packageOf(root, file)
+    if (!pkg) {
+      rest.push(file)
+      continue
+    }
+    groups.set(pkg, [...(groups.get(pkg) ?? []), file.slice(pkg.length + 1)])
+  }
+  const steps: Step[] = []
+  for (const [pkg, own] of [...groups].slice(0, PACKAGE_LIMIT)) {
+    if (onlyDocs(own)) continue
+    const dir = path.join(root, pkg)
+    const checks = detect(dir, undefined, probe, root)
+    if (checks.checks.length === 0) {
+      rest.push(...own.map((file) => `${pkg}/${file}`))
+      continue
+    }
+    steps.push(...select(checks, dir, own).map((step) => ({ ...step, cwd: pkg })))
+  }
+  // Packages past the limit, and files outside any package, get the root's checks.
+  for (const [pkg, own] of [...groups].slice(PACKAGE_LIMIT)) rest.push(...own.map((file) => `${pkg}/${file}`))
+  if (rest.length > 0 && !onlyDocs(rest)) steps.push(...select(top, root, rest))
+  return steps
+}
+
+// How a step is shown: the package folder first when it runs in one.
+export function label(step: Step) {
+  return step.cwd ? `${step.cwd}: ${step.command}` : step.command
+}
+
+// ---------------------------------------------------------------------------
+// Failures that were there before the turn.
+
+// The files of the turn as they were when it started: absolute path to
+// content, undefined for a file that did not exist.
+export type Before = Map<string, string | undefined>
+
+const BASELINE_FILE_LIMIT = 200
+const BASELINE_SIZE_LIMIT = 4 * 1024 * 1024
+
+// Lines that name one failure, in the formats of the common runners, with
+// what changes between runs (positions, timings) left out.
+export function failureLines(output: string): string[] {
+  const lines = new Set<string>()
+  for (const raw of output.replace(/\u001b\[[0-9;]*[A-Za-z]/g, "").split(/\r?\n/)) {
+    const line = raw.trim()
+    let match: RegExpMatchArray | null
+    if ((match = line.match(/^(FAILED|ERROR)\s+(\S+)/))) lines.add(`${match[1]} ${match[2]}`)
+    else if ((match = line.match(/^FAIL\s+(\S+)/))) lines.add(`FAIL ${match[1]}`)
+    else if ((match = line.match(/^(?:✕|×|✗)\s+(.+?)(?:\s+\(?\d+(?:\.\d+)?\s?m?s\)?)?$/))) lines.add(`x ${match[1]}`)
+    else if ((match = line.match(/^--- FAIL: (\S+)/))) lines.add(`FAIL ${match[1]}`)
+    else if ((match = line.match(/^\d+\) ([\w\\]+::\w+)/))) lines.add(`phpunit ${match[1]}`)
+    else if ((match = line.match(/^(.+?)[(:]\d+[,:]\d+\)?:?\s*-?\s*error\s+(TS\d+):\s*(.*)$/))) lines.add(`${match[1]} ${match[2]} ${match[3]}`)
+    else if ((match = line.match(/^\d+:\d+\s+error\s+(.+)$/))) lines.add(`eslint ${match[1].replace(/\s+/g, " ")}`)
+    else if ((match = line.match(/^(.+?):\d+:(?:\d+:)? error: (.+)$/))) lines.add(`${match[1]} ${match[2]}`)
+  }
+  return [...lines]
+}
+
+// Whether the failure of a step is the one it had before the turn: the
+// baseline run failed too, with no failure the current run names that the
+// baseline run does not (or, when neither names any, with the same exit code).
+export function compare(current: Exec, baseline: Exec): "preexisting" | "new" | undefined {
+  if (baseline.timedOut || baseline.exit === 127) return undefined
+  if (baseline.exit === 0) return "new"
+  const now = failureLines(current.output)
+  const then = new Set(failureLines(baseline.output))
+  if (now.length === 0 && then.size === 0) return current.exit === baseline.exit ? "preexisting" : "new"
+  if (now.length === 0) return "new"
+  return now.every((line) => then.has(line)) ? "preexisting" : "new"
+}
+
+const baselines = new Map<string, Exec>()
+
+// Runs a command with the turn's files as they were before it, and puts the
+// current files back whatever happens. Returns undefined when it could not.
+export async function baselineExec(input: {
+  command: string
+  cwd: string
+  ms: number
+  shell?: string
+  signal?: AbortSignal
+  before: Before
+  // Identifies the state before the turn (the snapshot), for the cache.
+  key?: string
+  exec?: (command: string, cwd: string, ms: number, shell: string | undefined, signal?: AbortSignal) => Promise<Exec>
+}): Promise<Exec | undefined> {
+  const id = input.key ? `${input.key}|${input.cwd}|${input.command}` : undefined
+  const cached = id ? baselines.get(id) : undefined
+  if (cached) return cached
+  if (input.before.size === 0 || input.before.size > BASELINE_FILE_LIMIT) return undefined
+  const current = new Map<string, Buffer | undefined>()
+  for (const file of input.before.keys()) {
+    const stat = fs.statSync(file, { throwIfNoEntry: false })
+    if (stat && (!stat.isFile() || stat.size > BASELINE_SIZE_LIMIT)) return undefined
+    current.set(file, stat ? fs.readFileSync(file) : undefined)
+  }
+  const put = (file: string, content: string | Buffer | undefined) => {
+    if (content === undefined) fs.rmSync(file, { force: true })
+    else {
+      fs.mkdirSync(path.dirname(file), { recursive: true })
+      fs.writeFileSync(file, content)
+    }
+  }
+  // Put back on an interrupt too: the files must never stay as they were before the turn.
+  const restore = () => {
+    for (const [file, content] of current) {
+      try {
+        put(file, content)
+      } catch {}
+    }
+  }
+  process.once("exit", restore)
+  try {
+    for (const [file, content] of input.before) put(file, content)
+    const done = await (input.exec ?? execute)(input.command, input.cwd, input.ms, input.shell, input.signal)
+    if (id && !done.timedOut) baselines.set(id, done)
+    return done
+  } catch {
+    return undefined
+  } finally {
+    restore()
+    process.removeListener("exit", restore)
+  }
+}
+
+export function clearBaselines() {
+  baselines.clear()
 }
 
 // ---------------------------------------------------------------------------
@@ -701,6 +917,9 @@ export async function run(input: {
   shell?: string
   signal?: AbortSignal
   exec?: (command: string, cwd: string, ms: number, shell: string | undefined, signal?: AbortSignal) => Promise<Exec>
+  // The turn's files before it, to tell a failure that was there already.
+  before?: Before
+  beforeKey?: string
 }): Promise<Result> {
   const exec = input.exec ?? execute
   const deadline = Date.now() + input.budget * 1000
@@ -713,8 +932,26 @@ export async function run(input: {
       continue
     }
     const started = Date.now()
-    const done = await exec(step.command, input.cwd, left, input.shell, input.signal)
-    const status = classify(step, done.exit, done.output, done.timedOut)
+    const cwd = step.cwd ? path.join(input.cwd, step.cwd) : input.cwd
+    const done = await exec(step.command, cwd, left, input.shell, input.signal)
+    let status = classify(step, done.exit, done.output, done.timedOut)
+    if (status === "failed" && input.before && !input.signal?.aborted) {
+      const ms = deadline - Date.now()
+      const then =
+        ms >= 1000
+          ? await baselineExec({
+              command: step.command,
+              cwd,
+              ms,
+              shell: input.shell,
+              signal: input.signal,
+              before: input.before,
+              key: input.beforeKey,
+              exec,
+            })
+          : undefined
+      if (then && compare(done, then) === "preexisting") status = "preexisting"
+    }
     steps.push({ ...step, status, exit: done.exit, seconds: (Date.now() - started) / 1000, output: tail(done.output) })
     // Stop at the first failure: the model fixes it and the next round runs again.
     if (status === "failed") break
@@ -727,7 +964,7 @@ export function summarize(steps: StepResult[]): Status {
   if (steps.some((step) => step.status === "failed")) return "failing"
   if (steps.some((step) => step.status === "timeout")) return "incomplete"
   if (steps.some((step) => step.status === "skipped") && steps.some((step) => step.status === "passed")) return "incomplete"
-  if (!steps.some((step) => step.status === "passed")) return "unavailable"
+  if (!steps.some((step) => step.status === "passed" || step.status === "preexisting")) return "unavailable"
   return "passed"
 }
 
@@ -798,7 +1035,9 @@ function seconds(value: number) {
 export function sameFailure(previous: Result | undefined, current: Result) {
   if (!previous) return false
   const key = (result: Result) =>
-    JSON.stringify(result.steps.filter((step) => step.status === "failed").map((step) => [step.command, step.exit, step.output]))
+    JSON.stringify(
+      result.steps.filter((step) => step.status === "failed").map((step) => [step.cwd, step.command, step.exit, step.output]),
+    )
   return key(previous) === key(current)
 }
 
@@ -806,16 +1045,20 @@ export function sameFailure(previous: Result | undefined, current: Result) {
 export function feedback(result: Result, round: number, total: number) {
   const failed = result.steps.filter((step) => step.status === "failed")
   const passed = result.steps.filter((step) => step.status === "passed")
+  const earlier = result.steps.filter((step) => step.status === "preexisting")
   return [
     `The project's checks failed after your changes (verify round ${round} of ${total}).`,
     "",
     ...failed.flatMap((step) => [
-      `$ ${step.command}`,
+      `$ ${step.cwd ? `(in ${step.cwd}) ` : ""}${step.command}`,
       `exit code ${step.exit} after ${seconds(step.seconds)}`,
       step.output.trim() || "(no output)",
       "",
     ]),
-    ...(passed.length ? [`Passed: ${passed.map((step) => step.command).join(", ")}`, ""] : []),
+    ...(passed.length ? [`Passed: ${passed.map(label).join(", ")}`, ""] : []),
+    ...(earlier.length
+      ? [`Failing before your changes too, so not caused by them (leave these alone): ${earlier.map(label).join(", ")}`, ""]
+      : []),
     "Find the cause and fix it, then run the failing check again yourself. Do not weaken or delete tests to make them pass. If the failure is not caused by your change (it also fails without it), say so in your answer and stop.",
   ].join("\n")
 }
@@ -825,21 +1068,23 @@ export function finalLine(result: Result, rounds: number): string {
   const list = (status: StepStatus) =>
     result.steps
       .filter((step) => step.status === status)
-      .map((step) => step.command)
+      .map(label)
       .join(", ")
   const passed = list("passed")
-  if (result.status === "passed") return `checks passed: ${passed}`
+  const earlier = list("preexisting")
+  const before = earlier ? `; failing before this turn too, not caused by it: ${earlier}` : ""
+  if (result.status === "passed") return passed ? `checks passed: ${passed}${before}` : `checks: ${earlier} failing before this turn too, not caused by it`
   if (result.status === "failing") {
     const failed = result.steps
       .filter((step) => step.status === "failed")
-      .map((step) => `${step.command} (exit code ${step.exit})`)
+      .map((step) => `${label(step)} (exit code ${step.exit})`)
       .join(", ")
     const tried = rounds > 0 ? ` after ${rounds} fix round${rounds === 1 ? "" : "s"}` : ""
-    return `checks failing: ${failed}${tried}. The changes are not verified.`
+    return `checks failing: ${failed}${tried}. The changes are not verified${before}.`
   }
   if (result.status === "incomplete") {
     const late = [list("timeout"), list("skipped")].filter(Boolean).join(", ")
-    return `checks not finished within ${result.budget} s: ${late}${passed ? `; passed: ${passed}` : ""}`
+    return `checks not finished within ${result.budget} s: ${late}${passed ? `; passed: ${passed}` : ""}${before}`
   }
   if (result.status === "unavailable")
     return `checks not run: ${list("unavailable") || list("skipped")} cannot run here (the tool it needs is missing)`
@@ -867,6 +1112,7 @@ export function summary(meta: FinalMeta | undefined) {
     budget: meta.result.budget,
     checks: meta.result.steps.map((step) => ({
       command: step.command,
+      ...(step.cwd ? { cwd: step.cwd } : {}),
       kind: step.kind,
       scope: step.scope,
       status: step.status,

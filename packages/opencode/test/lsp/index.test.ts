@@ -50,7 +50,8 @@ describe("lsp.spawn", () => {
     { config: { lsp: true } },
   )
 
-  it.instance("does not spawn builtin LSP for files inside instance when LSP is unset", () =>
+  // Rafiki: with lsp unset the TypeScript server is one of the default ones (rafiki/edit-check.ts).
+  it.instance("spawns the builtin TypeScript LSP for files inside instance when LSP is unset", () =>
     LSP.Service.use((lsp) =>
       Effect.gen(function* () {
         const dir = (yield* TestInstance).directory
@@ -62,12 +63,35 @@ describe("lsp.spawn", () => {
             line: 0,
             character: 0,
           })
-          expect(spy).toHaveBeenCalledTimes(0)
+          expect(spy).toHaveBeenCalledTimes(1)
         } finally {
           spy.mockRestore()
         }
       }),
     ),
+  )
+
+  it.instance(
+    "does not spawn builtin LSP for files inside instance when lsp is false",
+    () =>
+      LSP.Service.use((lsp) =>
+        Effect.gen(function* () {
+          const dir = (yield* TestInstance).directory
+          const spy = spyOn(LSPServer.Typescript, "spawn").mockResolvedValue(undefined)
+
+          try {
+            yield* lsp.hover({
+              file: path.join(dir, "src", "inside.ts"),
+              line: 0,
+              character: 0,
+            })
+            expect(spy).toHaveBeenCalledTimes(0)
+          } finally {
+            spy.mockRestore()
+          }
+        }),
+      ),
+    { config: { lsp: false } },
   )
 
   it.instance(

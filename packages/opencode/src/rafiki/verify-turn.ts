@@ -3,6 +3,7 @@
 // a tool. Returns "again" when a failure was sent back to the model as a new
 // message, so the loop runs once more; "done" otherwise, after adding the
 // line that says how the checks went to the answer.
+import path from "path"
 import { Effect } from "effect"
 import type { SessionV1 } from "@opencode-ai/core/v1/session"
 import { Flag } from "@opencode-ai/core/flag/flag"
@@ -27,6 +28,10 @@ export interface Input {
   env?: Record<string, string | undefined>
   // Told the outcome of the checks once the step is over (the review pass reads it).
   onFinal?: (result: Verify.Result) => void
+  // The changed files as they were when the turn started (absolute paths),
+  // and a key for that state; undefined when the session has no snapshot.
+  // A file missing from the snapshot counts as new only when it is in `created`.
+  before?: (files: string[], created: string[]) => Effect.Effect<{ key: string; files: Verify.Before } | undefined>
 }
 
 export const afterTurn = Effect.fnUntraced(function* (input: Input) {
@@ -36,16 +41,25 @@ export const afterTurn = Effect.fnUntraced(function* (input: Input) {
   const files = Verify.relevant(input.root, turn.files)
   if (files.length === 0 || Verify.onlyDocs(files)) return "done" as const
 
-  const plan = Verify.detect(input.root, input.settings)
-  const steps = Verify.select(plan, input.root, files)
+  const steps = Verify.plan(input.root, files, input.settings)
   const budget = Verify.timeout(input.settings)
   const total = Verify.rounds(input.settings)
+  const approved = steps.length > 0 && (yield* input.ask(steps.map((step) => step.command)))
+  const before = approved && input.before ? yield* input.before(files.map((file) => path.join(input.root, file)), turn.created) : undefined
   const result: Verify.Result =
     steps.length === 0
       ? { status: "none", steps: [], budget }
-      : (yield* input.ask(steps.map((step) => step.command)))
+      : approved
         ? yield* Effect.promise((signal) =>
-            Verify.run({ steps, cwd: input.root, budget, shell: input.shell, signal }),
+            Verify.run({
+              steps,
+              cwd: input.root,
+              budget,
+              shell: input.shell,
+              signal,
+              before: before?.files,
+              beforeKey: before?.key,
+            }),
           )
         : {
             status: "refused",

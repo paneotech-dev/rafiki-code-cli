@@ -9,6 +9,7 @@ import { createTwoFilesPatch, diffLines } from "diff"
 import { assertExternalDirectoryEffect } from "./external-directory"
 import { trimDiff } from "./edit"
 import { LSP } from "@/lsp/lsp"
+import * as EditCheck from "@/rafiki/edit-check"
 import { FSUtil } from "@opencode-ai/core/fs-util"
 import DESCRIPTION from "./apply_patch.txt"
 import { FileSystem } from "@opencode-ai/core/filesystem"
@@ -217,6 +218,9 @@ export const ApplyPatchTool = Tool.define(
         },
       })
 
+      // What the language servers knew before the change, so only new errors are reported.
+      const before = yield* lsp.diagnostics()
+
       // Apply the changes
       const updates: Array<{ file: string; event: "add" | "change" | "unlink" }> = []
 
@@ -265,13 +269,11 @@ export const ApplyPatchTool = Tool.define(
         yield* events.publish(Watcher.Event.Updated, update)
       }
 
-      // Notify LSP of file changes and collect diagnostics
-      for (const change of fileChanges) {
-        if (change.type === "delete") continue
-        const target = change.movePath ?? change.filePath
-        yield* lsp.touchFile(target, "document")
-      }
-      const diagnostics = yield* lsp.diagnostics()
+      // The language checks of the changed files (rafiki/edit-check.ts): new errors, within a time limit.
+      const targets = fileChanges
+        .filter((change) => change.type !== "delete")
+        .map((change) => change.movePath ?? change.filePath)
+      const { diagnostics, reports } = yield* EditCheck.afterEdit({ lsp, files: targets, before })
 
       // Generate output summary
       const summaryLines = fileChanges.map((change) => {
@@ -286,14 +288,8 @@ export const ApplyPatchTool = Tool.define(
       })
       let output = `Success. Updated the following files:\n${summaryLines.join("\n")}`
 
-      for (const change of fileChanges) {
-        if (change.type === "delete") continue
-        const target = change.movePath ?? change.filePath
-        const block = LSP.Diagnostic.report(target, diagnostics[FSUtil.normalizePath(target)] ?? [])
-        if (!block) continue
-        const rel = path.relative(instance.worktree, target).replaceAll("\\", "/")
-        output += `\n\nLSP errors detected in ${rel}, please fix:\n${block}`
-      }
+      for (const report of reports)
+        output += EditCheck.render(report, path.relative(instance.worktree, report.file).replaceAll("\\", "/"))
 
       return {
         title: output,

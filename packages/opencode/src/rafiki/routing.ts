@@ -16,6 +16,9 @@
 //                  deep      /deep or `rafikicode run --deep`
 //                  plan      the plan agent on a wide change
 //                  failing   the same check failed twice in a row
+//                  stuck     the turn was told it is stuck (rafiki/stuck.ts):
+//                            the same failure three times, or edits that
+//                            keep undoing each other
 //                  review    the /review step
 //                never on the size of the context, and never to rafiki-max. A
 //                session already on rafiki-pro or rafiki-max is not moved.
@@ -44,7 +47,7 @@ export const COMPACT_FIRST = 60_000
 export const DEEP_DESCRIPTION = "send this message on Rafiki Pro, then go back to the session's tier"
 
 export type Purpose = "turn" | "subagent" | "title" | "compaction" | "criteria" | "review"
-export type Signal = "deep" | "plan" | "failing" | "review"
+export type Signal = "deep" | "plan" | "failing" | "review" | "stuck"
 
 export interface Decision {
   tier: string
@@ -105,6 +108,7 @@ const reasons: Record<Signal, string> = {
   plan: "plan: the plan agent on a wide change",
   failing: "failing: the same check failed twice in a row",
   review: "review: the review step",
+  stuck: "stuck: the same failure three times, or edits undoing each other",
 }
 
 // The tier for one request.
@@ -173,11 +177,14 @@ export function signalOf(input: {
   text: string
   // Failing step commands of each verify feedback of this turn, oldest first.
   failures: string[][]
+  // True when the turn has a stuck note (rafiki/stuck.ts).
+  stuck?: boolean
 }): Signal | undefined {
   const asked = requestedFor(input.sessionID)
   if (asked) return asked
   const [before, last] = input.failures.slice(-2)
   if (before && last && last.some((command) => before.includes(command))) return "failing"
+  if (input.stuck) return "stuck"
   if (input.agent === "plan" && wide(input.text)) return "plan"
   return undefined
 }

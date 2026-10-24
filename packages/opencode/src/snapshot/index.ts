@@ -52,6 +52,8 @@ export interface Interface {
   readonly revert: (patches: Patch[]) => Effect.Effect<void>
   readonly diff: (hash: string) => Effect.Effect<string>
   readonly diffFull: (from: string, to: string) => Effect.Effect<FileDiff[]>
+  // A file's content at a snapshot (path relative to the worktree), undefined when it did not exist.
+  readonly show: (hash: string, file: string) => Effect.Effect<string | undefined>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/Snapshot") {}
@@ -794,7 +796,18 @@ const layer: Layer.Layer<Service, never, FSUtil.Service | AppProcess.Service | C
           Effect.forkScoped,
         )
 
-        return { cleanup, track, patch, restore, revert, diff, diffFull }
+        const show = Effect.fnUntraced(function* (hash: string, file: string) {
+          return yield* locked(
+            Effect.gen(function* () {
+              const result = yield* git([...quote, ...args(["show", `${hash}:${file.replaceAll("\\", "/")}`])], {
+                cwd: state.worktree,
+              })
+              return result.code === 0 ? result.text : undefined
+            }),
+          )
+        })
+
+        return { cleanup, track, patch, restore, revert, diff, diffFull, show }
       }),
     )
 
@@ -822,6 +835,9 @@ const layer: Layer.Layer<Service, never, FSUtil.Service | AppProcess.Service | C
       }),
       diffFull: Effect.fn("Snapshot.diffFull")(function* (from: string, to: string) {
         return yield* InstanceState.useEffect(state, (s) => s.diffFull(from, to))
+      }),
+      show: Effect.fn("Snapshot.show")(function* (hash: string, file: string) {
+        return yield* InstanceState.useEffect(state, (s) => s.show(hash, file))
       }),
     })
   }),

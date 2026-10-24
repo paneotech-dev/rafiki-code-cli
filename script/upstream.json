@@ -423,6 +423,16 @@
       "why": "The update source, the install method detection and the upgrade commands are this product's (`rafiki/update.ts`); upstream's installer and package addresses are removed."
     },
     {
+      "path": "packages/opencode/src/lsp/lsp.ts",
+      "class": "logic",
+      "why": "With `lsp` unset, the TypeScript, Python and PHP servers are on (`DEFAULT_SERVERS`), so the errors an edit introduces come back at once (`rafiki/edit-check.ts`); `lsp: false` or `RAFIKICODE_EDIT_CHECKS=off` turns them off."
+    },
+    {
+      "path": "packages/opencode/src/lsp/server.ts",
+      "class": "logic",
+      "why": "The TypeScript server uses `typescript-language-server` from PATH first and honours `OPENCODE_DISABLE_LSP_DOWNLOAD`, like the other servers."
+    },
+    {
       "path": "packages/opencode/src/mcp/index.ts",
       "class": "text",
       "why": "A message names this product's command."
@@ -565,7 +575,7 @@
     {
       "path": "packages/opencode/src/snapshot/index.ts",
       "class": "logic",
-      "why": "A snapshot is bounded (10,000 files, 10 seconds) and skipped in the home folder or a filesystem root (`rafiki/workspace.ts`), so the first model request never waits on a scan of an unbounded tree. Upstream stages one pathspec per file, which grows with the square of the count."
+      "why": "A snapshot is bounded (10,000 files, 10 seconds) and skipped in the home folder or a filesystem root (`rafiki/workspace.ts`), so the first model request never waits on a scan of an unbounded tree. Upstream stages one pathspec per file, which grows with the square of the count. `show` reads one file at a snapshot, for the verify step to run a failing check on the files as they were before the turn (`rafiki/verify.ts`)."
     },
     {
       "path": "packages/opencode/src/tool/apply_patch.ts",
@@ -575,7 +585,7 @@
     {
       "path": "packages/opencode/src/tool/edit.ts",
       "class": "hook",
-      "why": "An edit to a file in `.rafiki/memory/` is refused: the project memory changes only through `memory_update` (`rafiki/memory.ts`)."
+      "why": "An edit to a file in `.rafiki/memory/` is refused: the project memory changes only through `memory_update` (`rafiki/memory.ts`). The language checks after the edit go through `rafiki/edit-check.ts` (only new errors, a time limit, a syntax check when no server reports)."
     },
     {
       "path": "packages/opencode/src/tool/read.ts",
@@ -696,6 +706,16 @@
       "path": "packages/opencode/test/lib/cli-process.ts",
       "class": "test",
       "why": "CI variables are neutralised for subprocesses; helpers for the ACP specification tests."
+    },
+    {
+      "path": "packages/opencode/test/lsp/index.test.ts",
+      "class": "test",
+      "why": "The TypeScript server is spawned with `lsp` unset (the Rafiki default), and not with `lsp: false`."
+    },
+    {
+      "path": "packages/opencode/test/lsp/lifecycle.test.ts",
+      "class": "test",
+      "why": "With `lsp` unset, `.ts`, `.py` and `.php` files have a server and others do not; `lsp: false` has none."
     },
     {
       "path": "packages/opencode/test/plugin/install-concurrency.test.ts",

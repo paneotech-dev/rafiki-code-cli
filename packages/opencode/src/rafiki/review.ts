@@ -19,6 +19,7 @@
 // that changed only documentation is not reviewed.
 import path from "path"
 import { Brand } from "@opencode-ai/core/brand/brand"
+import { isNote } from "./stuck"
 import type { SessionV1 } from "@opencode-ai/core/v1/session"
 import * as Routing from "./routing"
 
@@ -421,7 +422,8 @@ export function turn(messages: SessionV1.WithParts[]) {
       const verify = part.type === "text" ? (part.metadata?.["verify"] as { kind?: unknown } | undefined) : undefined
       return verify?.kind === "feedback"
     })
-  const start = messages.findLastIndex((msg) => msg.info.role === "user" && !round(msg))
+  // A stuck note (rafiki/stuck.ts) continues the turn too.
+  const start = messages.findLastIndex((msg) => msg.info.role === "user" && !round(msg) && !isNote(msg))
   const since = start === -1 ? [] : messages.slice(start)
   const metas = since.flatMap((msg) => msg.parts.map(metaOf)).filter((meta): meta is Meta => Boolean(meta))
   const criteria = metas.find((meta): meta is CriteriaMeta => meta.kind === "criteria")

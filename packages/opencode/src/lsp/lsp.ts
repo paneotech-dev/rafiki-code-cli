@@ -14,6 +14,7 @@ import { containsPath } from "@/project/instance-context"
 import { NonNegativeInt } from "@opencode-ai/core/schema"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { LspEvent } from "@opencode-ai/schema/lsp-event"
+import * as EditCheck from "@/rafiki/edit-check"
 
 export const Event = LspEvent
 
@@ -107,6 +108,10 @@ const filterExperimentalServers = (servers: Record<string, LSPServer.Info>, flag
   }
 }
 
+// The servers on when the config has no lsp setting: TypeScript and
+// JavaScript, Python (pyright, or ty with its flag) and PHP.
+export const DEFAULT_SERVERS = ["typescript", "pyright", "ty", "php intelephense"]
+
 type LocInput = { file: string; line: number; character: number }
 
 interface State {
@@ -148,16 +153,22 @@ const layer = Layer.effect(
 
         const servers: Record<string, LSPServer.Info> = {}
 
-        if (!cfg.lsp) {
+        // Without an lsp setting, the servers of the languages most projects
+        // here use are on, so an edit's errors come back at once
+        // (rafiki/edit-check.ts); lsp: false turns them off, lsp: true turns
+        // every built-in server on.
+        const defaults = cfg.lsp === undefined && EditCheck.enabled()
+        if (!cfg.lsp && !defaults) {
           yield* Effect.logInfo("all LSPs are disabled")
         } else {
           for (const server of Object.values(LSPServer)) {
+            if (defaults && !DEFAULT_SERVERS.includes(server.id)) continue
             servers[server.id] = server
           }
 
           filterExperimentalServers(servers, flags)
 
-          if (cfg.lsp !== true) {
+          if (cfg.lsp && cfg.lsp !== true) {
             for (const [name, item] of Object.entries(cfg.lsp)) {
               const existing = servers[name]
               if (item.disabled) {
