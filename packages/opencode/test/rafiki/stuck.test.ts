@@ -7,6 +7,7 @@ import * as Stuck from "../../src/rafiki/stuck"
 import * as StuckTurn from "../../src/rafiki/stuck-turn"
 import * as Routing from "../../src/rafiki/routing"
 import * as Verify from "../../src/rafiki/verify"
+import * as Review from "../../src/rafiki/review"
 
 const user = (id: string, meta?: Record<string, unknown>) => ({
   info: { id, role: "user", sessionID: "s", agent: "build", model: { providerID: "rafiki", modelID: "rafiki-fast" }, time: { created: 1 } },
@@ -113,6 +114,14 @@ describe("scan", () => {
       assistant("a2", "n1", []),
     ] as never
     expect(Verify.turn(messages, "/p").files).toEqual(["/p/a.py"])
+  })
+
+  test("a stuck note is not a new turn for the review, and a review round is not one for stuck detection", () => {
+    const note = user("n1", { stuck: { kind: "stuck", reason: "repeat", subject: "x", key: "k", count: 3 } })
+    const messages = [user("u1"), assistant("a1", "u1", []), note, assistant("a2", "n1", [])] as never
+    expect(Review.turn(messages).start.info.id).toBe("u1")
+    const review = user("r1", { review: { kind: "feedback" } })
+    expect(Stuck.turnMessages([user("u1"), review] as never)[0].info.id).toBe("u1")
   })
 })
 
