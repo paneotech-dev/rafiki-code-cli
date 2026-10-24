@@ -40,6 +40,7 @@ import * as RafikiTierCheck from "@/rafiki/tier-check"
 import * as RafikiReasoning from "@/rafiki/reasoning"
 import * as RafikiVerify from "@/rafiki/verify"
 import * as RafikiReview from "@/rafiki/review"
+import * as RafikiStuck from "@/rafiki/stuck"
 import * as RunSignal from "@/rafiki/run-signal"
 import * as ServerFile from "@/rafiki/server-file"
 import { INTERACTIVE_INPUT_ERROR, resolveInteractiveStdin } from "./run/runtime.stdin"
@@ -836,6 +837,22 @@ export const RunCommand = effectCmd({
                 continue
               }
               if (verify?.kind === "final") verified = verify
+
+              // Stuck detection: one line when the turn was told to change approach (rafiki/stuck.ts).
+              const stuck = RafikiStuck.metaOf(part)
+              if (stuck) {
+                if (
+                  emit("stuck", {
+                    reason: stuck.reason,
+                    subject: stuck.subject,
+                    count: stuck.count,
+                    escalated: stuck.escalated ?? null,
+                  })
+                )
+                  continue
+                UI.println(UI.Style.TEXT_WARNING_BOLD + "!", UI.Style.TEXT_NORMAL + RafikiStuck.userLine(stuck))
+                continue
+              }
 
               // The tier the request went to and why (rafiki/routing.ts), when the server runs in this process.
               const route = RafikiRouting.decisionFor(part.messageID)
