@@ -1,5 +1,6 @@
 import { Brand } from "@opencode-ai/core/brand/brand"
 import { BrandSkill } from "@opencode-ai/core/brand/skill"
+import { Design } from "@opencode-ai/core/brand/design"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import path from "path"
 import { Effect, Layer, Context, Schema } from "effect"
@@ -290,6 +291,14 @@ const layer = Layer.effect(
           description: CUSTOMIZE_SKILL_DESCRIPTION,
           location: "<built-in>",
           content: CUSTOMIZE_SKILL_HIDDEN ? BrandSkill.body() : SkillPlugin.CustomizeOpencodeContent,
+        }
+        // The design guide, for user interface work the server did not
+        // recognise as such (it adds the guide by itself when it does).
+        s.skills[Design.name] = {
+          name: Design.name,
+          description: Design.description,
+          location: "<built-in>",
+          content: Design.guide(),
         }
         // Belt and braces: a hidden name must never reach the model, whether it
         // was registered above or came from somewhere else.

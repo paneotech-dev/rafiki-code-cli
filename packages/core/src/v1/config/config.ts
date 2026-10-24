@@ -227,6 +227,20 @@ export const Info = Schema.Struct({
   ).annotate({
     description: "Acceptance criteria and a review pass on a second model before a task is reported as done",
   }),
+  design: Schema.optional(
+    Schema.Struct({
+      guide: Schema.optional(Schema.Boolean).annotate({
+        description:
+          "Add the built-in design guide (spacing, type scale, colour, states, responsive, accessibility) to a session whose request is user interface work (default: true)",
+      }),
+      plan: Schema.optional(Schema.Boolean).annotate({
+        description:
+          "On user interface work, reply first with a short layout plan (sections, components, states) and wait for an answer before writing code (default: true; never in run, where nobody can answer)",
+      }),
+    }),
+  ).annotate({
+    description: "User interface work: the design guide and the layout plan before building",
+  }),
   experimental: Schema.optional(
     Schema.Struct({
       disable_paste_summary: Schema.optional(Schema.Boolean),

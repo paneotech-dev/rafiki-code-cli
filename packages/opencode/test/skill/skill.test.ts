@@ -3,6 +3,7 @@ import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { Effect, Layer } from "effect"
 import { Skill } from "../../src/skill"
 import { BrandSkill } from "@opencode-ai/core/brand/skill"
+import { Design } from "@opencode-ai/core/brand/design"
 import { Discovery } from "../../src/skill/discovery"
 import { RuntimeFlags } from "../../src/effect/runtime-flags"
 import { EventV2Bridge } from "../../src/event-v2-bridge"
@@ -101,11 +102,14 @@ describe("skill", () => {
         Effect.gen(function* () {
           const skill = yield* Skill.Service
           const builtin = (yield* skill.all()).filter((s) => s.location === "<built-in>")
-          expect(builtin.map((s) => s.name)).toEqual([BrandSkill.name])
-          expect(builtin[0]!.name).not.toContain("opencode")
-          expect(builtin[0]!.description).toBe(BrandSkill.description)
-          expect(builtin[0]!.content).toBe(BrandSkill.body())
+          expect(builtin.map((s) => s.name).toSorted()).toEqual([BrandSkill.name, Design.name].toSorted())
+          const customize = builtin.find((s) => s.name === BrandSkill.name)!
+          expect(customize.name).not.toContain("opencode")
+          expect(customize.description).toBe(BrandSkill.description)
+          expect(customize.content).toBe(BrandSkill.body())
           expect(yield* skill.get("customize-opencode")).toBeUndefined()
+          // The design guide ships as a built-in skill too.
+          expect(builtin.find((s) => s.name === Design.name)!.content).toBe(Design.guide())
         }),
       { git: true },
     ),
