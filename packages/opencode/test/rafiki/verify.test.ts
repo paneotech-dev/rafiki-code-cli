@@ -366,3 +366,179 @@ describe("a turn", () => {
     expect(withVerifyRounds(items as never).map((info) => info.parentID)).toEqual([undefined, "u1", undefined, "u1", undefined, "u3"])
   })
 })
+
+describe("monorepos", () => {
+  const pkg = (scripts: Record<string, string>, extra: Record<string, unknown> = {}) =>
+    JSON.stringify({ name: "x", scripts, ...extra })
+
+  test("a workspace turn runs the checks of the packages it touched, in those packages", () => {
+    write("package.json", pkg({ test: "turbo run test", typecheck: "turbo run typecheck" }, { workspaces: ["packages/*"] }))
+    write("pnpm-lock.yaml")
+    write("packages/api/package.json", pkg({ test: "vitest run", typecheck: "tsc --noEmit" }))
+    write("packages/api/src/user.ts")
+    write("packages/api/src/user.test.ts")
+    write("packages/web/package.json", pkg({ lint: "eslint ." }))
+    write("packages/web/src/app.ts")
+    write("packages/docs/package.json", pkg({}))
+    const steps = Verify.plan(dir, ["packages/api/src/user.ts", "packages/web/src/app.ts"], undefined, no)
+    expect(steps.map(Verify.label)).toEqual([
+      "packages/api: pnpm run test src/user.test.ts",
+      "packages/api: pnpm run typecheck",
+      "packages/web: pnpm run lint",
+    ])
+  })
+
+  test("files outside any package, and packages with no checks, get the root's checks", () => {
+    write("package.json", pkg({ typecheck: "tsc -b" }, { workspaces: { packages: ["packages/*"] } }))
+    write("packages/empty/package.json", pkg({}))
+    write("packages/empty/index.ts")
+    write("scripts/build.ts")
+    const steps = Verify.plan(dir, ["packages/empty/index.ts", "scripts/build.ts"], undefined, no)
+    expect(steps.map(Verify.label)).toEqual(["npm run typecheck"])
+  })
+
+  test("a composer monorepo with path repositories runs a package's phpunit in the package", () => {
+    write("composer.json", JSON.stringify({ repositories: [{ type: "path", url: "packages/*" }] }))
+    write("packages/billing/composer.json", JSON.stringify({ scripts: { test: "phpunit" } }))
+    write("packages/billing/src/Invoice.php")
+    const steps = Verify.plan(dir, ["packages/billing/src/Invoice.php"], undefined, no)
+    expect(steps).toEqual([{ kind: "test", scope: "wide", command: "composer test", cwd: "packages/billing" }])
+  })
+
+  test("a project that is not a monorepo keeps the root's checks, nested manifests or not", () => {
+    write("package.json", pkg({ lint: "eslint ." }))
+    write("fixtures/demo/package.json", pkg({ test: "jest" }))
+    write("fixtures/demo/a.js")
+    expect(Verify.plan(dir, ["fixtures/demo/a.js"], undefined, no).map(Verify.label)).toEqual(["npm run lint"])
+  })
+
+  test("a step runs in its package folder", async () => {
+    const seen: string[] = []
+    await Verify.run({
+      steps: [{ kind: "test", scope: "wide", command: "npm test", cwd: "packages/api" }],
+      cwd: dir,
+      budget: 30,
+      exec: async (_command, cwd) => (seen.push(cwd), { exit: 0, output: "", timedOut: false }),
+    })
+    expect(seen).toEqual([path.join(dir, "packages/api")])
+  })
+})
+
+describe("failures that were there before the turn", () => {
+  const step: Verify.Step = { kind: "test", scope: "wide", command: "pytest" }
+
+  test("failure lines of the common runners, without positions or timings", () => {
+    const lines = Verify.failureLines(
+      [
+        "FAILED tests/test_a.py::test_one - AssertionError: 1 != 2",
+        "FAIL src/user.test.ts (1.2 s)",
+        "  ✕ adds a user (5 ms)",
+        "--- FAIL: TestParse (0.00s)",
+        "1) Tests\\Unit\\InvoiceTest::test_total",
+        "src/a.ts(3,5): error TS2322: Type 'string' is not assignable to type 'number'.",
+        "app/models.py:12: error: Incompatible return value type",
+      ].join("\n"),
+    )
+    expect(lines).toEqual([
+      "FAILED tests/test_a.py::test_one",
+      "FAIL src/user.test.ts",
+      "x adds a user",
+      "FAIL TestParse",
+      "phpunit Tests\\Unit\\InvoiceTest::test_total",
+      "src/a.ts TS2322 Type 'string' is not assignable to type 'number'.",
+      "app/models.py Incompatible return value type",
+    ])
+  })
+
+  test("the same failures before the turn make it preexisting; a new one, or a pass before, does not", () => {
+    const exec = (exit: number, output: string): Verify.Exec => ({ exit, output, timedOut: false })
+    const now = exec(1, "FAILED tests/test_a.py::test_one - x\nFAILED tests/test_b.py::test_two - y")
+    expect(Verify.compare(now, exec(1, "FAILED tests/test_b.py::test_two\nFAILED tests/test_a.py::test_one"))).toBe("preexisting")
+    expect(Verify.compare(now, exec(1, "FAILED tests/test_a.py::test_one"))).toBe("new")
+    expect(Verify.compare(now, exec(0, "passed"))).toBe("new")
+    expect(Verify.compare(exec(2, "boom"), exec(2, "boom too"))).toBe("preexisting")
+    expect(Verify.compare(exec(2, "boom"), exec(1, "other"))).toBe("new")
+    expect(Verify.compare(now, { exit: null, output: "", timedOut: true })).toBeUndefined()
+  })
+
+  test("the step runs again on the files as they were, the files are put back, and the failure does not count", async () => {
+    write("a.py", "after")
+    write("new.py", "created")
+    const before: Verify.Before = new Map([
+      [path.join(dir, "a.py"), "before"],
+      [path.join(dir, "new.py"), undefined],
+    ])
+    const seen: string[] = []
+    const result = await Verify.run({
+      steps: [step, { kind: "lint", scope: "wide", command: "ruff check ." }],
+      cwd: dir,
+      budget: 30,
+      before,
+      exec: async (command) => {
+        seen.push(`${command}:${fs.readFileSync(path.join(dir, "a.py"), "utf8")}:${fs.existsSync(path.join(dir, "new.py"))}`)
+        return command === "pytest" ? { exit: 1, output: "FAILED tests/test_x.py::test_old", timedOut: false } : { exit: 0, output: "", timedOut: false }
+      },
+    })
+    expect(seen).toEqual(["pytest:after:true", "pytest:before:false", "ruff check .:after:true"])
+    expect(fs.readFileSync(path.join(dir, "a.py"), "utf8")).toBe("after")
+    expect(fs.readFileSync(path.join(dir, "new.py"), "utf8")).toBe("created")
+    expect(result.status).toBe("passed")
+    expect(result.steps.map((item) => item.status)).toEqual(["preexisting", "passed"])
+    expect(Verify.finalLine(result, 0)).toBe("checks passed: ruff check .; failing before this turn too, not caused by it: pytest")
+  })
+
+  test("a failure the turn caused still fails, and the files are put back when the run throws", async () => {
+    write("a.py", "after")
+    const before: Verify.Before = new Map([[path.join(dir, "a.py"), "before"]])
+    const result = await Verify.run({
+      steps: [step],
+      cwd: dir,
+      budget: 30,
+      before,
+      exec: async () =>
+        fs.readFileSync(path.join(dir, "a.py"), "utf8") === "after"
+          ? { exit: 1, output: "FAILED tests/test_x.py::test_new", timedOut: false }
+          : { exit: 0, output: "", timedOut: false },
+    })
+    expect(result.status).toBe("failing")
+    const thrown = await Verify.baselineExec({
+      command: "x",
+      cwd: dir,
+      ms: 1000,
+      before,
+      exec: async () => {
+        throw new Error("spawn failed")
+      },
+    })
+    expect(thrown).toBeUndefined()
+    expect(fs.readFileSync(path.join(dir, "a.py"), "utf8")).toBe("after")
+  })
+
+  test("the run before the turn is kept per snapshot: a second fix round does not repeat it", async () => {
+    Verify.clearBaselines()
+    write("a.py", "after")
+    let runs = 0
+    const exec = async () => (runs++, { exit: 1, output: "FAILED t::x", timedOut: false })
+    const input = { command: "pytest", cwd: dir, ms: 1000, before: new Map([[path.join(dir, "a.py"), "before"]]), key: "snap1", exec }
+    await Verify.baselineExec(input)
+    await Verify.baselineExec(input)
+    expect(runs).toBe(1)
+  })
+
+  test("the turn's first snapshot and the files it created", () => {
+    const messages = [
+      { info: { id: "u1", role: "user" }, parts: [{ type: "text", text: "x" }] },
+      {
+        info: { id: "a1", role: "assistant", parentID: "u1" },
+        parts: [
+          { type: "step-start", snapshot: "abc" },
+          { type: "tool", tool: "write", state: { status: "completed", input: { filePath: "n.py" }, metadata: { exists: false } } },
+          { type: "tool", tool: "write", state: { status: "completed", input: { filePath: "o.py" }, metadata: { exists: true } } },
+        ],
+      },
+      { info: { id: "a2", role: "assistant", parentID: "u1" }, parts: [{ type: "step-start", snapshot: "def" }] },
+    ] as never
+    expect(Verify.turnSnapshot(messages)).toBe("abc")
+    expect(Verify.turn(messages, "/p").created).toEqual(["/p/n.py"])
+  })
+})

@@ -49,13 +49,15 @@ export function metaOf(part: { type: string; metadata?: Record<string, unknown> 
   return (value as { kind?: unknown }).kind === "stuck" ? (value as Meta) : undefined
 }
 
-// True for a user message the session added itself: a verify fix round or a stuck note.
+// True for a user message the session added itself: a verify fix round, a
+// review round (rafiki/review.ts) or a stuck note.
 export function isNote(msg: SessionV1.WithParts) {
   if (msg.info.role !== "user") return false
   return msg.parts.some((part) => {
     if (metaOf(part)) return true
-    const verify = part.type === "text" ? (part.metadata?.verify as { kind?: unknown } | undefined) : undefined
-    return verify?.kind === "feedback"
+    if (part.type !== "text") return false
+    const round = (key: string) => (part.metadata?.[key] as { kind?: unknown } | undefined)?.kind === "feedback"
+    return round("verify") || round("review")
   })
 }
 

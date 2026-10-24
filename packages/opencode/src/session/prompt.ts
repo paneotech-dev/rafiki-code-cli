@@ -73,6 +73,7 @@ import * as RafikiServed from "@/rafiki/served"
 import { Usage } from "@opencode-ai/llm"
 import { Snapshot } from "@/snapshot"
 import { Todo } from "./todo"
+import * as RafikiStuck from "@/rafiki/stuck-turn"
 import * as RafikiSteer from "@/rafiki/steer"
 
 // @ts-ignore
@@ -1287,6 +1288,20 @@ const layer = Layer.effect(
                       shell: (yield* config.get()).shell,
                       sessions,
                       onFinal: (result) => (checks = result),
+                      // The changed files as the turn found them, from its first snapshot.
+                      before: (files, created) =>
+                        Effect.gen(function* () {
+                          const hash = RafikiVerify.Verify.turnSnapshot(msgs)
+                          if (!hash) return undefined
+                          const result: RafikiVerify.Verify.Before = new Map()
+                          for (const file of files) {
+                            const content = yield* snapshot.show(hash, path.relative(ctx.worktree, file))
+                            // Not in the snapshot (an ignored file, say) and not created by the turn: no baseline.
+                            if (content === undefined && !created.includes(file)) return undefined
+                            result.set(file, content)
+                          }
+                          return { key: hash, files: result }
+                        }).pipe(Effect.catchCause(() => Effect.succeed(undefined))),
                       ask: (commands) =>
                         Effect.gen(function* () {
                           const agent = yield* agents.get(lastUser.agent)
@@ -1333,6 +1348,36 @@ const layer = Layer.effect(
               if (reviewed === "again") continue
               yield* Effect.logInfo("exiting loop", { "session.id": sessionID })
               break
+            }
+          }
+
+          // A turn that keeps failing the same way is told so once
+          // (rafiki/stuck-turn.ts); the note is a routing signal, so an
+          // unpinned turn below rafiki-pro moves up to it (rafiki/routing.ts).
+          if (lastAssistant && lastAssistant.parentID === lastUser.id && hasToolCalls && !lastAssistant.error) {
+            const stuck = yield* RafikiStuck.afterStep({
+              user: lastUser,
+              messages: msgs,
+              sessions,
+              route: session.parentID
+                ? undefined
+                : RafikiRouting.choose({
+                    purpose: "turn",
+                    providerID: lastUser.model.providerID,
+                    tier: lastUser.model.modelID,
+                    pinned: RafikiRouting.pinned(sessionID),
+                    signal: "stuck",
+                  }),
+            })
+            if (stuck) {
+              yield* events.publish(TuiEvent.ToastShow, {
+                title: "Stuck",
+                message: RafikiStuck.Stuck.userLine(stuck),
+                variant: "warning",
+                duration: 10_000,
+              })
+              yield* Effect.logInfo("stuck", { "session.id": sessionID, reason: stuck.reason, escalated: stuck.escalated?.to })
+              continue
             }
           }
 
@@ -1386,6 +1431,7 @@ const layer = Layer.effect(
                     ?.parts.flatMap((part) => (part.type === "text" && !part.synthetic ? [part.text] : []))
                     .join("\n") ?? "",
                   failures: verifyFailures(msgs),
+                  stuck: RafikiStuck.Stuck.noted(msgs),
                 }),
           })
           const chosen = yield* getModel(
