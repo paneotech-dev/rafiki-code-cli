@@ -3,6 +3,7 @@ import * as path from "path"
 import { Effect } from "effect"
 import * as Tool from "./tool"
 import { LSP } from "@/lsp/lsp"
+import * as EditCheck from "@/rafiki/edit-check"
 import { createTwoFilesPatch } from "diff"
 import DESCRIPTION from "./write.txt"
 import { EventV2Bridge } from "@/event-v2-bridge"
@@ -45,6 +46,8 @@ export const WriteTool = Tool.define(
           yield* assertExternalDirectoryEffect(ctx, filepath)
           refuseEdit(filepath)
 
+          // What the language servers knew before the write, so only new errors are reported.
+          const before = yield* lsp.diagnostics()
           const exists = yield* fs.existsSafe(filepath)
           const source = exists ? yield* Bom.readFile(fs, filepath) : { bom: false, text: "" }
           const next = Bom.split(params.content)
@@ -74,19 +77,16 @@ export const WriteTool = Tool.define(
           })
 
           let output = "Wrote file successfully."
-          yield* lsp.touchFile(filepath, "document")
-          const diagnostics = yield* lsp.diagnostics()
+          // The language checks (rafiki/edit-check.ts): new errors, within a time limit.
+          const { diagnostics, reports } = yield* EditCheck.afterEdit({ lsp, files: [filepath], before })
+          for (const report of reports) output += EditCheck.render(report, "this file")
+          // Errors the write caused in other files: only ones those files did not have before.
           const normalizedFilepath = FSUtil.normalizePath(filepath)
           let projectDiagnosticsCount = 0
           for (const [file, issues] of Object.entries(diagnostics)) {
-            const current = file === normalizedFilepath
-            if (!current && projectDiagnosticsCount >= MAX_PROJECT_DIAGNOSTICS_FILES) continue
-            const block = LSP.Diagnostic.report(current ? filepath : file, issues)
+            if (file === normalizedFilepath || projectDiagnosticsCount >= MAX_PROJECT_DIAGNOSTICS_FILES) continue
+            const block = LSP.Diagnostic.report(file, before[file] ? EditCheck.introduced(before[file], issues) : issues)
             if (!block) continue
-            if (current) {
-              output += `\n\nLSP errors detected in this file, please fix:\n${block}`
-              continue
-            }
             projectDiagnosticsCount++
             output += `\n\nLSP errors detected in other files:\n${block}`
           }

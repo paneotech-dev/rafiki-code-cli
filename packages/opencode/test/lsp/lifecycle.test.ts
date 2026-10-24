@@ -42,13 +42,29 @@ describe("LSP service lifecycle", () => {
     ),
   )
 
-  it.instance("hasClients() returns false for .ts files in instance when LSP is unset", () =>
+  // Rafiki: with lsp unset, the TypeScript, Python and PHP servers are on (rafiki/edit-check.ts), nothing else.
+  it.instance("hasClients() covers .ts, .py and .php files only when LSP is unset", () =>
     LSP.Service.use((lsp) =>
       Effect.gen(function* () {
-        const result = yield* lsp.hasClients(path.join((yield* TestInstance).directory, "test.ts"))
-        expect(result).toBe(false)
+        const dir = (yield* TestInstance).directory
+        expect(yield* lsp.hasClients(path.join(dir, "test.ts"))).toBe(true)
+        expect(yield* lsp.hasClients(path.join(dir, "test.py"))).toBe(true)
+        expect(yield* lsp.hasClients(path.join(dir, "test.php"))).toBe(true)
+        expect(yield* lsp.hasClients(path.join(dir, "test.go"))).toBe(false)
       }),
     ),
+  )
+
+  it.instance(
+    "hasClients() returns false for .ts files when lsp is false",
+    () =>
+      LSP.Service.use((lsp) =>
+        Effect.gen(function* () {
+          const result = yield* lsp.hasClients(path.join((yield* TestInstance).directory, "test.ts"))
+          expect(result).toBe(false)
+        }),
+      ),
+    { config: { lsp: false } },
   )
 
   it.instance(

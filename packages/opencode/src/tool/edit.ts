@@ -18,6 +18,7 @@ import { Snapshot } from "@/snapshot"
 import { assertExternalDirectoryEffect } from "./external-directory"
 import { FSUtil } from "@opencode-ai/core/fs-util"
 import * as Bom from "@/util/bom"
+import * as EditCheck from "@/rafiki/edit-check"
 import { refuseEdit } from "@/rafiki/memory"
 
 function normalizeLineEndings(text: string): string {
@@ -83,6 +84,8 @@ export const EditTool = Tool.define(
             : path.join(instance.directory, params.filePath)
           yield* assertExternalDirectoryEffect(ctx, filePath)
           refuseEdit(filePath)
+          // What the language servers knew before the edit, so only new errors are reported.
+          const before = yield* lsp.diagnostics()
 
           let diff = ""
           let contentOld = ""
@@ -196,11 +199,9 @@ export const EditTool = Tool.define(
           })
 
           let output = "Edit applied successfully."
-          yield* lsp.touchFile(filePath, "document")
-          const diagnostics = yield* lsp.diagnostics()
-          const normalizedFilePath = FSUtil.normalizePath(filePath)
-          const block = LSP.Diagnostic.report(filePath, diagnostics[normalizedFilePath] ?? [])
-          if (block) output += `\n\nLSP errors detected in this file, please fix:\n${block}`
+          // The language checks (rafiki/edit-check.ts): new errors, within a time limit.
+          const { diagnostics, reports } = yield* EditCheck.afterEdit({ lsp, files: [filePath], before })
+          for (const report of reports) output += EditCheck.render(report, "this file")
 
           return {
             metadata: {
