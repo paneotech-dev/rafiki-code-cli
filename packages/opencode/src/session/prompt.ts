@@ -1404,7 +1404,8 @@ const layer = Layer.effect(
             sessionID,
           }
           yield* sessions.updateMessage(msg)
-          RafikiRouting.record(msg.id, route)
+          // Kept for the step events of a Rafiki tier only; other providers' events are unchanged.
+          if (RafikiGateway.isRafikiProvider(model.providerID)) RafikiRouting.record(msg.id, route)
           yield* Effect.logInfo("routing", {
             "session.id": sessionID,
             "message.id": msg.id,
