@@ -64,6 +64,9 @@ import * as RafikiReasoning from "@/rafiki/reasoning"
 import * as RafikiTpm from "@/rafiki/tpm"
 import * as RafikiContext from "@/rafiki/context-size"
 import * as RafikiRouting from "@/rafiki/routing"
+import { Brand } from "@opencode-ai/core/brand/brand"
+import * as RafikiAttempts from "@/rafiki/attempts"
+import * as RafikiAttemptsRun from "@/rafiki/attempts-run"
 import { TuiEvent } from "@/server/tui-event"
 import * as RafikiGateway from "@/rafiki/gateway-errors"
 import * as RafikiResume from "@/rafiki/resume"
@@ -1816,6 +1819,41 @@ const layer = Layer.effect(
       })
 
       yield* getModel(taskModel.providerID, taskModel.modelID, input.sessionID)
+
+      // /attempts N <task>: the task done N ways at once in copies of the
+      // project, the best change applied, and the results handed to this turn
+      // (rafiki/attempts.ts).
+      if (input.command === RafikiAttempts.COMMAND && cmd.description === RafikiAttempts.DESCRIPTION) {
+        const parsed = RafikiAttempts.parseCommand(input.arguments)
+        const fail = (message: string) =>
+          Effect.gen(function* () {
+            const error = new NamedError.Unknown({ message: `/attempts: ${message}` })
+            yield* events.publish(Session.Event.Error, { sessionID: input.sessionID, error: error.toObject() })
+            return yield* Effect.die(error)
+          })
+        if ("error" in parsed) return yield* fail(parsed.error)
+        if (!RafikiAttemptsRun.hasGit()) return yield* fail("parallel attempts need git on the PATH")
+        const ctx = yield* InstanceState.context
+        const settings = (yield* config.get()).attempts
+        yield* events.publish(TuiEvent.ToastShow, {
+          title: "Attempts",
+          message: `${parsed.count} attempts running at once, each in a copy of the project`,
+          variant: "info",
+          duration: 10_000,
+        })
+        const rafiki = taskModel.providerID === Brand.provider.id
+        const summary = yield* Effect.promise(() =>
+          RafikiAttemptsRun.run({
+            dir: ctx.directory,
+            task: parsed.task,
+            count: parsed.count,
+            model: rafiki ? undefined : `${taskModel.providerID}/${taskModel.modelID}`,
+            pro: settings?.pro,
+            auto: true,
+          }),
+        )
+        template = RafikiAttempts.sessionNote(parsed.task, summary)
+      }
 
       const agent = agentName ? yield* agents.get(agentName) : yield* agents.defaultInfo()
       if (!agent) {

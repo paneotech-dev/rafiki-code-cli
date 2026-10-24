@@ -11,6 +11,7 @@ import PROMPT_INITIALIZE from "./template/initialize.txt"
 import PROMPT_REVIEW from "./template/review.txt"
 import { LegacyEvent } from "@opencode-ai/schema/legacy-event"
 import * as RafikiRouting from "@/rafiki/routing"
+import * as RafikiAttempts from "@/rafiki/attempts"
 
 type State = {
   commands: Record<string, Info>
@@ -48,6 +49,7 @@ export const Default = {
   INIT: "init",
   REVIEW: "review",
   DEEP: "deep",
+  ATTEMPTS: "attempts",
 } as const
 
 export interface Interface {
@@ -96,6 +98,15 @@ const layer = Layer.effect(
         source: "command",
         template: "$ARGUMENTS",
         hints: ["$ARGUMENTS"],
+      }
+
+      // The task done 2 or 3 ways at once, the best change kept (rafiki/attempts.ts, session/prompt.ts).
+      commands[Default.ATTEMPTS] = {
+        name: Default.ATTEMPTS,
+        description: RafikiAttempts.DESCRIPTION,
+        source: "command",
+        template: "$ARGUMENTS",
+        hints: ["$1", "$ARGUMENTS"],
       }
 
       for (const [name, command] of Object.entries(cfg.command ?? {})) {

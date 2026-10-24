@@ -392,6 +392,9 @@ export const Brand = {
     stuck: "RAFIKICODE_STUCK",
     // The language checks after an edit (language servers and syntax checks): 0, off or false turns them off.
     editChecks: "RAFIKICODE_EDIT_CHECKS",
+    // Parallel attempts (rafiki/attempts.ts): 2 or 3 gives every run that many
+    // attempts, 0, 1 or off turns them off, the automatic ones included.
+    attempts: "RAFIKICODE_ATTEMPTS",
     // Overrides the release API URL (mock release servers in tests).
     releaseAPI: "RAFIKICODE_RELEASE_API",
     // Overrides the release download base URL (mock release servers in tests).

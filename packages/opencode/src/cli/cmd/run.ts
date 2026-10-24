@@ -41,6 +41,8 @@ import * as RafikiReasoning from "@/rafiki/reasoning"
 import * as RafikiVerify from "@/rafiki/verify"
 import * as RafikiReview from "@/rafiki/review"
 import * as RafikiStuck from "@/rafiki/stuck"
+import * as RafikiAttempts from "@/rafiki/attempts"
+import * as RafikiAttemptsRun from "@/rafiki/attempts-run"
 import * as RunSignal from "@/rafiki/run-signal"
 import * as ServerFile from "@/rafiki/server-file"
 import { INTERACTIVE_INPUT_ERROR, resolveInteractiveStdin } from "./run/runtime.stdin"
@@ -178,6 +180,10 @@ export const RunCommand = effectCmd({
       .option("deep", {
         describe: "send the message on Rafiki Pro for this task, then go back to the session's tier (the /deep command)",
         type: "boolean",
+      })
+      .option("attempts", {
+        describe: "do the task 2 or 3 ways at once, each in a copy of the project, and keep the best change (the /attempts command)",
+        type: "number",
       })
       .option("continue", {
         alias: ["c", "resume"],
@@ -333,6 +339,13 @@ export const RunCommand = effectCmd({
 
       if (interactive && args.command) {
         die("--mini cannot be used with --command")
+      }
+
+      if (args.attempts !== undefined) {
+        const why = RafikiAttempts.invalid(args.attempts)
+        if (why) die(`--attempts: ${why}`)
+        if (interactive || args.attach || args.command || args.session || args.continue)
+          die("--attempts starts a new task here: it cannot be used with --mini, --attach, --command, --session or --continue")
       }
 
       if (interactive && args._?.[0] !== "mini") {
@@ -722,7 +735,87 @@ export const RunCommand = effectCmd({
         return localAgent()
       }
 
+      // Parallel attempts (rafiki/attempts.ts): asked for, or automatic on a hard task.
+      async function attemptsFor(sdk: OpencodeClient) {
+        if (interactive || args.attach || args.command || args.session || args.continue) return undefined
+        const cfg = await sdk.config.get().catch(() => undefined)
+        const settings = (cfg?.data as { attempts?: RafikiAttempts.Settings } | undefined)?.attempts
+        const decided = RafikiAttempts.decide({ flag: args.attempts, settings, deep: args.deep, text: message })
+        return decided ? { ...decided, pro: Boolean(settings?.pro || args.deep) } : undefined
+      }
+
+      async function runAttempts(plan: { count: number; reason: string; pro: boolean }) {
+        const json = args.format === "json"
+        const write = (type: string, data: Record<string, unknown>) =>
+          process.stdout.write(JSON.stringify({ type, timestamp: Date.now(), ...data }) + EOL)
+        if (!message.trim()) die("--attempts needs a message: the task to do")
+        if (!RafikiAttemptsRun.hasGit()) die("parallel attempts need git on the PATH, to copy the project and compare the changes")
+        const dir = directory ?? root
+        const outcomeData = (item: RafikiAttempts.Outcome) => ({
+          index: item.index + 1,
+          tier: item.tier,
+          approach: item.approach,
+          ended: item.ended,
+          error: item.error ?? null,
+          checks: item.checks,
+          checks_passed: item.checksPassed,
+          checks_run: item.checksRun,
+          criteria: item.criteria ?? null,
+          diff: item.diff,
+          cost: item.cost,
+          cost_source: item.costSource,
+          seconds: Math.round(item.seconds),
+        })
+        if (json) write("attempts_start", { count: plan.count, reason: plan.reason })
+        else
+          UI.println(
+            UI.Style.TEXT_INFO_BOLD + "~",
+            UI.Style.TEXT_NORMAL + `attempts: ${plan.count} at once, each in a copy of the project (${plan.reason})`,
+          )
+        const summary = await RafikiAttemptsRun.run({
+          dir,
+          task: message,
+          count: plan.count,
+          model: args.model,
+          pro: plan.pro,
+          // Auto mode in the copies, guarded actions refused: nobody can answer there.
+          auto: true,
+          variant: args.variant,
+          agent: args.agent,
+          onStart: (index, tier, approach) => {
+            if (json) write("attempt_start", { index: index + 1, tier, approach })
+            else UI.println(UI.Style.TEXT_DIM + `attempt ${index + 1} started (${tier}, ${approach})` + UI.Style.TEXT_NORMAL)
+          },
+          onEnd: (item) => {
+            if (json) write("attempt", outcomeData(item))
+            else UI.println(UI.Style.TEXT_DIM + RafikiAttempts.line(item, false) + UI.Style.TEXT_NORMAL)
+          },
+        })
+        if (json)
+          write("attempts", {
+            kept: summary.winner && summary.applied ? summary.winner.index + 1 : null,
+            best: summary.winner ? summary.winner.index + 1 : null,
+            reason: summary.reason ?? null,
+            applied: summary.applied,
+            apply_error: summary.applyError ?? null,
+            patch_file: summary.patchFile ?? null,
+            attempts: summary.outcomes.map(outcomeData),
+            cost: summary.total,
+            cost_source: summary.totalSource,
+          })
+        else {
+          UI.empty()
+          for (const item of summary.outcomes) UI.println(RafikiAttempts.line(item, item === summary.winner && summary.applied))
+          UI.println(RafikiAttempts.totalLine(summary))
+        }
+        // 0: a change kept; 8: kept, but its checks fail; 1: nothing kept.
+        if (!summary.applied) process.exitCode = 1
+        else if (summary.winner?.checks === "failing") process.exitCode = RafikiVerify.EXIT_CHECKS_FAILING
+      }
+
       async function execute(sdk: OpencodeClient) {
+        const attempts = await attemptsFor(sdk)
+        if (attempts) return runAttempts(attempts)
         const sess = await session(sdk)
         if (!sess?.id) {
           UI.error("Session not found")
@@ -1255,6 +1348,7 @@ export async function runMini(input: MiniCommandInput) {
     message: input.prompt ? [input.prompt] : [],
     command: undefined,
     deep: undefined,
+    attempts: undefined,
     continue: input.continue,
     session: input.session,
     fork: input.fork,
