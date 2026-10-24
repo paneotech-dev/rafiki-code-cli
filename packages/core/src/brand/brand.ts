@@ -68,15 +68,16 @@ const unlistedModels: readonly string[] = []
 // unknown message field through to some of them, so they get no marker.
 // RAFIKICODE_CACHE_MARKERS overrides the list for one run.
 const cacheMarkerModels: readonly string[] = ["rafiki-max"]
-// Tiers that take images (screenshots, attached pictures). The model behind
-// rafiki-max reads images. Measured on the gateway 2026-10-24 with a plain
-// colour PNG: rafiki-fast (deepseek-flash) and rafiki-pro (deepseek-v4-pro)
-// both answer without seeing it (the image is dropped, about 50 prompt
-// tokens; measured again after v0.1.12 the same day). Add a tier here once the
-// gateway hands its images through: the look step of the screenshot tool is
-// then routed to it (rafiki/routing.ts, purpose "look"); until then the tool
-// describes the page to a tier without images in numbers.
-const imageModels: readonly string[] = ["rafiki-max"]
+// Tiers that take images (screenshots, attached pictures). The models behind
+// rafiki-fast (deepseek-flash) and rafiki-max read images. Measured on the
+// gateway 2026-10-24 with a plain colour PNG: rafiki-fast sees it on the chat
+// route, in a user message and in a tool result, since the gateway change of
+// that evening (live-changes-2026-10-24/flash-images; before it the gateway
+// sent only the text, about 50 prompt tokens). rafiki-pro (deepseek-v4-pro)
+// reads no images: DeepSeek ignores them, so its screenshots are looked at by
+// rafiki-fast (rafiki/routing.ts, purpose "look"). A tier without images and
+// with no tier here to look for it gets the page described in numbers.
+const imageModels: readonly string[] = ["rafiki-fast", "rafiki-max"]
 
 // What each tier can take, from the documentation of the model behind it on
 // the gateway (/opt/rafiki/litellm-config.yaml on staging, read 2026-10-04).

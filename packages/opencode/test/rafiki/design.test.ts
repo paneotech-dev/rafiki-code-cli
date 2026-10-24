@@ -127,7 +127,23 @@ describe("the tier that looks at screenshots", () => {
     expect(RafikiRouting.lookTier({ providerID: "openai", tier: "gpt-5", env: {} })).toBeUndefined()
     expect(RafikiRouting.lookTier({ providerID: provider, tier: "rafiki-pro", env: { [Brand.env.routing]: "off" } })).toBeUndefined()
   })
-  test("measured 24 Oct 2026: only rafiki-max takes images on the gateway", () => {
-    expect([...Brand.provider.images]).toEqual(["rafiki-max"])
+  test("measured 24 Oct 2026: rafiki-fast and rafiki-max take images on the gateway, rafiki-pro does not", () => {
+    expect([...Brand.provider.images]).toEqual(["rafiki-fast", "rafiki-max"])
+  })
+  test("a rafiki-pro session's screenshots are looked at by rafiki-fast; rafiki-fast looks itself", () => {
+    expect(RafikiRouting.lookTier({ providerID: provider, tier: "rafiki-pro", env: {} })).toEqual({
+      tier: "rafiki-fast",
+      reason: "look: rafiki-pro takes no images, rafiki-fast looks at the screenshots",
+      escalated: false,
+    })
+    expect(RafikiRouting.lookTier({ providerID: provider, tier: "rafiki-fast", env: {} })).toBeUndefined()
+  })
+  test("the model table offers image input on rafiki-fast and rafiki-max only", () => {
+    const models = (Brand.provider.config() as any)[provider].models as Record<string, any>
+    expect(models["rafiki-fast"].attachment).toBe(true)
+    expect(models["rafiki-fast"].modalities).toEqual({ input: ["text", "image"], output: ["text"] })
+    expect(models["rafiki-max"].attachment).toBe(true)
+    expect(models["rafiki-pro"].attachment).toBe(false)
+    expect(models["rafiki-pro"].modalities).toBeUndefined()
   })
 })
