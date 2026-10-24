@@ -72,11 +72,25 @@ describe("Truncate", () => {
       }),
     )
 
-    it.live("truncates from head by default", () =>
+    it.live("keeps the head and the tail by default", () =>
       Effect.gen(function* () {
         const svc = yield* Truncate.Service
         const lines = Array.from({ length: 10 }, (_, i) => `line${i}`).join("\n")
         const result = yield* svc.output(lines, { maxLines: 3 })
+
+        expect(result.truncated).toBe(true)
+        expect(result.content.startsWith("line0\nline1\n\n")).toBe(true)
+        expect(result.content.endsWith("\n\nline9")).toBe(true)
+        expect(result.content).toContain("...7 lines truncated...")
+        expect(result.content).not.toContain("line2")
+      }),
+    )
+
+    it.live("truncates from head when direction is head", () =>
+      Effect.gen(function* () {
+        const svc = yield* Truncate.Service
+        const lines = Array.from({ length: 10 }, (_, i) => `line${i}`).join("\n")
+        const result = yield* svc.output(lines, { maxLines: 3, direction: "head" })
 
         expect(result.truncated).toBe(true)
         expect(result.content).toContain("line0")
@@ -102,7 +116,7 @@ describe("Truncate", () => {
 
     test("uses default MAX_LINES and MAX_BYTES", () => {
       expect(Truncate.MAX_LINES).toBe(2000)
-      expect(Truncate.MAX_BYTES).toBe(50 * 1024)
+      expect(Truncate.MAX_BYTES).toBe(32 * 1024)
     })
 
     it.live("limits() falls back to MAX_LINES/MAX_BYTES when Config is not provided", () =>

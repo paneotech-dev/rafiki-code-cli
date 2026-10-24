@@ -26,6 +26,7 @@ import * as RafikiTpm from "@/rafiki/tpm"
 import * as RafikiGateway from "@/rafiki/gateway-errors"
 import { SessionCompactionEvent } from "@opencode-ai/schema/session-compaction-event"
 import * as RafikiMemory from "@/rafiki/memory"
+import * as CachePrefix from "@/rafiki/cache-prefix"
 
 export const Event = SessionCompactionEvent
 
@@ -540,8 +541,10 @@ const layer = Layer.effect(
 
       if (processor.message.error) return "stop"
       if (result === "continue") {
-        // The next request reads the project memory again, with what was recorded before the compaction.
+        // The next request reads the project memory and the project instructions again, with what was
+        // recorded before the compaction.
         RafikiMemory.refresh(input.sessionID)
+        CachePrefix.refresh(input.sessionID)
         yield* events.publish(Event.Compacted, { sessionID: input.sessionID })
       }
       return result

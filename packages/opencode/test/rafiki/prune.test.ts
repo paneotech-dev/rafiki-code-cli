@@ -20,8 +20,9 @@ import { createMockGateway } from "../brand/mock-gateway.mjs"
 const root = path.resolve(import.meta.dir, "../..")
 const KEY = "sk-prune-stub"
 const TURNS = 7
-// One line of about 45,000 characters (about 11,000 tokens), under the 50 KB
-// and 2,000 line limits, so the tool returns it whole.
+// One line of about 45,000 characters (about 11,000 tokens). The cap on one
+// tool result (rafiki/tool-output.ts, 32 KB) is raised to 50 KB for this test
+// with tool_output.max_bytes, so the tool returns it whole.
 const big = (tag: string) => `seq -s ' ' -f '${tag}-%05g' 1 3750`
 const FAILING = `${big("failed")}; exit 3`
 const NOTE = "Remember: the release branch is release/1.4."
@@ -68,6 +69,7 @@ async function turn(side: Side, n: number, extra: Record<string, string | undefi
   }
   // The test preload keeps the database in memory; the session must outlive one run here.
   for (const k of ["XDG_CONFIG_HOME", "CI", "GITHUB_ACTIONS", "OPENCODE_CONFIG", "OPENCODE_CONFIG_DIR", "OPENCODE_CONFIG_CONTENT", "OPENCODE_PERMISSION", "OPENCODE_DISABLE_PRUNE", "OPENCODE_DB", Brand.env.headless, Brand.env.trustWorkspace, Brand.env.prune]) delete env[k]
+  env.OPENCODE_CONFIG_CONTENT = JSON.stringify({ tool_output: { max_bytes: 50 * 1024 } })
   for (const [k, v] of Object.entries(extra)) {
     if (v === undefined) delete env[k]
     else env[k] = v
