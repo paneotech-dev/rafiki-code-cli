@@ -49,7 +49,8 @@ describe("rafiki model request defaults", () => {
     const variants = Object.fromEntries(Brand.provider.reasoningEfforts.map((e) => [e, { reasoningEffort: e }]))
     expect(m["rafiki-fast"].variants).toEqual(variants)
     expect(m["rafiki-max"].variants).toEqual(variants)
-    expect(m["rafiki-pro"].variants).toBeUndefined()
+    // Since 2026-10-24 pro is served from DeepSeek, like fast, and takes the same variants.
+    expect(m["rafiki-pro"].variants).toEqual(variants)
   })
 
   test("the env names override every tier, and invalid values fall back to the defaults", () => {
@@ -98,11 +99,10 @@ describe("rafiki model request defaults", () => {
     expect(emptyLengthError({ providerID: "rafiki", finish: "length", error: { name: "APIError" } }, reasoningOnly)).toBeUndefined()
   })
 
-  test("pro is not told to pick a variant it does not have", () => {
+  test("pro, which takes variants since it is served from DeepSeek, is told about them like fast", () => {
     const reasoningOnly = [{ type: "reasoning", text: "thinking" }]
     const pro = emptyLengthError({ providerID: "rafiki", modelID: "rafiki-pro", finish: "length" }, reasoningOnly) as any
-    expect(pro.data.message).not.toContain("--variant")
-    expect(pro.data.message).toContain(Brand.env.maxOutputTokens)
+    expect(pro.data.message).toBe(EMPTY_LENGTH_MESSAGE)
     const fast = emptyLengthError({ providerID: "rafiki", modelID: "rafiki-fast", finish: "length" }, reasoningOnly) as any
     expect(fast.data.message).toBe(EMPTY_LENGTH_MESSAGE)
   })
@@ -110,12 +110,12 @@ describe("rafiki model request defaults", () => {
   test("the retry doubles the output up to the tier's upstream maximum and lowers the effort where the tier takes one", () => {
     expect(retryPlan({ providerID: "rafiki", modelID: "rafiki-pro", output: 64_000 })).toEqual({
       output: 128_000,
-      effort: undefined,
-      line: `${RETRY_PREFIX} 128000 output tokens.`,
+      effort: "low",
+      line: `${RETRY_PREFIX} 128000 output tokens and reasoning effort low.`,
     })
     expect(retryPlan({ providerID: "rafiki", modelID: "rafiki-pro", output: 100_000 })?.output).toBe(128_000)
-    // pro at its maximum, with no effort to lower: nothing more to give.
-    expect(retryPlan({ providerID: "rafiki", modelID: "rafiki-pro", output: 128_000 })).toBeUndefined()
+    // pro at its maximum with reasoning already off: nothing more to give.
+    expect(retryPlan({ providerID: "rafiki", modelID: "rafiki-pro", output: 128_000, effort: "none" })).toBeUndefined()
     expect(retryPlan({ providerID: "rafiki", modelID: "rafiki-fast", output: 64_000 })).toMatchObject({ output: 128_000, effort: "low" })
     expect(retryPlan({ providerID: "rafiki", modelID: "rafiki-max", output: 32_000, effort: "high" })).toMatchObject({
       output: 64_000,
@@ -238,12 +238,12 @@ describe("rafikicode run against the mock gateway", () => {
     expect(result.exitCode).toBe(0)
     expect(result.all).toContain("Mock gateway reply")
     expect(result.all.split(RETRY_PREFIX).length - 1).toBe(1)
-    expect(result.all).toContain(`${RETRY_PREFIX} 128000 output tokens.`)
+    expect(result.all).toContain(`${RETRY_PREFIX} 128000 output tokens and reasoning effort low.`)
     expect(result.all).not.toContain("wrote no answer")
     const turns = promptCalls("pro retry check").filter((r: any) => r.tools > 0)
     expect(turns.map((r: any) => [r.max_tokens, r.reasoning_effort])).toEqual([
       [64_000, undefined],
-      [128_000, undefined],
+      [128_000, "low"],
     ])
     // The empty turn is not sent back with the retry: the retry carries the same messages as the first try.
     expect(turns[1].messages).toBe(turns[0].messages)

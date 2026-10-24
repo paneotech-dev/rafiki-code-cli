@@ -50,8 +50,8 @@ export function isEmptyLengthTurn(finish: string | undefined, parts: readonly Pa
   )
 }
 
-// The message for a turn that ran out, worded for the tier: pro takes no
-// effort setting, so it is not told to pick the none variant. After a retry
+// The message for a turn that ran out, worded for the tier: a tier that takes
+// no effort setting is not told to pick the none variant. After a retry
 // it says what the retry asked for.
 export function emptyLengthMessage(modelID?: string, retried?: RetryPlan) {
   const variants = modelID === undefined || Brand.provider.takesEffort(modelID)

@@ -83,6 +83,7 @@ The structure of the nested keys (`permission`, `agent`, `mcp`, and so on) is un
 | `RAFIKICODE_ALLOW_PUSH` | `1` lets `rafikicode run` publish code (`git push`, `gh pr create`, `gh repo create`, `gh release`), like `run --allow-push`. Without it a run refuses them. See [Pushing code from a run](./headless-and-ci.md#pushing-code-from-a-run) |
 | `RAFIKICODE_VERIFY` | `0`, `off` or `false` turns the checks after a change off for this run; `1`, `on` or `true` turns them on. Wins over `verify.enabled`. See [Checks after a change](#checks-after-a-change) |
 | `RAFIKICODE_COMPACT_AT` | the size of the context in tokens at which a session is compacted, over `compaction.threshold`. Unset, `150000` on the Rafiki tiers. `0` or `off` compacts only near the gateway's limit of 200,000 input tokens. See [Context](#context-and-tokens-in-the-terminal-interface) |
+| `RAFIKICODE_ROUTING` | `0`, `off` or `false` turns the tier by task off: every request goes to the session's tier. See [Tier by task](#tier-by-task) |
 | `RAFIKICODE_WARN_AT` | the size in tokens of a single request above which one line suggests `/compact` or a new session, over `compaction.warn_at`. Unset, `200000`. `0` or `off` turns the line off. See [Context](#context-and-tokens-in-the-terminal-interface) |
 | `RAFIKICODE_PRUNE` | `0`, `off` or `false` stops replacing old tool output; `1`, `on` or `true` turns it on, on any provider. Wins over `compaction.prune`. Unset, it is on for the Rafiki tiers. See [Long sessions: old tool output](#long-sessions-old-tool-output) |
 | `RAFIKICODE_MEMORY` | `0`, `off` or `false` turns the project memory off for this run; `1`, `on` or `true` turns it on. Wins over `memory.enabled`. See [Project memory](./memory.md) |
@@ -127,7 +128,7 @@ If the retry also comes back empty, the reply stops with "The model used its who
 rafikicode run --variant none "your request"
 ```
 
-In the terminal interface, press `ctrl+t` to cycle the model's variants until `none` is selected. To turn reasoning off for every run, set `RAFIKICODE_REASONING_EFFORT=none`. `rafiki-fast` and `rafiki-max` offer the variants `none`, `low`, `medium` and `high`; `rafiki-pro` offers none.
+In the terminal interface, press `ctrl+t` to cycle the model's variants until `none` is selected. To turn reasoning off for every run, set `RAFIKICODE_REASONING_EFFORT=none`. Every tier offers the variants `none`, `low`, `medium` and `high`.
 
 ## Context and tokens in the terminal interface
 
@@ -318,3 +319,16 @@ Put the model in the project file when a repository should always use a given ti
 ```
 
 Command line flags (`--model`) win over both files for a single run.
+
+## Tier by task
+
+When you have not chosen a tier, Rafiki Code picks one per request by what the request is for:
+
+- Explore subagents, session titles and compaction summaries go to `rafiki-fast`.
+- A turn goes to `rafiki-pro` only on a sign that it is hard: `/deep` (or `rafikicode run --deep`), the plan agent on a wide change (a refactor, a migration, a change across the project, or five or more files named), the same check failing twice in a row after a change, or the `/review` step. Never because the conversation is long, and never to `rafiki-max`.
+- Before such a turn on a conversation over about 60,000 tokens, the session is compacted first, so `rafiki-pro` does not read the whole history at its price.
+- The next turn goes back to the session's tier. The session's tier itself never changes.
+
+You have chosen a tier when you pass `--model`, set `model` in a configuration file, use an agent with a model of its own, or pick one in the terminal interface (the interface always sends the tier it shows). Then every request uses that tier, except a turn you send with `/deep`.
+
+Each choice is written to the debug log (`routing`, with the tier and the reason), and `rafikicode run --format json` gives it on its step events (`tier`, `route`). `RAFIKICODE_ROUTING=off` turns it off.

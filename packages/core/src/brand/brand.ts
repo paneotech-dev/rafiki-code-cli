@@ -31,23 +31,24 @@ const labels: Record<(typeof models)[number], string> = {
 // rafiki-pro also gets 64000 since 10 October 2026. With 32000, a single pro
 // request on a short task (the regex-log task of the rc.5 evaluation run)
 // spent 31996 tokens reasoning, still checking its answer, and wrote nothing.
-// pro takes no effort setting (below), so the output budget is the only lever
-// on that tier. rafiki-max keeps 32000: it takes effort variants, and nothing
+// rafiki-max keeps 32000: it takes effort variants, and nothing
 // has shown it running out. A turn that still runs out on any tier is tried
 // again once with a larger budget (packages/opencode/src/rafiki/reasoning.ts).
 //
 // Turning reasoning off: every tier with variants offers none, low, medium and
 // high. The none variant sends reasoning_effort "none" (rafikicode run
 // --variant none, or ctrl+t to cycle variants in the terminal interface), and
-// RAFIKICODE_REASONING_EFFORT=none sends it on every tier. rafiki-pro sends no
-// effort and offers no effort variants: a call carrying one was answered by
-// the max fallback instead of pro. The two env names let the orchestrator set
+// RAFIKICODE_REASONING_EFFORT=none sends it on every tier. Until 2026-10-24
+// rafiki-pro (then GLM) sent no effort and offered no variants: a call
+// carrying one was answered by the max fallback instead of pro. Since then pro
+// is served by DeepSeek V4 Pro, from the same provider as fast, and takes the
+// same variants. The two env names let the orchestrator set
 // a per turn budget for the engine in a sandbox.
 const reasoningEfforts = ["none", "low", "medium", "high"] as const
 type ReasoningEffort = (typeof reasoningEfforts)[number]
 const requestDefaults: Record<(typeof models)[number], { output: number; effort?: ReasoningEffort; variants: boolean }> = {
   "rafiki-fast": { output: 64_000, variants: true },
-  "rafiki-pro": { output: 64_000, variants: false },
+  "rafiki-pro": { output: 64_000, variants: true },
   "rafiki-max": { output: 32_000, variants: true },
 }
 // Tiers kept out of the model lists people choose from: the terminal
@@ -76,7 +77,8 @@ const cacheMarkerModels: readonly string[] = ["rafiki-max"]
 //   rafiki-fast  deepseek/deepseek-flash    DeepSeek API docs, Models and
 //                Pricing, read 2026-10-04: 1M context, 384K maximum output.
 //   rafiki-pro   openai/glm-5.3 (Z.ai)      Z.ai docs, GLM-5.3 guide, read
-//                2026-10-04: 1M context, 128K maximum output.
+//                2026-10-04: 1M context, 128K maximum output. Served by
+//                deepseek-v4-pro since 2026-10-24; the limits are kept.
 //   rafiki-max   anthropic/claude-sonnet-5  Anthropic docs, Claude Sonnet 5
 //                model page, read 2026-10-04: 1M context, 128K max output.
 // context is the window the interface measures "% used" against. output is
@@ -359,6 +361,9 @@ export const Brand = {
     // or a new session (compaction.warn_at, which it wins over; default 200000;
     // 0 or off turns the line off).
     warnAt: "RAFIKICODE_WARN_AT",
+    // 0, off or false turns the task based tier choice off (rafiki/routing.ts):
+    // every request goes to the session's tier.
+    routing: "RAFIKICODE_ROUTING",
     // Project memory (.rafiki/memory/): 0, off or false turns it off, 1, on or
     // true turns it on; it wins over memory.enabled in the config.
     memory: "RAFIKICODE_MEMORY",
