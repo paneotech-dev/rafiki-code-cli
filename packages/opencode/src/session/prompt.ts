@@ -1842,8 +1842,10 @@ const layer = Layer.effect(
           duration: 10_000,
         })
         const rafiki = taskModel.providerID === Brand.provider.id
-        const summary = yield* Effect.promise(() =>
+        // Stopping the turn stops the attempts too.
+        const summary = yield* Effect.promise((signal) =>
           RafikiAttemptsRun.run({
+            signal,
             dir: ctx.directory,
             task: parsed.task,
             count: parsed.count,

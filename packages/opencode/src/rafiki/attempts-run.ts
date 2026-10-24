@@ -250,6 +250,10 @@ export interface Options {
   auto: boolean
   variant?: string
   agent?: string
+  // Files attached to the task (absolute paths).
+  files?: string[]
+  // Aborted: the children are stopped, the copies removed, nothing applied.
+  signal?: AbortSignal
   // Called as each attempt starts and ends.
   onStart?: (index: number, tier: string, approach: string) => void
   onEnd?: (outcome: Attempts.Outcome) => void
@@ -286,6 +290,7 @@ function runOne(options: Options, workspace: Workspace, index: number, tier: str
   if (options.auto) args.push("--auto")
   if (options.variant) args.push("--variant", options.variant)
   if (options.agent) args.push("--agent", options.agent)
+  for (const file of options.files ?? []) args.push("--file", file)
   args.push("--dir", workspace.dir, "--", Attempts.prompt(options.task, index, options.count))
   const child =
     options.spawnRun?.(args, workspace.dir) ??
@@ -349,6 +354,7 @@ export async function run(options: Options): Promise<Attempts.Summary> {
   const before = await read()
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), `${Brand.name}-attempts-`))
   const outcomes: Attempts.Outcome[] = []
+  const queue = tiers.map((tier, index) => ({ tier, index }))
   const patches = new Map<number, string>()
   const onExit = () => cleanup()
   // A signal stops the children and removes the copies before the process ends.
@@ -358,10 +364,14 @@ export async function run(options: Options): Promise<Attempts.Summary> {
     process.exit(signal === "SIGINT" ? 130 : 143)
   }
   process.once("exit", onExit)
+  const onAbort = () => {
+    queue.length = 0
+    cleanup()
+  }
+  options.signal?.addEventListener("abort", onAbort)
   process.once("SIGINT", onSignal)
   process.once("SIGTERM", onSignal)
   try {
-    const queue = tiers.map((tier, index) => ({ tier, index }))
     const worker = async (slot: number) => {
       if (slot > 0) await new Promise((resolve) => setTimeout(resolve, (options.staggerMs ?? Attempts.STAGGER_MS) * slot))
       while (queue.length) {
@@ -377,6 +387,7 @@ export async function run(options: Options): Promise<Attempts.Summary> {
         try {
           const workspace = prepare(input, path.join(scratch, `attempt-${index + 1}`))
           workspaces.set(workspace.root, { input, workspace })
+          if (options.signal?.aborted) throw new Error("stopped")
           options.onStart?.(index, tier, approach)
           const result = await runOne(options, workspace, index, tier)
           const events = Attempts.readEvents(result.lines)
@@ -419,7 +430,7 @@ export async function run(options: Options): Promise<Attempts.Summary> {
     }
     await Promise.all(Array.from({ length: parallel }, (_, slot) => worker(slot)))
     outcomes.sort((a, b) => a.index - b.index)
-    const picked = Attempts.pick(outcomes)
+    const picked = options.signal?.aborted ? undefined : Attempts.pick(outcomes)
     const summed = outcomes.reduce((sum, item) => sum + item.cost, 0)
     let summary: Attempts.Summary = { outcomes, applied: false, total: summed, totalSource: "attempts" }
     if (picked) {
@@ -448,6 +459,7 @@ export async function run(options: Options): Promise<Attempts.Summary> {
   } finally {
     cleanup()
     process.removeListener("exit", onExit)
+    options.signal?.removeEventListener("abort", onAbort)
     process.removeListener("SIGINT", onSignal)
     process.removeListener("SIGTERM", onSignal)
     fs.rmSync(scratch, { recursive: true, force: true })

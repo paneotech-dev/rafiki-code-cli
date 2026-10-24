@@ -154,6 +154,35 @@ describe("parallel attempts in a git repository", () => {
   })
 })
 
+describe("stopping the attempts", () => {
+  test("an abort stops every child, removes the copies and applies nothing", async () => {
+    const dir = repo()
+    const controller = new AbortController()
+    const children: ReturnType<typeof spawn>[] = []
+    const summary = await Run.run({
+      dir,
+      task: "fix it",
+      count: 2,
+      auto: true,
+      signal: controller.signal,
+      spawnRun: (args, cwd) => {
+        const child = spawn("sh", ["-c", "printf 'x\\n' >> app.txt; sleep 30"], { cwd, stdio: ["ignore", "pipe", "pipe"], detached: true })
+        children.push(child)
+        if (children.length === 2) setTimeout(() => controller.abort(), 300)
+        return child
+      },
+      tpm: undefined,
+      staggerMs: 0,
+      readSpend: async () => undefined,
+    })
+    expect(summary.applied).toBe(false)
+    expect(summary.winner).toBeUndefined()
+    expect(children.every((child) => child.exitCode !== null || child.signalCode !== null)).toBe(true)
+    expect(fs.readFileSync(path.join(dir, "app.txt"), "utf8")).toBe("one\ntwo\nthree\nfour\n")
+    expect(worktrees(dir)).toBe(1)
+  })
+})
+
 describe("parallel attempts in a folder without git", () => {
   test("a copy per attempt, and the change applied to the folder", async () => {
     const dir = temp()

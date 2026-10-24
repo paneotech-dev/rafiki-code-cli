@@ -16,7 +16,7 @@ import { FSUtil } from "@opencode-ai/core/fs-util"
 // and `--fork` for forking before continuing.
 import type { Argv } from "yargs"
 import path from "path"
-import { pathToFileURL } from "url"
+import { fileURLToPath, pathToFileURL } from "url"
 import { open } from "node:fs/promises"
 import { Effect } from "effect"
 import { UI } from "../ui"
@@ -740,15 +740,18 @@ export const RunCommand = effectCmd({
         if (interactive || args.attach || args.command || args.session || args.continue) return undefined
         const cfg = await sdk.config.get().catch(() => undefined)
         const settings = (cfg?.data as { attempts?: RafikiAttempts.Settings } | undefined)?.attempts
-        const decided = RafikiAttempts.decide({ flag: args.attempts, settings, deep: args.deep, text: message })
+        const decided = RafikiAttempts.decide({ flag: args.attempts, settings, deep: args.deep, text: task() })
         return decided ? { ...decided, pro: Boolean(settings?.pro || args.deep) } : undefined
       }
+
+      // The task as typed: the words of the command line unquoted, and what was piped in.
+      const task = () => (initialInput ?? message).trim()
 
       async function runAttempts(plan: { count: number; reason: string; pro: boolean }) {
         const json = args.format === "json"
         const write = (type: string, data: Record<string, unknown>) =>
           process.stdout.write(JSON.stringify({ type, timestamp: Date.now(), ...data }) + EOL)
-        if (!message.trim()) die("--attempts needs a message: the task to do")
+        if (!task()) die("--attempts needs a message: the task to do")
         if (!RafikiAttemptsRun.hasGit()) die("parallel attempts need git on the PATH, to copy the project and compare the changes")
         const dir = directory ?? root
         const outcomeData = (item: RafikiAttempts.Outcome) => ({
@@ -774,8 +777,9 @@ export const RunCommand = effectCmd({
           )
         const summary = await RafikiAttemptsRun.run({
           dir,
-          task: message,
+          task: task(),
           count: plan.count,
+          files: files.flatMap((file) => (file.url.startsWith("file:") ? [fileURLToPath(file.url)] : [])),
           model: args.model,
           pro: plan.pro,
           // Auto mode in the copies, guarded actions refused: nobody can answer there.
