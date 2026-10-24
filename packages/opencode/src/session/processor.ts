@@ -17,6 +17,8 @@ import { PartID } from "./schema"
 import type { SessionID } from "./schema"
 import { SessionRetry } from "./retry"
 import * as RafikiTpm from "@/rafiki/tpm"
+import * as RafikiInputCap from "@/rafiki/input-cap"
+import * as RafikiGateway from "@/rafiki/gateway-errors"
 import { SessionStatus } from "./status"
 import { SessionSummary } from "./summary"
 import type { Provider } from "@/provider/provider"
@@ -651,7 +653,34 @@ const layer = Layer.effect(
             responseBody: error.data.responseBody,
           }).toObject()
         }
+        // Over the gateway's input cap (rafiki/input-cap.ts): compacted once
+        // for this message already, so the message alone is too large.
+        const capped =
+          SessionV1.ContextOverflowError.isInstance(error) &&
+          !RafikiTpm.isOverflow(error.data.message) &&
+          !ctx.assistantMessage.summary &&
+          RafikiGateway.isRafikiProvider(input.model.providerID)
+        if (capped && SessionV1.ContextOverflowError.isInstance(error) && RafikiInputCap.marked(ctx.sessionID)) {
+          RafikiInputCap.clear(ctx.sessionID)
+          const body = error.data.responseBody
+          error = new SessionV1.APIError({
+            message: RafikiInputCap.tooLarge(RafikiInputCap.limitFrom(`${error.data.message}\n${body ?? ""}`)),
+            statusCode: 413,
+            isRetryable: false,
+            responseBody: body,
+          }).toObject()
+        }
         if (SessionV1.ContextOverflowError.isInstance(error)) {
+          const recovering = capped && (yield* config.get()).compaction?.auto !== false
+          if (recovering) {
+            RafikiInputCap.mark(ctx.sessionID)
+            yield* status.set(ctx.sessionID, {
+              type: "retry",
+              attempt: 1,
+              message: RafikiInputCap.recoveringLine(RafikiInputCap.limitFrom(`${error.data.message}\n${error.data.responseBody ?? ""}`)),
+              next: Date.now(),
+            })
+          }
           if (RafikiTpm.isOverflow(error.data.message) && !ctx.assistantMessage.summary) {
             RafikiTpm.mark(ctx.sessionID)
             yield* status.set(ctx.sessionID, {
@@ -669,8 +698,11 @@ const layer = Layer.effect(
             return
           }
           ctx.needsCompaction = true
-          // The tokens per minute case already said why in one line; it is not an error.
-          if (!RafikiTpm.isOverflow(error.data.message)) yield* events.publish(Session.Event.Error, { sessionID: ctx.sessionID, error })
+          // The tokens per minute case and the gateway's input cap already said
+          // why in one line; the session compacts and sends the message once
+          // more, which is not an error.
+          if (!RafikiTpm.isOverflow(error.data.message) && !recovering)
+            yield* events.publish(Session.Event.Error, { sessionID: ctx.sessionID, error })
           return
         }
         ctx.assistantMessage.error = error
@@ -741,7 +773,10 @@ const layer = Layer.effect(
           if (ctx.needsCompaction) return "compact"
           if (ctx.blocked || ctx.assistantMessage.error) return "stop"
           // Answered: a later refusal over the tokens per minute limit may compact again.
-          if (!ctx.assistantMessage.summary) RafikiTpm.clear(ctx.sessionID)
+          if (!ctx.assistantMessage.summary) {
+            RafikiTpm.clear(ctx.sessionID)
+            RafikiInputCap.clear(ctx.sessionID)
+          }
           return "continue"
         })
       })

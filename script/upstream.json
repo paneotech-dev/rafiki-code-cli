@@ -485,7 +485,7 @@
     {
       "path": "packages/opencode/src/session/compaction.ts",
       "class": "hook",
-      "why": "Pruning of old tool output follows the rule and the default of `rafiki/prune.ts` (on for Rafiki tiers, `RAFIKICODE_PRUNE`), and a replaced output is shown with its marker. After an automatic compaction the project memory is read again and the agent is asked to record what the summary holds (`rafiki/memory.ts`). The conversation given to the compaction request is cut to fit under the key's tokens per minute limit (`rafiki/tpm.ts`). After a compaction the project instructions are read again (`rafiki/cache-prefix.ts`)."
+      "why": "Pruning of old tool output follows the rule and the default of `rafiki/prune.ts` (on for Rafiki tiers, `RAFIKICODE_PRUNE`), and a replaced output is shown with its marker. After an automatic compaction the project memory is read again and the agent is asked to record what the summary holds (`rafiki/memory.ts`). The conversation given to the compaction request is cut to fit under the key's tokens per minute limit (`rafiki/tpm.ts`). After a compaction the project instructions are read again (`rafiki/cache-prefix.ts`). The compaction request is also cut to fit under the gateway's input cap (`rafiki/input-cap.ts`)."
     },
     {
       "path": "packages/opencode/src/session/instruction.ts",
@@ -520,7 +520,7 @@
     {
       "path": "packages/opencode/src/session/processor.ts",
       "class": "hook",
-      "why": "Retries, error wording and resuming a cut stream go through `rafiki/resilience.ts` and `rafiki/resume.ts`; the tier that answered is recorded on the message through `rafiki/served.ts`. A step stops at a safe point when a message marked \"send now\" waits (`rafiki/steer.ts`). A refusal over the key's tokens per minute limit compacts once and then stops with a message (`rafiki/tpm.ts`)."
+      "why": "Retries, error wording and resuming a cut stream go through `rafiki/resilience.ts` and `rafiki/resume.ts`; the tier that answered is recorded on the message through `rafiki/served.ts`. A step stops at a safe point when a message marked \"send now\" waits (`rafiki/steer.ts`). A refusal over the key's tokens per minute limit compacts once and then stops with a message (`rafiki/tpm.ts`). A request refused over the gateway's input cap compacts the session and is sent once more without an error; refused again after that, the turn stops with one message instead of compacting in a loop (`rafiki/input-cap.ts`)."
     },
     {
       "path": "packages/opencode/src/session/prompt.ts",
@@ -530,7 +530,7 @@
     {
       "path": "packages/opencode/src/session/retry.ts",
       "class": "hook",
-      "why": "Which gateway errors are never retried and how long to wait (`rafiki/gateway-errors.ts`, `rafiki/resilience.ts`)."
+      "why": "Which gateway errors are never retried and how long to wait (`rafiki/gateway-errors.ts`, `rafiki/resilience.ts`). A status code in a message is read only where the message gives one (at the start, in brackets, after status, code, HTTP or error), never from digits inside a token count."
     },
     {
       "path": "packages/opencode/src/session/revert.ts",

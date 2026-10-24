@@ -28,7 +28,7 @@
 // The usage option replaces the usage block of every chat answer, so a test
 // can report cached tokens; a function (body, tokens) => usage reports the
 // request's own size (tokens counts the request body at 4 bytes a token). The
-// refuse option, (body, tokens) => { status, type, message, headers } |
+// refuse option, (body, tokens) => { status, type, message, headers, code } |
 // undefined, refuses the chat requests it picks, after the key checks: a test
 // can play the gateway's tokens per minute limit with it. The answeredBy option answers a tier on another
 // one, like the gateway after a fallback.
@@ -109,8 +109,8 @@ export function createMockGateway(options = {}) {
   }
 
   // LiteLLM's error bodies: the condition lives in error.type.
-  function gatewayError(res, status, type, message, param = null) {
-    json(res, status, { error: { message, type, param, code: String(status) } })
+  function gatewayError(res, status, type, message, param = null, code = String(status)) {
+    json(res, status, { error: { message, type, param, code } })
   }
 
   function bearer(req) {
@@ -303,7 +303,7 @@ export function createMockGateway(options = {}) {
           res.writeHead(check.status, { "content-type": "application/json", ...check.headers })
           return res.end(JSON.stringify({ error: { message: check.message, type: check.type, param: check.param ?? null, code: String(check.status) } }))
         }
-        return gatewayError(res, check.status, check.type, check.message, check.param ?? null)
+        return gatewayError(res, check.status, check.type, check.message, check.param ?? null, check.code ?? String(check.status))
       }
       if (!MODELS.includes(model)) return json(res, 404, { error: { message: `unknown model ${model}` } })
       const headers = {}

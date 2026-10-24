@@ -363,9 +363,13 @@ const layer = Layer.effect(
       yield* plugin.trigger("experimental.chat.messages.transform", {}, { messages: msgs })
       // The compaction request must fit under the key's tokens per minute limit
       // too, or it is refused like the request it is making room for.
+      // And under the gateway's input cap (rafiki/input-cap.ts), or it is
+      // refused with a 413 and the session cannot be compacted at all.
       const conversation = RafikiTpm.fit(
         msgs.map(serialize).filter(Boolean).join("\n\n"),
         RafikiGateway.isRafikiProvider(model.providerID) ? yield* Effect.promise(() => RafikiTpm.limit()) : undefined,
+        8_000,
+        RafikiGateway.isRafikiProvider(model.providerID) ? model.limit.input : undefined,
       )
       const nextPrompt =
         compacting.prompt ??

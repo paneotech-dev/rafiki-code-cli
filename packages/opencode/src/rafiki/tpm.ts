@@ -98,11 +98,16 @@ export const clear = (sessionID: string) => void compacted.delete(sessionID)
 
 // The conversation given to the compaction request, cut from the start so the
 // request itself fits under the limit, with room for the prompt around it.
-export function fit(text: string, cap: number | undefined, reserve = 8_000): string {
-  if (!cap) return text
-  const room = Math.max(1_000, Math.floor(cap * SHARE) - reserve) * 4
+// input is the gateway's cap on the input of one request (rafiki/input-cap.ts):
+// the lower of the two decides, and the note says which.
+export function fit(text: string, cap: number | undefined, reserve = 8_000, input?: number): string {
+  const byInput = input !== undefined && input > 0 && (!cap || input < cap)
+  const limit = byInput ? input : cap
+  if (!limit) return text
+  const room = Math.max(1_000, Math.floor(limit * SHARE) - reserve) * 4
   if (text.length <= room) return text
-  return `[Earlier conversation omitted: it is larger than this key's limit of tokens per minute]\n\n${text.slice(text.length - room)}`
+  const why = byInput ? "the gateway's limit of input tokens for one request" : "this key's limit of tokens per minute"
+  return `[Earlier conversation omitted: it is larger than ${why}]\n\n${text.slice(text.length - room)}`
 }
 
 const grouped = (value: number) => Math.round(value).toLocaleString("en-US")
