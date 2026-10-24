@@ -81,11 +81,18 @@ const cacheMarkerModels: readonly string[] = ["rafiki-max"]
 //                model page, read 2026-10-04: 1M context, 128K max output.
 // context is the window the interface measures "% used" against. output is
 // the upstream maximum, which caps RAFIKICODE_MAX_OUTPUT_TOKENS; what a
-// request asks for is requestDefaults above.
-const tierLimits: Record<(typeof models)[number], { context: number; output: number }> = {
-  "rafiki-fast": { context: 1_000_000, output: 384_000 },
-  "rafiki-pro": { context: 1_000_000, output: 128_000 },
-  "rafiki-max": { context: 1_000_000, output: 128_000 },
+// request asks for is requestDefaults above. input is what the gateway takes
+// in one request: since 2026-10-24 it refuses a request over 200000 input
+// tokens on every tier with HTTP 413 (invalid_request_error,
+// context_length_exceeded). It is registered as the input limit, so the
+// compaction check (packages/opencode/src/session/overflow.ts) never lets a
+// session reach it: the lower of compactAt below and the input limit less the
+// output reserve.
+const gatewayInputCap = 200_000
+const tierLimits: Record<(typeof models)[number], { context: number; output: number; input: number }> = {
+  "rafiki-fast": { context: 1_000_000, output: 384_000, input: gatewayInputCap },
+  "rafiki-pro": { context: 1_000_000, output: 128_000, input: gatewayInputCap },
+  "rafiki-max": { context: 1_000_000, output: 128_000, input: gatewayInputCap },
 }
 // When a session is compacted. Until 2026-10-04 every tier was registered with
 // a 128000 token window, so a session was compacted at about 64000 tokens on
@@ -506,7 +513,7 @@ export const Brand = {
   models,
   // Context size in tokens at which a Rafiki session is compacted, and the
   // request size above which one line suggests /compact (see compactAt above).
-  context: { compactAt, warnAt },
+  context: { compactAt, warnAt, inputCap: gatewayInputCap },
   // Lowest index is the least preferred; the default picker takes the last entry first.
   priority: [...models].reverse(),
   defaultModel: `${providerID}/${models[0]}`,
@@ -765,7 +772,7 @@ export const Brand = {
                   reasoning: false,
                   attachment: false,
                   temperature: true,
-                  limit: { context: tierLimits[id].context, output: request.output },
+                  limit: { context: tierLimits[id].context, input: tierLimits[id].input, output: request.output },
                   cost: { input: 0, output: 0 },
                   // Every gateway call names its tier and whether it is an escalation,
                   // next to X-Rafiki-Surface. The terminal client never moves a task to
