@@ -102,6 +102,21 @@ describe("session.system", () => {
     }
   })
 
+  test("selects the Rafiki prompt for every model of the gateway provider", () => {
+    for (const id of ["rafiki-fast", "rafiki-pro", "rafiki-max", "deepseek-pro"]) {
+      const prompt = SystemPrompt.provider({ providerID: "rafiki", id, api: { id } } as Provider.Model).join("\n")
+      expect(prompt).toContain("# Requirements")
+      expect(prompt).toContain("If the same approach fails twice for the same reason")
+      expect(prompt).not.toContain("One word answers are best")
+    }
+  })
+
+  test("keeps the default prompt for other providers", () => {
+    const prompt = SystemPrompt.provider({ providerID: "openrouter", id: "x", api: { id: "some-model" } } as Provider.Model)[0]
+    expect(prompt).toContain("One word answers are best")
+    expect(prompt).not.toContain("# Requirements")
+  })
+
   test("selects the Kimi prompt for official provider model IDs", () => {
     for (const providerID of ["kimi-for-coding", "moonshotai", "moonshotai-cn"]) {
       const prompt = SystemPrompt.provider({ providerID, api: { id: "k3" } } as Provider.Model)[0]
