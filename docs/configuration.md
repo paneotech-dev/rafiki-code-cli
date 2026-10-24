@@ -62,6 +62,7 @@ Every top-level key the CLI honors, with the meaning from the configuration sche
 | `snapshot` | enable snapshots used for undo and revert |
 | `compaction` | conversation compaction behavior for long sessions. `compaction.threshold` (tokens, default `150000` on the Rafiki tiers) is the size of the context at which a session is compacted, see [Context](#context-and-tokens-in-the-terminal-interface); `compaction.warn_at` (tokens, default `200000`, `0` turns it off) is the size of a single request above which one line suggests `/compact` or a new session; `compaction.prune` (`true` or `false`) turns the replacement of old tool output on or off, see [Long sessions: old tool output](#long-sessions-old-tool-output) |
 | `memory` | project memory in `.rafiki/memory/`: `memory.enabled` (`true` by default) and `memory.max_bytes` (the size cap, 8,192 by default). See [Project memory](./memory.md) |
+| `review` | acceptance criteria at the start of a task and a review of the change against them before it is done: `review.enabled` (`true` by default), `review.rounds` (0 or 1, 1 by default) and `review.model`. See [Acceptance criteria and the review](#acceptance-criteria-and-the-review) |
 | `verify` | the checks that run after a turn that changed files: `verify.enabled` (`true` by default), `verify.commands` (commands to run instead of the detected ones), `verify.timeout` (seconds for one round, 120 by default) and `verify.rounds` (fix rounds after a failure, 2 by default). See [Checks after a change](#checks-after-a-change) |
 | `attachment` | attachment processing settings |
 | `tool_output` | the cap on one tool result: `tool_output.max_bytes` (32,768 by default, about 8,000 tokens) and `tool_output.max_lines` (2,000 by default). See [Large tool results](#large-tool-results) |
@@ -81,6 +82,7 @@ The structure of the nested keys (`permission`, `agent`, `mcp`, and so on) is un
 | `RAFIKICODE_CACHE_MARKERS` | which tiers carry a prompt cache marker (a field that tells the model provider where the repeated start of a request ends, so it can reuse it at a lower price): `all`, `off`, or tier names separated by commas. Unset, the CLI marks the tiers that need one. Every request starts with the same text in the same order on every tier either way; today's date is sent after that text, in a message of its own |
 | `RAFIKICODE_PERMISSION_MODE` | `ask`, `auto` or `plan`: the permission mode of this process, over `permission.mode` and the mode last picked for the project. Picking a mode with Shift+Tab during the session wins over it. See [Permission modes](#permission-modes) |
 | `RAFIKICODE_ALLOW_PUSH` | `1` lets `rafikicode run` publish code (`git push`, `gh pr create`, `gh repo create`, `gh release`), like `run --allow-push`. Without it a run refuses them. See [Pushing code from a run](./headless-and-ci.md#pushing-code-from-a-run) |
+| `RAFIKICODE_REVIEW` | `0`, `off` or `false` turns the acceptance criteria and the review off for this run; `1`, `on` or `true` turns them on. Wins over `review.enabled`. See [Acceptance criteria and the review](#acceptance-criteria-and-the-review) |
 | `RAFIKICODE_VERIFY` | `0`, `off` or `false` turns the checks after a change off for this run; `1`, `on` or `true` turns them on. Wins over `verify.enabled`. See [Checks after a change](#checks-after-a-change) |
 | `RAFIKICODE_COMPACT_AT` | the size of the context in tokens at which a session is compacted, over `compaction.threshold`. Unset, `150000` on the Rafiki tiers. `0` or `off` compacts only near the gateway's limit of 200,000 input tokens. See [Context](#context-and-tokens-in-the-terminal-interface) |
 | `RAFIKICODE_ROUTING` | `0`, `off` or `false` turns the tier by task off: every request goes to the session's tier. See [Tier by task](#tier-by-task) |
@@ -304,9 +306,32 @@ The answer then ends with one line:
 
 In `rafikicode run`, a failed round prints `! checks failed, fix round 1 of 2: <command>`, the `Task:` line ends with the status (`checks passed`, `checks failing`, `checks not finished`, `no checks found`), the JSON output (`--format json`) carries a `verify` event with the status and every command, and the run exits with code 8 when the checks still fail. See [Headless and CI](./headless-and-ci.md#exit-codes).
 
-While the checks are on, the start of every request also carries a short working practice: reproduce a reported bug first (a failing test or a short script), then fix it, then run the relevant tests; prefer editing over long exploration; and do not try to download packages or reference copies when the network is restricted.
+While the checks are on, the start of every request also carries a short working practice: reproduce a reported bug first (a failing test or a short script), then fix it, run the relevant tests and keep the test; prefer editing over long exploration; and do not try to download packages or reference copies when the network is restricted.
 
 To turn the checks off, set `"verify": {"enabled": false}` in your configuration, or `RAFIKICODE_VERIFY=0` for one run. They are off when project configuration is disabled (`RAFIKICODE_DISABLE_PROJECT_CONFIG`), and subagents do not run them: the task they belong to does.
+
+## Acceptance criteria and the review
+
+At the start of a task that is not trivial, `rafikicode` writes 3 to 5 checkable acceptance criteria from your request, with one short request to Rafiki Fast. They appear at the top of the session's todo list (as `Criterion: ...` items) and are added to the request, so the agent works towards them. Trivial requests get none: a request under 40 characters, a question, or a small edit such as a typo or a rename.
+
+When the request reports a bug, the agent reproduces it first: it writes a test next to the existing tests of that code (a short script when the project has no test setup), runs it and sees it fail, fixes the code, runs it again until it passes, and keeps the test. The project's test command is named when one is found. One of the criteria is that reproduction. When the bug cannot be reproduced here, the agent says so and fixes it from the code.
+
+Before the task is reported as done, after the checks of the turn, a review runs on Rafiki Pro. It sees only the request, the criteria, the diff of the turn, the results of the checks and the last commands the agent ran, never the whole conversation, and answers pass or fail for each criterion. The criteria met are ticked in the todo list. When some are not met, they go back to the agent with the reasons for one more round (`review.rounds`, 1 by default, 0 for none), then the review runs again. A turn that changed no files, or only documentation, is not reviewed.
+
+The answer then ends with one line, which gives the review's cost (the criteria included):
+
+- `criteria met: 3 of 3 (review on rafiki-pro, 0.004 USD)`
+- `criteria not met: 2. <criterion> after 1 review round (review on rafiki-pro, 0.009 USD)`
+
+In `rafikicode run`, the criteria print as `~ criteria: 1. ... 2. ...` and a round as `! review: criteria 2 not met, round 1 of 1`. The JSON output carries a `criteria` event and `review` events (`retry` for a round, then the final status, the model, the cost and each criterion with its result). The cost also counts in the answer's cost.
+
+| setting | meaning |
+|---|---|
+| `review.enabled` | `true` by default; `false` turns the criteria and the review off. `RAFIKICODE_REVIEW=0` does the same for one run, and wins over it |
+| `review.rounds` | extra rounds after a review with criteria not met, 0 or 1 (1 by default) |
+| `review.model` | the model of the review as `provider/model`; by default Rafiki Pro on the Rafiki tiers, else the session's model |
+
+Like the checks, the criteria and the review are off when project configuration is disabled, and subagents do not run them.
 
 ## Choosing a tier per project
 

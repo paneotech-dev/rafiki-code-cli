@@ -39,6 +39,7 @@ import * as RafikiServed from "@/rafiki/served"
 import * as RafikiTierCheck from "@/rafiki/tier-check"
 import * as RafikiReasoning from "@/rafiki/reasoning"
 import * as RafikiVerify from "@/rafiki/verify"
+import * as RafikiReview from "@/rafiki/review"
 import * as RunSignal from "@/rafiki/run-signal"
 import * as ServerFile from "@/rafiki/server-file"
 import { INTERACTIVE_INPUT_ERROR, resolveInteractiveStdin } from "./run/runtime.stdin"
@@ -839,6 +840,38 @@ export const RunCommand = effectCmd({
               // The tier the request went to and why (rafiki/routing.ts), when the server runs in this process.
               const route = RafikiRouting.decisionFor(part.messageID)
               const routed = route ? { tier: route.tier, route: route.reason } : {}
+              // The review pass: the criteria of the task, and criteria not met sent back for one more round.
+              const review = RafikiReview.metaOf(part)
+              if (review?.kind === "criteria") {
+                if (emit("criteria", { criteria: review.criteria, bug: review.bug })) continue
+                UI.println(
+                  UI.Style.TEXT_INFO_BOLD + "~",
+                  UI.Style.TEXT_NORMAL + `criteria: ${review.criteria.map((item, index) => `${index + 1}. ${item}`).join(" ")}`,
+                )
+                continue
+              }
+              if (review?.kind === "feedback") {
+                const missed = RafikiReview.failed(review.verdict).map((item) => item.index + 1)
+                if (emit("review", { status: "retry", round: review.round, rounds: review.rounds, failed: missed, cost: review.cost }))
+                  continue
+                UI.println(
+                  UI.Style.TEXT_WARNING_BOLD + "!",
+                  UI.Style.TEXT_NORMAL +
+                    `review: criteria ${missed.join(", ")} not met, round ${review.round} of ${review.rounds} (${RafikiReview.usd(review.cost)})`,
+                )
+                continue
+              }
+              if (review?.kind === "final")
+                emit("review", {
+                  status: review.verdict ? (RafikiReview.failed(review.verdict).length ? "failing" : "passed") : "unavailable",
+                  rounds: review.rounds,
+                  model: review.model,
+                  cost: review.cost,
+                  criteria: review.criteria.map((text, index) => ({
+                    text,
+                    pass: review.verdict?.results.find((item) => item.index === index)?.pass ?? null,
+                  })),
+                })
 
               if (part.type === "step-start") {
                 if (emit("step_start", { part, ...routed })) continue

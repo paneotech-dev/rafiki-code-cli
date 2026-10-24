@@ -51,6 +51,17 @@ export const MOCK_PRICES = {
 }
 const USAGE = { prompt_tokens: 12, completion_tokens: 8, total_tokens: 20 }
 
+// The requests of the acceptance criteria and of the review pass (src/rafiki/review.ts), by their system text.
+function asideKind(messages) {
+  const system = messages
+    .filter((m) => m && m.role === "system")
+    .map((m) => (typeof m.content === "string" ? m.content : JSON.stringify(m.content)))
+    .join("\n")
+  if (system.includes("You turn a software task into acceptance criteria.")) return "criteria"
+  if (system.includes("You review a finished code change against its acceptance criteria.")) return "review"
+  return undefined
+}
+
 export function createMockGateway(options = {}) {
   const opts = {
     port: options.port ?? 0,
@@ -89,6 +100,11 @@ export function createMockGateway(options = {}) {
     // the rules above.
     respond: options.respond,
     refuse: options.refuse,
+    // (kind, body) => string | undefined: the answer to a request of the
+    // acceptance criteria ("criteria") or of the review pass ("review"). Those
+    // requests never reach toolCallEach, so turn counts stay the same. The
+    // default answers give no criteria, so no review runs.
+    aside: options.aside,
   }
   // token -> { alias, models, max_budget, budget_duration, rpm_limit, tpm_limit, spend, metadata, deleted }
   const keys = new Map()
@@ -310,6 +326,12 @@ export function createMockGateway(options = {}) {
       if (check.key) {
         check.key.spend = Math.round((check.key.spend + opts.cost) * 1e6) / 1e6
         headers["x-litellm-response-cost"] = String(opts.cost)
+      }
+      const kind = asideKind(messages)
+      if (kind) {
+        const content = opts.aside?.(kind, body) ?? (kind === "criteria" ? '{"bug": false, "criteria": []}' : '{"results": []}')
+        if (body.stream === true) return stream(res, model, content, headers, false, usage)
+        return json(res, 200, completion(model, content, false, usage), headers)
       }
       const custom = opts.respond?.(body)
       if (custom?.delayMs) await new Promise((resolve) => setTimeout(resolve, custom.delayMs))
