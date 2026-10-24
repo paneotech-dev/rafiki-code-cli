@@ -27,6 +27,7 @@ import * as RafikiGateway from "@/rafiki/gateway-errors"
 import { SessionCompactionEvent } from "@opencode-ai/schema/session-compaction-event"
 import * as RafikiMemory from "@/rafiki/memory"
 import * as CachePrefix from "@/rafiki/cache-prefix"
+import * as RafikiRouting from "@/rafiki/routing"
 
 export const Event = SessionCompactionEvent
 
@@ -340,9 +341,19 @@ const layer = Layer.effect(
       }
 
       const agent = yield* agents.get("compaction")
+      // On an unpinned Rafiki session the summary is written by rafiki-fast (rafiki/routing.ts).
+      const route = RafikiRouting.choose({
+        purpose: "compaction",
+        providerID: userMessage.model.providerID,
+        tier: userMessage.model.modelID,
+        pinned: RafikiRouting.pinned(input.sessionID),
+      })
       const model = agent.model
         ? yield* provider.getModel(agent.model.providerID, agent.model.modelID).pipe(Effect.orDie)
-        : yield* provider.getModel(userMessage.model.providerID, userMessage.model.modelID).pipe(Effect.orDie)
+        : yield* provider
+            .getModel(userMessage.model.providerID, ModelV2.ID.make(route.tier))
+            .pipe(Effect.orDie)
+      if (!agent.model) yield* Effect.logInfo("routing", { "session.id": input.sessionID, tier: route.tier, reason: route.reason })
       const cfg = yield* config.get()
       const history = compactionPart && messages.at(-1)?.info.id === input.parentID ? messages.slice(0, -1) : messages
       const prior = completedCompactions(history)

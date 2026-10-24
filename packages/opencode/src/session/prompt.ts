@@ -62,6 +62,7 @@ import { LLMEvent } from "@opencode-ai/llm"
 import * as RafikiReasoning from "@/rafiki/reasoning"
 import * as RafikiTpm from "@/rafiki/tpm"
 import * as RafikiContext from "@/rafiki/context-size"
+import * as RafikiRouting from "@/rafiki/routing"
 import { TuiEvent } from "@/server/tui-event"
 import * as RafikiGateway from "@/rafiki/gateway-errors"
 import * as RafikiResume from "@/rafiki/resume"
@@ -102,6 +103,23 @@ function formatMcpResourceBytes(value: number) {
   if (value < 1024) return `${value} B`
   if (value < 1024 * 1024) return `${Math.ceil(value / 1024)} KB`
   return `${Math.ceil(value / (1024 * 1024))} MB`
+}
+
+// The failing check commands of each verify feedback of the latest turn,
+// oldest first: the rounds since the last first round (rafiki/routing.ts).
+function verifyFailures(msgs: SessionV1.WithParts[]): string[][] {
+  const rounds: string[][] = []
+  for (const msg of msgs) {
+    if (msg.info.role !== "user") continue
+    for (const part of msg.parts) {
+      if (part.type !== "text") continue
+      const meta = part.metadata?.[RafikiVerify.Verify.METADATA] as RafikiVerify.Verify.Meta | undefined
+      if (!meta || meta.kind !== "feedback") continue
+      if (meta.round === 1) rounds.length = 0
+      rounds.push(meta.result.steps.filter((step) => step.status === "failed" || step.status === "timeout").map((step) => step.command))
+    }
+  }
+  return rounds
 }
 
 function isOrphanedInterruptedTool(part: SessionV1.ToolPart) {
@@ -226,10 +244,19 @@ const layer = Layer.effect(
 
       const ag = yield* agents.get("title")
       if (!ag) return
+      // On an unpinned Rafiki session the title goes to rafiki-fast (rafiki/routing.ts).
+      const routed = RafikiRouting.choose({
+        purpose: "title",
+        providerID: input.providerID,
+        tier: input.modelID,
+        pinned: RafikiRouting.pinned(input.session.id) || !!(yield* config.get()).small_model,
+      })
       const mdl = ag.model
         ? yield* provider.getModel(ag.model.providerID, ag.model.modelID)
-        : ((yield* provider.getSmallModel(input.providerID)) ??
-          (yield* provider.getModel(input.providerID, input.modelID)))
+        : routed.tier !== input.modelID
+          ? yield* provider.getModel(input.providerID, ModelV2.ID.make(routed.tier))
+          : ((yield* provider.getSmallModel(input.providerID)) ??
+            (yield* provider.getModel(input.providerID, input.modelID)))
       const msgs = onlySubtasks
         ? [{ role: "user" as const, content: subtasks.map((p) => p.prompt).join("\n") }]
         : yield* MessageV2.toModelMessagesEffect(context, mdl)
@@ -655,6 +682,8 @@ const layer = Layer.effect(
       }
 
       const model = input.model ?? ag.model ?? (yield* currentModel(input.sessionID))
+      // A tier named with the prompt, in the configuration or by the agent is pinned (rafiki/routing.ts).
+      RafikiRouting.pin(input.sessionID, input.model !== undefined || ag.model !== undefined || !!(yield* config.get()).model)
       const same = ag.model && model.providerID === ag.model.providerID && model.modelID === ag.model.modelID
       const full =
         !input.variant && ag.variant && same
@@ -1219,7 +1248,35 @@ const layer = Layer.effect(
               history: msgs,
             }).pipe(Effect.ignore, Effect.forkIn(scope))
 
-          const chosen = yield* getModel(lastUser.model.providerID, lastUser.model.modelID, sessionID)
+          // The tier for this request, by task (rafiki/routing.ts): an
+          // explore subagent on rafiki-fast, a turn with a difficulty signal on
+          // rafiki-pro, otherwise the session's tier. The session's tier
+          // (the user message's model) is never changed.
+          const route = RafikiRouting.choose({
+            purpose: session.parentID ? "subagent" : "turn",
+            providerID: lastUser.model.providerID,
+            tier: lastUser.model.modelID,
+            pinned: RafikiRouting.pinned(session.parentID ?? sessionID),
+            agent: lastUser.agent,
+            signal: session.parentID
+              ? RafikiRouting.requestedFor(session.parentID) === "review"
+                ? "review"
+                : undefined
+              : RafikiRouting.signalOf({
+                  sessionID,
+                  agent: lastUser.agent,
+                  text: msgs
+                    .findLast((item) => item.info.role === "user" && item.parts.some((part) => part.type === "text" && !part.synthetic))
+                    ?.parts.flatMap((part) => (part.type === "text" && !part.synthetic ? [part.text] : []))
+                    .join("\n") ?? "",
+                  failures: verifyFailures(msgs),
+                }),
+          })
+          const chosen = yield* getModel(
+            lastUser.model.providerID,
+            route.tier === lastUser.model.modelID ? lastUser.model.modelID : ModelV2.ID.make(route.tier),
+            sessionID,
+          )
           const model =
             reasoningRetry?.user === lastUser.id ? RafikiReasoning.boosted(chosen, reasoningRetry.plan) : chosen
           const task = tasks.pop()
@@ -1256,6 +1313,23 @@ const layer = Layer.effect(
                 model,
               })))
           ) {
+            yield* compaction.create({ sessionID, agent: lastUser.agent, model: lastUser.model, auto: true })
+            continue
+          }
+
+          // An escalated request on a large context compacts the session first,
+          // once per turn, so the stronger tier does not read the whole history
+          // at its price (rafiki/routing.ts).
+          if (
+            route.escalated &&
+            lastFinished &&
+            lastFinished.summary !== true &&
+            !RafikiRouting.compactedFor(sessionID) &&
+            nextTokens > RafikiRouting.COMPACT_FIRST &&
+            (yield* config.get()).compaction?.auto !== false
+          ) {
+            RafikiRouting.markCompacted(sessionID)
+            yield* Effect.logInfo("routing", { "session.id": sessionID, compact: "before an escalated request", tokens: nextTokens })
             yield* compaction.create({ sessionID, agent: lastUser.agent, model: lastUser.model, auto: true })
             continue
           }
@@ -1330,6 +1404,14 @@ const layer = Layer.effect(
             sessionID,
           }
           yield* sessions.updateMessage(msg)
+          RafikiRouting.record(msg.id, route)
+          yield* Effect.logInfo("routing", {
+            "session.id": sessionID,
+            "message.id": msg.id,
+            tier: route.tier,
+            reason: route.reason,
+            session_tier: lastUser.model.modelID,
+          })
 
           const finalizeInterruptedAssistant = Effect.gen(function* () {
             if (msg.time.completed) return
@@ -1476,6 +1558,8 @@ const layer = Layer.effect(
           continue
         }
 
+        // The turn is over: the next one starts on the session's tier.
+        RafikiRouting.endTurn(sessionID)
         yield* compaction.prune({ sessionID }).pipe(Effect.ignore, Effect.forkIn(scope))
         return yield* lastAssistant(sessionID)
       },
@@ -1509,6 +1593,8 @@ const layer = Layer.effect(
         throw error
       }
       const agentName = cmd.agent ?? input.agent
+      // /deep and /review are difficulty signals for this turn (rafiki/routing.ts).
+      if (input.command === "deep" || input.command === "review") RafikiRouting.request(input.sessionID, input.command)
 
       const raw = input.arguments.match(argsRegex) ?? []
       const args = raw.map((arg) => arg.replace(quoteTrimRegex, ""))

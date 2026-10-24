@@ -28,6 +28,7 @@ import { FormatError, FormatUnknownError } from "../error"
 import * as RafikiGateway from "@/rafiki/gateway-errors"
 import * as RafikiTpm from "@/rafiki/tpm"
 import * as RafikiContext from "@/rafiki/context-size"
+import * as RafikiRouting from "@/rafiki/routing"
 import * as RafikiPermission from "@/rafiki/permission-hint"
 import * as Publish from "@opencode-ai/core/brand/publish"
 import * as PermissionMode from "@opencode-ai/core/brand/permission-mode"
@@ -171,6 +172,10 @@ export const RunCommand = effectCmd({
       .option("command", {
         describe: "the command to run, use message for args",
         type: "string",
+      })
+      .option("deep", {
+        describe: "send the message on Rafiki Pro for this task, then go back to the session's tier (the /deep command)",
+        type: "boolean",
       })
       .option("continue", {
         alias: ["c", "resume"],
@@ -831,15 +836,19 @@ export const RunCommand = effectCmd({
               }
               if (verify?.kind === "final") verified = verify
 
+              // The tier the request went to and why (rafiki/routing.ts), when the server runs in this process.
+              const route = RafikiRouting.decisionFor(part.messageID)
+              const routed = route ? { tier: route.tier, route: route.reason } : {}
+
               if (part.type === "step-start") {
-                if (emit("step_start", { part })) continue
+                if (emit("step_start", { part, ...routed })) continue
               }
 
               if (part.type === "step-finish") {
                 // The usage of the request, and its cost: the gateway's figure,
                 // or null with cost_source "unknown", never a made up 0 (rafiki/cost.ts).
                 const cost = RafikiCost.stepCostFields({ cost: part.cost, providerID: providers.get(part.messageID) })
-                if (emit("step_finish", { part: { ...part, cost: cost.cost }, usage: RafikiCost.usageOf(part.tokens), ...cost }))
+                if (emit("step_finish", { part: { ...part, cost: cost.cost }, usage: RafikiCost.usageOf(part.tokens), ...cost, ...routed }))
                   continue
               }
 
@@ -1042,12 +1051,14 @@ export const RunCommand = effectCmd({
             if (error) process.exitCode = process.exitCode || 1
           }
 
-          if (args.command) {
+          // --deep is the /deep command (rafiki/routing.ts).
+          const command = args.command ?? (args.deep ? "deep" : undefined)
+          if (command) {
             const result = await client.session.command({
               sessionID,
               agent,
               model: args.model,
-              command: args.command,
+              command,
               arguments: message,
               variant: args.variant,
             })
@@ -1193,6 +1204,7 @@ export async function runMini(input: MiniCommandInput) {
     _: ["mini"],
     message: input.prompt ? [input.prompt] : [],
     command: undefined,
+    deep: undefined,
     continue: input.continue,
     session: input.session,
     fork: input.fork,

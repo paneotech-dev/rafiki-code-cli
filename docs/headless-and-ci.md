@@ -67,6 +67,7 @@ Each request to the model ends with a `step_finish` event, which carries its usa
 | `usage.cache_read` | input tokens read from the provider's cache |
 | `usage.cache_write` | input tokens written to the provider's cache |
 | `cost` | the cost of the request in USD, or `null` when it is not known. Never a made up `0` |
+| `tier`, `route` | the Rafiki tier the request went to and why, for example `rafiki-pro` and `deep: asked for with /deep or --deep`, or `rafiki-fast` and `session tier`. Also on `step_start`. See [Tier by task](configuration.md#tier-by-task). Not sent with `--attach` |
 | `cost_source` | `gateway`: the gateway's own count for this request, sent in the usage block of its answer. `price_list`: a provider other than the Rafiki gateway, priced from its model's price list. `unknown`: no figure, `cost` is `null` |
 
 The Rafiki tiers have no price list in the program, so a request's cost is known only when the gateway puts it in the answer; otherwise it is `null` and `unknown`. `part.cost` follows `cost`. The real total of a task is in the `task` event.

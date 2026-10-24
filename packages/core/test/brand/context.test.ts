@@ -90,7 +90,7 @@ describe("the tiers' limits", () => {
       expect(Brand.provider.request("rafiki-max").output).toBe(32_000)
       expect(Brand.provider.maxOutput("rafiki-pro")).toBe(128_000)
       expect(Brand.provider.maxOutput("rafiki-fast")).toBe(384_000)
-      expect(Brand.provider.takesEffort("rafiki-pro")).toBe(false)
+      expect(Brand.provider.takesEffort("rafiki-pro")).toBe(true)
       expect(Brand.provider.takesEffort("rafiki-max")).toBe(true)
       process.env[Brand.env.maxOutputTokens] = "128000"
       expect(Brand.provider.request("rafiki-max").output).toBe(128_000)

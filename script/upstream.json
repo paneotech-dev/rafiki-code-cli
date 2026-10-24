@@ -300,7 +300,7 @@
     {
       "path": "packages/opencode/src/cli/cmd/run.ts",
       "class": "hook",
-      "why": "Exit codes and messages for gateway errors, a missing key and rejected permissions, the attach check, the cost line, the `--resume` alias and server file credentials, each a call into `src/rafiki/`; an answer on another tier is announced through `rafiki/served.ts`, and a run on Rafiki Max is checked against the key first (`rafiki/tier-check.ts`). A command that publishes code is refused unless the run allows it (`--allow-push`, `RAFIKICODE_ALLOW_PUSH`, a `publish` permission in config), `--auto` or not (`core/brand/publish.ts`). A turn tried again after it spent its output budget reasoning is announced in one line (`rafiki/reasoning.ts`), and SIGTERM or SIGINT stop and save the session before exiting 143 or 130 (`rafiki/run-signal.ts`). The checks after a change are reported on the `Task:` line, in a `verify` JSON event and with exit code 8 when they still fail (`rafiki/verify.ts`). `--auto` is auto mode (`core/brand/permission-mode.ts`): a guarded action is refused with the reason and how to allow it. A request over `compaction.warn_at` prints one line suggesting /compact (`rafiki/context-size.ts`)."
+      "why": "Exit codes and messages for gateway errors, a missing key and rejected permissions, the attach check, the cost line, the `--resume` alias and server file credentials, each a call into `src/rafiki/`; an answer on another tier is announced through `rafiki/served.ts`, and a run on Rafiki Max is checked against the key first (`rafiki/tier-check.ts`). A command that publishes code is refused unless the run allows it (`--allow-push`, `RAFIKICODE_ALLOW_PUSH`, a `publish` permission in config), `--auto` or not (`core/brand/publish.ts`). A turn tried again after it spent its output budget reasoning is announced in one line (`rafiki/reasoning.ts`), and SIGTERM or SIGINT stop and save the session before exiting 143 or 130 (`rafiki/run-signal.ts`). The checks after a change are reported on the `Task:` line, in a `verify` JSON event and with exit code 8 when they still fail (`rafiki/verify.ts`). `--auto` is auto mode (`core/brand/permission-mode.ts`): a guarded action is refused with the reason and how to allow it. A request over `compaction.warn_at` prints one line suggesting /compact (`rafiki/context-size.ts`). The `--deep` option runs the `deep` command, and the step events carry the tier and the reason of the request (`rafiki/routing.ts`)."
     },
     {
       "path": "packages/opencode/src/cli/cmd/run/footer.permission.tsx",
@@ -366,6 +366,11 @@
       "path": "packages/opencode/src/cli/ui.ts",
       "class": "text",
       "why": "The wordmark comes from the brand module."
+    },
+    {
+      "path": "packages/opencode/src/command/index.ts",
+      "class": "hook",
+      "why": "The built in `deep` command sends its message on Rafiki Pro for the turn (`rafiki/routing.ts`)."
     },
     {
       "path": "packages/opencode/src/command/template/initialize.txt",
@@ -485,7 +490,7 @@
     {
       "path": "packages/opencode/src/session/compaction.ts",
       "class": "hook",
-      "why": "Pruning of old tool output follows the rule and the default of `rafiki/prune.ts` (on for Rafiki tiers, `RAFIKICODE_PRUNE`), and a replaced output is shown with its marker. After an automatic compaction the project memory is read again and the agent is asked to record what the summary holds (`rafiki/memory.ts`). The conversation given to the compaction request is cut to fit under the key's tokens per minute limit (`rafiki/tpm.ts`). After a compaction the project instructions are read again (`rafiki/cache-prefix.ts`). The compaction request is also cut to fit under the gateway's input cap (`rafiki/input-cap.ts`)."
+      "why": "Pruning of old tool output follows the rule and the default of `rafiki/prune.ts` (on for Rafiki tiers, `RAFIKICODE_PRUNE`), and a replaced output is shown with its marker. After an automatic compaction the project memory is read again and the agent is asked to record what the summary holds (`rafiki/memory.ts`). The conversation given to the compaction request is cut to fit under the key's tokens per minute limit (`rafiki/tpm.ts`). After a compaction the project instructions are read again (`rafiki/cache-prefix.ts`). The compaction request is also cut to fit under the gateway's input cap (`rafiki/input-cap.ts`). The summary of an unpinned session is written by rafiki-fast (`rafiki/routing.ts`)."
     },
     {
       "path": "packages/opencode/src/session/instruction.ts",
@@ -525,7 +530,7 @@
     {
       "path": "packages/opencode/src/session/prompt.ts",
       "class": "hook",
-      "why": "The order of the system text (`rafiki/cache-prefix.ts`), continuation messages (`rafiki/resume.ts`) and the one retry, then the error, for an empty answer cut by the length limit (`rafiki/reasoning.ts`). Old tool output is pruned before the first request of a turn (`rafiki/prune.ts`). The project memory goes last in the stable system text, read once per session (`rafiki/memory.ts`). Before a turn that changed files ends, the project's checks run and a failure is sent back for a fix round; the working practice that goes with them opens the system text (`rafiki/verify-turn.ts`). A prompt marked \"send now\" asks the running turn to take it at its next safe point, and tool calls are counted so a step is never cut during one (`rafiki/steer.ts`). The session compacts before a request that would come near the key's tokens per minute limit (`rafiki/tpm.ts`). The compaction check before a request uses the size the request would have, and a request over `compaction.warn_at` shows one line suggesting /compact (`rafiki/context-size.ts`). The project instructions are the first reading of the session until it is compacted, so an edit of AGENTS.md does not rewrite the start of the prefix (`rafiki/cache-prefix.ts`)."
+      "why": "The order of the system text (`rafiki/cache-prefix.ts`), continuation messages (`rafiki/resume.ts`) and the one retry, then the error, for an empty answer cut by the length limit (`rafiki/reasoning.ts`). Old tool output is pruned before the first request of a turn (`rafiki/prune.ts`). The project memory goes last in the stable system text, read once per session (`rafiki/memory.ts`). Before a turn that changed files ends, the project's checks run and a failure is sent back for a fix round; the working practice that goes with them opens the system text (`rafiki/verify-turn.ts`). A prompt marked \"send now\" asks the running turn to take it at its next safe point, and tool calls are counted so a step is never cut during one (`rafiki/steer.ts`). The session compacts before a request that would come near the key's tokens per minute limit (`rafiki/tpm.ts`). The compaction check before a request uses the size the request would have, and a request over `compaction.warn_at` shows one line suggesting /compact (`rafiki/context-size.ts`). The project instructions are the first reading of the session until it is compacted, so an edit of AGENTS.md does not rewrite the start of the prefix (`rafiki/cache-prefix.ts`). The tier of each request is chosen by task when the session's tier is not pinned, with the compaction before an escalated request, and `/deep` and `/review` are recorded as signals (`rafiki/routing.ts`); a title of an unpinned session is written by rafiki-fast."
     },
     {
       "path": "packages/opencode/src/session/retry.ts",

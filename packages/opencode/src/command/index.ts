@@ -10,6 +10,7 @@ import { Skill } from "../skill"
 import PROMPT_INITIALIZE from "./template/initialize.txt"
 import PROMPT_REVIEW from "./template/review.txt"
 import { LegacyEvent } from "@opencode-ai/schema/legacy-event"
+import * as RafikiRouting from "@/rafiki/routing"
 
 type State = {
   commands: Record<string, Info>
@@ -46,6 +47,7 @@ export function hints(template: string) {
 export const Default = {
   INIT: "init",
   REVIEW: "review",
+  DEEP: "deep",
 } as const
 
 export interface Interface {
@@ -85,6 +87,15 @@ const layer = Layer.effect(
         },
         subtask: true,
         hints: hints(PROMPT_REVIEW),
+      }
+
+      // The message on Rafiki Pro for this turn, then back to the session's tier (rafiki/routing.ts).
+      commands[Default.DEEP] = {
+        name: Default.DEEP,
+        description: RafikiRouting.DEEP_DESCRIPTION,
+        source: "command",
+        template: "$ARGUMENTS",
+        hints: ["$ARGUMENTS"],
       }
 
       for (const [name, command] of Object.entries(cfg.command ?? {})) {
