@@ -57,6 +57,7 @@ import { ProviderV2 } from "@opencode-ai/core/provider"
 import { eq } from "drizzle-orm"
 import { SessionTable } from "@opencode-ai/core/session/sql"
 import { SessionReminders } from "./reminders"
+import * as RafikiDesign from "@/rafiki/design"
 import { SessionTools } from "./tools"
 import { LLMEvent } from "@opencode-ai/llm"
 import * as RafikiReasoning from "@/rafiki/reasoning"
@@ -1502,6 +1503,13 @@ const layer = Layer.effect(
             Effect.provideService(FSUtil.Service, fsys),
             Effect.provideService(Session.Service, sessions),
           )
+          // User interface work: the design guide and the layout plan (rafiki/design.ts).
+          RafikiDesign.apply({
+            messages: msgs,
+            settings: (yield* config.get()).design,
+            agent: agent.name,
+            subagent: !!session.parentID,
+          })
 
           const msg: SessionV1.Assistant = {
             id: MessageID.ascending(),

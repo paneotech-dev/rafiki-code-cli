@@ -160,7 +160,7 @@
     {
       "path": "packages/core/src/v1/config/config.ts",
       "class": "text",
-      "why": "The `compaction.prune` description gives this product's default (on for Rafiki tiers). The `verify` key configures the checks after a change (`rafiki/verify.ts`). The `channel` key is the update channel (`rafiki/update.ts`). The `compaction.threshold` and `compaction.warn_at` keys set the compaction point and the large request line (`rafiki/context-size.ts`). The `tool_output.max_bytes` description gives the cap of `rafiki/tool-output.ts` (32768) and says the head and the tail are kept."
+      "why": "The `compaction.prune` description gives this product's default (on for Rafiki tiers). The `verify` key configures the checks after a change (`rafiki/verify.ts`). The `channel` key is the update channel (`rafiki/update.ts`). The `compaction.threshold` and `compaction.warn_at` keys set the compaction point and the large request line (`rafiki/context-size.ts`). The `tool_output.max_bytes` description gives the cap of `rafiki/tool-output.ts` (32768) and says the head and the tail are kept. The `design` key turns the design guide and the layout plan of user interface work on or off (`rafiki/design.ts`)."
     },
     {
       "path": "packages/core/src/v1/config/migrate.ts",
@@ -530,7 +530,7 @@
     {
       "path": "packages/opencode/src/session/prompt.ts",
       "class": "hook",
-      "why": "The order of the system text (`rafiki/cache-prefix.ts`), continuation messages (`rafiki/resume.ts`) and the one retry, then the error, for an empty answer cut by the length limit (`rafiki/reasoning.ts`). Old tool output is pruned before the first request of a turn (`rafiki/prune.ts`). The project memory goes last in the stable system text, read once per session (`rafiki/memory.ts`). Before a turn that changed files ends, the project's checks run and a failure is sent back for a fix round; the working practice that goes with them opens the system text (`rafiki/verify-turn.ts`). A prompt marked \"send now\" asks the running turn to take it at its next safe point, and tool calls are counted so a step is never cut during one (`rafiki/steer.ts`). The session compacts before a request that would come near the key's tokens per minute limit (`rafiki/tpm.ts`). The compaction check before a request uses the size the request would have, and a request over `compaction.warn_at` shows one line suggesting /compact (`rafiki/context-size.ts`). The project instructions are the first reading of the session until it is compacted, so an edit of AGENTS.md does not rewrite the start of the prefix (`rafiki/cache-prefix.ts`). The tier of each request is chosen by task when the session's tier is not pinned, with the compaction before an escalated request, and `/deep` and `/review` are recorded as signals (`rafiki/routing.ts`); a title of an unpinned session is written by rafiki-fast. The acceptance criteria of a new task are written before its first request, and the change is reviewed against them after the checks, with one more round when some are not met (`rafiki/review-turn.ts`)."
+      "why": "The order of the system text (`rafiki/cache-prefix.ts`), continuation messages (`rafiki/resume.ts`) and the one retry, then the error, for an empty answer cut by the length limit (`rafiki/reasoning.ts`). Old tool output is pruned before the first request of a turn (`rafiki/prune.ts`). The project memory goes last in the stable system text, read once per session (`rafiki/memory.ts`). Before a turn that changed files ends, the project's checks run and a failure is sent back for a fix round; the working practice that goes with them opens the system text (`rafiki/verify-turn.ts`). A prompt marked \"send now\" asks the running turn to take it at its next safe point, and tool calls are counted so a step is never cut during one (`rafiki/steer.ts`). The session compacts before a request that would come near the key's tokens per minute limit (`rafiki/tpm.ts`). The compaction check before a request uses the size the request would have, and a request over `compaction.warn_at` shows one line suggesting /compact (`rafiki/context-size.ts`). The project instructions are the first reading of the session until it is compacted, so an edit of AGENTS.md does not rewrite the start of the prefix (`rafiki/cache-prefix.ts`). The tier of each request is chosen by task when the session's tier is not pinned, with the compaction before an escalated request, and `/deep` and `/review` are recorded as signals (`rafiki/routing.ts`); a title of an unpinned session is written by rafiki-fast. The acceptance criteria of a new task are written before its first request, and the change is reviewed against them after the checks, with one more round when some are not met (`rafiki/review-turn.ts`). On user interface work the design guide and the layout plan note are added to the request in memory (`rafiki/design.ts`)."
     },
     {
       "path": "packages/opencode/src/session/retry.ts",
@@ -560,7 +560,7 @@
     {
       "path": "packages/opencode/src/skill/index.ts",
       "class": "logic",
-      "why": "The built in configuration skill is this product's, hidden skills are removed, and skill discovery honours the switch that disables project configuration."
+      "why": "The built in configuration skill is this product's, hidden skills are removed, and skill discovery honours the switch that disables project configuration. The design guide (`core/brand/design.ts`) is a built in skill too."
     },
     {
       "path": "packages/opencode/src/snapshot/index.ts",
@@ -590,7 +590,7 @@
     {
       "path": "packages/opencode/src/tool/registry.ts",
       "class": "hook",
-      "why": "Tool directories pass through `BrandTrust.codeDirs` (workspace trust). `memory_update` (`tool/memory.ts`) is registered and hidden when the project memory is off (`rafiki/memory.ts`). The session id goes to the truncation of plugin tool results (`rafiki/tool-output.ts`)."
+      "why": "Tool directories pass through `BrandTrust.codeDirs` (workspace trust). `memory_update` (`tool/memory.ts`) is registered and hidden when the project memory is off (`rafiki/memory.ts`). The session id goes to the truncation of plugin tool results (`rafiki/tool-output.ts`). The `screenshot` tool (`tool/screenshot.ts`, `rafiki/browser.ts`) is registered."
     },
     {
       "path": "packages/opencode/src/tool/shell.ts",

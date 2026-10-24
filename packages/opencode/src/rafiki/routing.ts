@@ -24,6 +24,12 @@
 //                goes back to the session's tier: the session's tier itself is
 //                never changed.
 //
+// look           (lookTier) the screenshot tool on a tier that takes no images: the
+//                pictures go to the cheapest tier that takes them
+//                (Brand.provider.images), never to rafiki-max unless the
+//                session is on it, and the answer comes back as text. No such
+//                tier: no look, the page is described by its measures.
+//
 // Each choice is logged (the debug log, "routing") and kept per assistant
 // message, so `rafikicode run --format json` puts the tier and the reason on
 // its step events. RAFIKICODE_ROUTING=off turns the whole thing off.
@@ -31,6 +37,7 @@ import { Brand } from "@opencode-ai/core/brand/brand"
 
 export const FAST = "rafiki-fast"
 export const PRO = "rafiki-pro"
+export const MAX = "rafiki-max"
 // Context size above which an escalated request compacts the session first.
 export const COMPACT_FIRST = 60_000
 
@@ -143,6 +150,19 @@ export function choose(input: {
           : "compaction summary"
   if (input.tier === FAST) return keep(`${what}: session tier`)
   return { tier: FAST, reason: `${what}: rafiki-fast`, escalated: false }
+}
+
+// The tier that looks at screenshots for a session on a tier without images,
+// or undefined when there is none to send them to. Not bound by the pin: the
+// session's own tier cannot see them at all.
+export function lookTier(input: { providerID: string | undefined; tier: string; env?: Env }): Decision | undefined {
+  if (!rafiki(input.providerID)) return undefined
+  if (!enabled(input.env)) return undefined
+  const images = Brand.provider.images
+  if (images.includes(input.tier)) return undefined
+  const tier = (Brand.models as readonly string[]).find((item) => images.includes(item) && item !== MAX)
+  if (!tier) return undefined
+  return { tier, reason: `look: ${input.tier} takes no images, ${tier} looks at the screenshots`, escalated: false }
 }
 
 // The signal of a turn from its user message and the turn so far (the plan

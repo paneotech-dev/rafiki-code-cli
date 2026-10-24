@@ -68,6 +68,15 @@ const unlistedModels: readonly string[] = []
 // unknown message field through to some of them, so they get no marker.
 // RAFIKICODE_CACHE_MARKERS overrides the list for one run.
 const cacheMarkerModels: readonly string[] = ["rafiki-max"]
+// Tiers that take images (screenshots, attached pictures). The model behind
+// rafiki-max reads images. Measured on the gateway 2026-10-24 with a plain
+// colour PNG: rafiki-fast (deepseek-flash) and rafiki-pro (deepseek-v4-pro)
+// both answer without seeing it (the image is dropped, about 50 prompt
+// tokens; measured again after v0.1.12 the same day). Add a tier here once the
+// gateway hands its images through: the look step of the screenshot tool is
+// then routed to it (rafiki/routing.ts, purpose "look"); until then the tool
+// describes the page to a tier without images in numbers.
+const imageModels: readonly string[] = ["rafiki-max"]
 
 // What each tier can take, from the documentation of the model behind it on
 // the gateway (/opt/rafiki/litellm-config.yaml on staging, read 2026-10-04).
@@ -335,6 +344,11 @@ export const Brand = {
   markCommand(command: unknown) {
     surfaceCommand = typeof command === "string" ? command : undefined
   },
+  // The command this process runs; undefined in the terminal interface, whose
+  // sessions run in a worker of their own.
+  command(): string | undefined {
+    return surfaceCommand
+  },
   // Built-in upstream skills not offered here: customize-opencode teaches the
   // upstream config file names and schema URL, which are wrong for rafikicode.
   hiddenSkills: ["customize-opencode"] as readonly string[],
@@ -415,6 +429,9 @@ export const Brand = {
     // Update channel: "stable" or "pre". Wins over the `channel` setting of
     // the global configuration (rafiki/update.ts channel()).
     updateChannel: "RAFIKICODE_UPDATE_CHANNEL",
+    // Path of the browser the screenshot tool drives (Chrome, Chromium, Edge
+    // or Brave), when it is not in one of the usual places (rafiki/browser.ts).
+    browser: "RAFIKICODE_BROWSER",
   },
   // Where builds are published. The installer script and the self updater read
   // these; the release workflow tags v<version> and uploads the archives plus
@@ -712,6 +729,8 @@ export const Brand = {
     unlisted: unlistedModels,
     // The tiers whose requests carry a prompt cache marker (see cacheMarkerModels).
     cacheMarkers: cacheMarkerModels,
+    // The tiers that take images (see imageModels).
+    images: imageModels,
     // True when a model may be offered in a model list. Models of other
     // providers are not this switch's business.
     listed(provider: string, model: string) {
@@ -778,7 +797,8 @@ export const Brand = {
                   name: labels[id],
                   tool_call: true,
                   reasoning: false,
-                  attachment: false,
+                  attachment: imageModels.includes(id),
+                  ...(imageModels.includes(id) ? { modalities: { input: ["text", "image"], output: ["text"] } } : {}),
                   temperature: true,
                   limit: { context: tierLimits[id].context, input: tierLimits[id].input, output: request.output },
                   cost: { input: 0, output: 0 },

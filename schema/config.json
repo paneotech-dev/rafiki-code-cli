@@ -1377,6 +1377,21 @@
           "additionalProperties": false,
           "description": "Acceptance criteria and a review pass on a second model before a task is reported as done"
         },
+        "design": {
+          "type": "object",
+          "properties": {
+            "guide": {
+              "type": "boolean",
+              "description": "Add the built-in design guide (spacing, type scale, colour, states, responsive, accessibility) to a session whose request is user interface work (default: true)"
+            },
+            "plan": {
+              "type": "boolean",
+              "description": "On user interface work, reply first with a short layout plan (sections, components, states) and wait for an answer before writing code (default: true; never in run, where nobody can answer)"
+            }
+          },
+          "additionalProperties": false,
+          "description": "User interface work: the design guide and the layout plan before building"
+        },
         "experimental": {
           "type": "object",
           "properties": {

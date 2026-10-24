@@ -73,20 +73,20 @@ counted with `git diff --numstat -M` against the upstream base.
 
 <!-- upstream-files:start -->
 
-Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 215. Changed lines: 8712 (5692 added, 3020 removed).
+Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 215. Changed lines: 8751 (5731 added, 3020 removed).
 
 | Class | Files | Added | Removed |
 | --- | ---: | ---: | ---: |
-| Source: a call into this fork's modules | 60 | 1809 | 318 |
-| Source: product name, file names and wording | 42 | 379 | 210 |
-| Source: behaviour changed in place | 21 | 739 | 244 |
-| Tests of upstream, adapted | 37 | 731 | 181 |
+| Source: a call into this fork's modules | 60 | 1821 | 318 |
+| Source: product name, file names and wording | 42 | 393 | 210 |
+| Source: behaviour changed in place | 21 | 748 | 244 |
+| Tests of upstream, adapted | 37 | 735 | 181 |
 | Generated files | 4 | 389 | 188 |
 | Package identity and packaging | 9 | 20 | 479 |
 | Documentation | 23 | 197 | 1182 |
 | Repository tooling and workflows | 6 | 23 | 8 |
 | Editor extension | 13 | 1405 | 210 |
-| Total | 215 | 5692 | 3020 |
+| Total | 215 | 5731 | 3020 |
 
 ### Source: a call into this fork's modules
 
@@ -134,7 +134,7 @@ On a conflict: Take upstream's side of the conflict, then put the call back at t
 | `packages/opencode/src/session/message-v2.ts` | 2 | 1 | A replaced old tool output is sent as the marker of `rafiki/prune.ts`, which names the call and how to run it again. |
 | `packages/opencode/src/session/overflow.ts` | 8 | 1 | A session is compacted no later than the compaction point of `rafiki/context-size.ts` (150000 tokens on the Rafiki tiers, `compaction.threshold`, `RAFIKICODE_COMPACT_AT`), below the window less the output reserve. |
 | `packages/opencode/src/session/processor.ts` | 89 | 4 | Retries, error wording and resuming a cut stream go through `rafiki/resilience.ts` and `rafiki/resume.ts`; the tier that answered is recorded on the message through `rafiki/served.ts`. A step stops at a safe point when a message marked "send now" waits (`rafiki/steer.ts`). A refusal over the key's tokens per minute limit compacts once and then stops with a message (`rafiki/tpm.ts`). A request refused over the gateway's input cap compacts the session and is sent once more without an error; refused again after that, the turn stops with one message instead of compacting in a loop (`rafiki/input-cap.ts`). |
-| `packages/opencode/src/session/prompt.ts` | 359 | 14 | The order of the system text (`rafiki/cache-prefix.ts`), continuation messages (`rafiki/resume.ts`) and the one retry, then the error, for an empty answer cut by the length limit (`rafiki/reasoning.ts`). Old tool output is pruned before the first request of a turn (`rafiki/prune.ts`). The project memory goes last in the stable system text, read once per session (`rafiki/memory.ts`). Before a turn that changed files ends, the project's checks run and a failure is sent back for a fix round; the working practice that goes with them opens the system text (`rafiki/verify-turn.ts`). A prompt marked "send now" asks the running turn to take it at its next safe point, and tool calls are counted so a step is never cut during one (`rafiki/steer.ts`). The session compacts before a request that would come near the key's tokens per minute limit (`rafiki/tpm.ts`). The compaction check before a request uses the size the request would have, and a request over `compaction.warn_at` shows one line suggesting /compact (`rafiki/context-size.ts`). The project instructions are the first reading of the session until it is compacted, so an edit of AGENTS.md does not rewrite the start of the prefix (`rafiki/cache-prefix.ts`). The tier of each request is chosen by task when the session's tier is not pinned, with the compaction before an escalated request, and `/deep` and `/review` are recorded as signals (`rafiki/routing.ts`); a title of an unpinned session is written by rafiki-fast. The acceptance criteria of a new task are written before its first request, and the change is reviewed against them after the checks, with one more round when some are not met (`rafiki/review-turn.ts`). |
+| `packages/opencode/src/session/prompt.ts` | 367 | 14 | The order of the system text (`rafiki/cache-prefix.ts`), continuation messages (`rafiki/resume.ts`) and the one retry, then the error, for an empty answer cut by the length limit (`rafiki/reasoning.ts`). Old tool output is pruned before the first request of a turn (`rafiki/prune.ts`). The project memory goes last in the stable system text, read once per session (`rafiki/memory.ts`). Before a turn that changed files ends, the project's checks run and a failure is sent back for a fix round; the working practice that goes with them opens the system text (`rafiki/verify-turn.ts`). A prompt marked "send now" asks the running turn to take it at its next safe point, and tool calls are counted so a step is never cut during one (`rafiki/steer.ts`). The session compacts before a request that would come near the key's tokens per minute limit (`rafiki/tpm.ts`). The compaction check before a request uses the size the request would have, and a request over `compaction.warn_at` shows one line suggesting /compact (`rafiki/context-size.ts`). The project instructions are the first reading of the session until it is compacted, so an edit of AGENTS.md does not rewrite the start of the prefix (`rafiki/cache-prefix.ts`). The tier of each request is chosen by task when the session's tier is not pinned, with the compaction before an escalated request, and `/deep` and `/review` are recorded as signals (`rafiki/routing.ts`); a title of an unpinned session is written by rafiki-fast. The acceptance criteria of a new task are written before its first request, and the change is reviewed against them after the checks, with one more round when some are not met (`rafiki/review-turn.ts`). On user interface work the design guide and the layout plan note are added to the request in memory (`rafiki/design.ts`). |
 | `packages/opencode/src/session/retry.ts` | 10 | 3 | Which gateway errors are never retried and how long to wait (`rafiki/gateway-errors.ts`, `rafiki/resilience.ts`). A status code in a message is read only where the message gives one (at the start, in brackets, after status, code, HTTP or error), never from digits inside a token count. |
 | `packages/opencode/src/session/revert.ts` | 2 | 0 | A cut turn is recovered before a revert (`rafiki/resume.ts`). |
 | `packages/opencode/src/session/system.ts` | 6 | 1 | System prompts pass through `Brand.prompt`; the date line leaves the environment block because `rafiki/cache-prefix.ts` places it after the stable part; the gateway provider's prompt starts with `Brand.identity`. |
@@ -142,7 +142,7 @@ On a conflict: Take upstream's side of the conflict, then put the call back at t
 | `packages/opencode/src/tool/apply_patch.ts` | 3 | 0 | A patch to a file in `.rafiki/memory/` is refused: the project memory changes only through `memory_update` (`rafiki/memory.ts`). |
 | `packages/opencode/src/tool/edit.ts` | 2 | 0 | An edit to a file in `.rafiki/memory/` is refused: the project memory changes only through `memory_update` (`rafiki/memory.ts`). |
 | `packages/opencode/src/tool/read.ts` | 3 | 1 | A page of a file is at most the cap of `rafiki/tool-output.ts` (32 KB). |
-| `packages/opencode/src/tool/registry.ts` | 10 | 2 | Tool directories pass through `BrandTrust.codeDirs` (workspace trust). `memory_update` (`tool/memory.ts`) is registered and hidden when the project memory is off (`rafiki/memory.ts`). The session id goes to the truncation of plugin tool results (`rafiki/tool-output.ts`). |
+| `packages/opencode/src/tool/registry.ts` | 14 | 2 | Tool directories pass through `BrandTrust.codeDirs` (workspace trust). `memory_update` (`tool/memory.ts`) is registered and hidden when the project memory is off (`rafiki/memory.ts`). The session id goes to the truncation of plugin tool results (`rafiki/tool-output.ts`). The `screenshot` tool (`tool/screenshot.ts`, `rafiki/browser.ts`) is registered. |
 | `packages/opencode/src/tool/shell.ts` | 60 | 45 | Before a command that publishes code, the tool asks the "publish" question built by `rafiki/publish-guard.ts`. The shell question carries the working folder, and the process of each command is recorded for auto mode (`rafiki/auto-mode.ts`). Long output is sent as its head and tail with the counts and the file in the session folder (`rafiki/tool-output.ts`); the end of the output is read from the pipe after the command exits, until nothing arrives for two seconds. |
 | `packages/opencode/src/tool/todo.ts` | 7 | 4 | A todo list the model writes keeps the acceptance criteria of the task (`rafiki/review.ts`). |
 | `packages/opencode/src/tool/tool.ts` | 1 | 1 | The session id goes to the truncation, which writes the full output into the session folder (`rafiki/tool-output.ts`). |
@@ -165,7 +165,7 @@ On a conflict: Take upstream's side, then replace the literal with the value fro
 | `packages/core/src/oauth/page.ts` | 11 | 26 | The sign in result page names this product and shows its name where upstream draws its wordmark. |
 | `packages/core/src/plugin/agent.ts` | 2 | 1 | The plan agent may edit plans under each project directory name in `Brand.project.dirs`. |
 | `packages/core/src/plugin/command/initialize.txt` | 3 | 3 | Prompt text names this product and its configuration file. |
-| `packages/core/src/v1/config/config.ts` | 63 | 2 | The `compaction.prune` description gives this product's default (on for Rafiki tiers). The `verify` key configures the checks after a change (`rafiki/verify.ts`). The `channel` key is the update channel (`rafiki/update.ts`). The `compaction.threshold` and `compaction.warn_at` keys set the compaction point and the large request line (`rafiki/context-size.ts`). The `tool_output.max_bytes` description gives the cap of `rafiki/tool-output.ts` (32768) and says the head and the tail are kept. |
+| `packages/core/src/v1/config/config.ts` | 77 | 2 | The `compaction.prune` description gives this product's default (on for Rafiki tiers). The `verify` key configures the checks after a change (`rafiki/verify.ts`). The `channel` key is the update channel (`rafiki/update.ts`). The `compaction.threshold` and `compaction.warn_at` keys set the compaction point and the large request line (`rafiki/context-size.ts`). The `tool_output.max_bytes` description gives the cap of `rafiki/tool-output.ts` (32768) and says the head and the tail are kept. The `design` key turns the design guide and the layout plan of user interface work on or off (`rafiki/design.ts`). |
 | `packages/opencode/src/cli/cmd/agent.ts` | 2 | 1 | New agents are written under this product's project directory. |
 | `packages/opencode/src/cli/cmd/debug/index.ts` | 2 | 1 | The version line names this product. |
 | `packages/opencode/src/cli/cmd/mcp.ts` | 7 | 5 | Messages name this product; the configuration file candidates come from the brand module. |
@@ -224,7 +224,7 @@ On a conflict: Merge by hand and read both sides. These are the files to thin ne
 | `packages/opencode/src/config/parse.ts` | 38 | 0 | `normalizeLoaded` and `issuesOf` live beside the decoder so that `doctor` validates a file the way a session does, without loading the configuration layer. |
 | `packages/opencode/src/installation/index.ts` | 71 | 113 | The update source, the install method detection and the upgrade commands are this product's (`rafiki/update.ts`); upstream's installer and package addresses are removed. |
 | `packages/opencode/src/server/routes/instance/httpapi/handlers/global.ts` | 3 | 0 | A global dispose also reads the global configuration again, so a new sign-in from the terminal interface (`tier-choice.tsx`) reaches the provider with its new key. |
-| `packages/opencode/src/skill/index.ts` | 29 | 16 | The built in configuration skill is this product's, hidden skills are removed, and skill discovery honours the switch that disables project configuration. |
+| `packages/opencode/src/skill/index.ts` | 38 | 16 | The built in configuration skill is this product's, hidden skills are removed, and skill discovery honours the switch that disables project configuration. The design guide (`core/brand/design.ts`) is a built in skill too. |
 | `packages/opencode/src/snapshot/index.ts` | 33 | 4 | A snapshot is bounded (10,000 files, 10 seconds) and skipped in the home folder or a filesystem root (`rafiki/workspace.ts`), so the first model request never waits on a scan of an unbounded tree. Upstream stages one pathspec per file, which grows with the square of the count. |
 | `packages/tui/src/context/permission.tsx` | 37 | 8 | The permission mode (ask, auto, plan) read and saved per project through `core/brand/permission-mode.ts`, replacing the upstream auto toggle. |
 | `packages/tui/src/feature-plugins/sidebar/context.tsx` | 26 | 24 | The block describes the last request (`core/brand/context.ts`): tokens sent, the cached part, the share of the window of the tier that answered, tokens received; the amount from the model price table is removed, the spend block of `feature-plugins/rafiki-cost.tsx` reads it from the gateway. |
@@ -270,7 +270,7 @@ On a conflict: Take upstream's side, then apply the expectation of this product 
 | `packages/opencode/test/session/llm-native-recorded.test.ts` | 1 | 0 | Providers that are disabled by default here are enabled for the test. |
 | `packages/opencode/test/session/message-v2.test.ts` | 5 | 1 | Expects the marker of `rafiki/prune.ts` for a replaced tool output. |
 | `packages/opencode/test/session/prompt.test.ts` | 1 | 0 | The test instance is given its configuration explicitly. |
-| `packages/opencode/test/skill/skill.test.ts` | 20 | 0 | The built in configuration skill is this product's. |
+| `packages/opencode/test/skill/skill.test.ts` | 24 | 0 | The built in configuration skill is this product's. |
 | `packages/opencode/test/tool/truncation.test.ts` | 16 | 2 | The default keeps the head and the tail and the cap is 32 KB (`rafiki/tool-output.ts`); the head only case passes direction head. |
 | `packages/tui/test/app-lifecycle.test.tsx` | 2 | 2 | Command name and the credentials message. |
 | `packages/tui/test/theme.test.ts` | 5 | 5 | Default theme name. |
