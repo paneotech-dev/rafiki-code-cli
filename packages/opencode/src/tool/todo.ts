@@ -2,6 +2,7 @@ import { Effect, Schema } from "effect"
 import * as Tool from "./tool"
 import DESCRIPTION_WRITE from "./todowrite.txt"
 import { Todo } from "../session/todo"
+import { keepCriteria } from "@/rafiki/review"
 
 export const Parameters = Schema.Struct({
   todos: Schema.mutable(Schema.Array(Todo.Info)).annotate({ description: "The updated todo list" }),
@@ -28,16 +29,18 @@ export const TodoWriteTool = Tool.define<typeof Parameters, Metadata, Todo.Servi
             metadata: {},
           })
 
+          // The acceptance criteria of the task stay in the list (rafiki/review.ts).
+          const todos = keepCriteria(yield* todo.get(ctx.sessionID), params.todos)
           yield* todo.update({
             sessionID: ctx.sessionID,
-            todos: params.todos,
+            todos,
           })
 
           return {
-            title: `${params.todos.filter((x) => x.status !== "completed").length} todos`,
-            output: JSON.stringify(params.todos, null, 2),
+            title: `${todos.filter((x) => x.status !== "completed").length} todos`,
+            output: JSON.stringify(todos, null, 2),
             metadata: {
-              todos: params.todos,
+              todos,
             },
           }
         }),

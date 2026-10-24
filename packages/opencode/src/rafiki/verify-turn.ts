@@ -25,6 +25,8 @@ export interface Input {
   ask: (commands: string[]) => Effect.Effect<boolean>
   sessions: Pick<Session.Interface, "updateMessage" | "updatePart">
   env?: Record<string, string | undefined>
+  // Told the outcome of the checks once the step is over (the review pass reads it).
+  onFinal?: (result: Verify.Result) => void
 }
 
 export const afterTurn = Effect.fnUntraced(function* (input: Input) {
@@ -75,6 +77,7 @@ export const afterTurn = Effect.fnUntraced(function* (input: Input) {
     return "again" as const
   }
 
+  input.onFinal?.(result)
   const now = Date.now()
   const meta: Verify.FinalMeta = { kind: "final", rounds: turn.rounds, result }
   yield* input.sessions.updatePart({

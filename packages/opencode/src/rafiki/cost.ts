@@ -11,7 +11,7 @@ import * as Cost from "@opencode-ai/core/brand/cost"
 import * as Meter from "@opencode-ai/core/brand/meter"
 import type { OpencodeClient } from "@opencode-ai/sdk/v2"
 import { UI } from "@/cli/ui"
-import { metaOf } from "./verify"
+import { isRound } from "./verify"
 
 // Subagents of subagents are followed this deep.
 const DEPTH = 3
@@ -40,16 +40,14 @@ export function stepsOf(items: readonly Item[]): Cost.Tokens[] {
   )
 }
 
-// A fix round of the verify step (rafiki/verify.ts) counts as part of the
-// turn it follows, so the tier path names the turn once.
+// A fix round of the verify step (rafiki/verify.ts) or of the review pass
+// (rafiki/review.ts) counts as part of the turn it follows, so the tier path names the turn once.
 export function withVerifyRounds(items: readonly Item[]): Cost.MessageLike[] {
   const origin = new Map<string, string>()
   let last: string | undefined
   for (const item of items) {
     if (item.info.role !== "user") continue
-    const round = (item.parts ?? []).some(
-      (part) => metaOf(part as { type: string; metadata?: Record<string, unknown> })?.kind === "feedback",
-    )
+    const round = isRound((item.parts ?? []) as { type: string; metadata?: Record<string, unknown> }[])
     if (!round || !last) last = item.info.id
     origin.set(item.info.id, last)
   }

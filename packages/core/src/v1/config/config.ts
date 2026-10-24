@@ -211,6 +211,22 @@ export const Info = Schema.Struct({
   ).annotate({
     description: "The verify step: a turn that changed files is not reported as done until the project's checks pass",
   }),
+  review: Schema.optional(
+    Schema.Struct({
+      enabled: Schema.optional(Schema.Boolean).annotate({
+        description:
+          "Write 3 to 5 acceptance criteria at the start of a task that is not trivial, and review the change against them before the task is done (default: true; RAFIKICODE_REVIEW overrides it)",
+      }),
+      model: Schema.optional(Schema.String).annotate({
+        description: "Model of the review, as provider/model (default: rafiki-pro on the Rafiki tiers, else the session's model)",
+      }),
+      rounds: Schema.optional(NonNegativeInt).annotate({
+        description: "Extra rounds after a review with criteria not met, 0 or 1 (default: 1)",
+      }),
+    }),
+  ).annotate({
+    description: "Acceptance criteria and a review pass on a second model before a task is reported as done",
+  }),
   experimental: Schema.optional(
     Schema.Struct({
       disable_paste_summary: Schema.optional(Schema.Boolean),

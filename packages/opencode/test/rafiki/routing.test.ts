@@ -28,6 +28,22 @@ describe("the rules", () => {
     }
   })
 
+  test("the review pass runs on rafiki-pro pinned or not, the criteria are cheap work", () => {
+    for (const pinned of [false, true])
+      expect(Routing.choose({ ...base, purpose: "review", tier: "rafiki-fast", pinned })).toEqual({
+        tier: "rafiki-pro",
+        reason: "review: the review step",
+        escalated: true,
+      })
+    expect(Routing.choose({ ...base, purpose: "review", tier: "rafiki-max", pinned: false }).tier).toBe("rafiki-max")
+    expect(Routing.choose({ ...base, purpose: "criteria", tier: "rafiki-pro", pinned: false })).toEqual({
+      tier: "rafiki-fast",
+      reason: "acceptance criteria: rafiki-fast",
+      escalated: false,
+    })
+    expect(Routing.choose({ ...base, purpose: "criteria", tier: "rafiki-pro", pinned: true }).tier).toBe("rafiki-pro")
+  })
+
   test("a difficulty signal escalates an unpinned turn to rafiki-pro, never to rafiki-max", () => {
     for (const signal of ["deep", "plan", "failing", "review"] as const) {
       const decision = Routing.choose({ ...base, purpose: "turn", tier: "rafiki-fast", pinned: false, signal })

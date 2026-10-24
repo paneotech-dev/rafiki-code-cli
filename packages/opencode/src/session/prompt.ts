@@ -67,6 +67,11 @@ import { TuiEvent } from "@/server/tui-event"
 import * as RafikiGateway from "@/rafiki/gateway-errors"
 import * as RafikiResume from "@/rafiki/resume"
 import * as RafikiVerify from "@/rafiki/verify-turn"
+import * as RafikiReview from "@/rafiki/review-turn"
+import * as RafikiServed from "@/rafiki/served"
+import { Usage } from "@opencode-ai/llm"
+import { Snapshot } from "@/snapshot"
+import { Todo } from "./todo"
 import * as RafikiSteer from "@/rafiki/steer"
 
 // @ts-ignore
@@ -169,6 +174,8 @@ const layer = Layer.effect(
     const events = yield* EventV2Bridge.Service
     const flags = yield* RuntimeFlags.Service
     const database = yield* Database.Service
+    const snapshot = yield* Snapshot.Service
+    const todo = yield* Todo.Service
     const { db } = database
     const ops = Effect.fn("SessionPrompt.ops")(function* () {
       return {
@@ -218,6 +225,68 @@ const layer = Layer.effect(
       )
       return parts
     })
+
+    // One request outside the conversation, for the acceptance criteria and the
+    // review pass (rafiki/review-turn.ts): its text and its cost, undefined on failure.
+    const askAside =
+      (sessionID: SessionID, user: SessionV1.User): RafikiReview.Ask =>
+      (input) =>
+        Effect.gen(function* () {
+          const base = yield* agents.get("title")
+          if (!base) return undefined
+          const mdl = yield* provider
+            .getModel(ProviderV2.ID.make(input.model.providerID), ModelV2.ID.make(input.model.modelID))
+            .pipe(Effect.catch(() => provider.getModel(user.model.providerID, user.model.modelID)))
+        yield* Effect.logInfo("routing", {
+          "session.id": sessionID,
+          purpose: input.system === RafikiReview.Review.REVIEW_SYSTEM ? "review" : "criteria",
+          tier: mdl.id,
+          reason: input.model.reason ?? "",
+          session_tier: user.model.modelID,
+        })
+          const agent: Agent.Info = { ...base, name: "review", prompt: input.system, temperature: 0 }
+          let text = ""
+          let cost = 0
+          yield* llm
+            .stream({
+              agent,
+              user,
+              system: [],
+              small: input.small,
+              tools: {},
+              model: mdl,
+              sessionID,
+              retries: 2,
+              messages: [{ role: "user", content: input.prompt }],
+            })
+            .pipe(
+              Stream.runForEach((event) =>
+                Effect.sync(() => {
+                  if (LLMEvent.is.textDelta(event)) text += event.text
+                  if (LLMEvent.is.stepFinish(event)) {
+                    const usage = Session.getUsage({
+                      model: mdl,
+                      usage: event.usage ?? new Usage({}),
+                      metadata: event.providerMetadata,
+                    })
+                    cost += RafikiServed.stepCost({
+                      providerID: mdl.providerID,
+                      computed: usage.cost,
+                      metadata: event.providerMetadata,
+                    })
+                  }
+                }),
+              ),
+            )
+          return { text, cost }
+        }).pipe(
+          Effect.timeout("120 seconds"),
+          Effect.catchCause((cause) =>
+            Effect.logWarning("side request failed", { "session.id": sessionID, error: Cause.squash(cause) }).pipe(
+              Effect.as(undefined),
+            ),
+          ),
+        )
 
     const title = Effect.fn("SessionPrompt.ensureTitle")(function* (input: {
       session: Session.Info
@@ -1203,6 +1272,7 @@ const layer = Layer.effect(
                 yield* events.publish(Session.Event.Error, { sessionID, error: emptyLength })
               }
               // The project's checks run before the turn is reported as done (rafiki/verify-turn.ts).
+              let checks: RafikiVerify.Verify.Result | undefined
               const verified =
                 emptyLength || session.parentID
                   ? "done"
@@ -1215,6 +1285,7 @@ const layer = Layer.effect(
                       settings: (yield* config.get()).verify,
                       shell: (yield* config.get()).shell,
                       sessions,
+                      onFinal: (result) => (checks = result),
                       ask: (commands) =>
                         Effect.gen(function* () {
                           const agent = yield* agents.get(lastUser.agent)
@@ -1234,12 +1305,56 @@ const layer = Layer.effect(
                         }),
                     })
               if (verified === "again") continue
+              // The review of the change against the task's criteria (rafiki/review-turn.ts).
+              const reviewed =
+                emptyLength || session.parentID
+                  ? "done"
+                  : yield* RafikiReview.afterTurn({
+                      user: lastUser,
+                      assistant: lastAssistant,
+                      messages: msgs,
+                      directory: ctx.directory,
+                      root: ctx.project.vcs === "git" ? ctx.worktree : ctx.directory,
+                      settings: (yield* config.get()).review,
+                      checks,
+                      diff: (from) =>
+                        from
+                          ? snapshot.diff(from).pipe(
+                              Effect.map((text) => text || undefined),
+                              Effect.catchCause(() => Effect.succeed(undefined)),
+                            )
+                          : Effect.succeed(undefined),
+                      ask: askAside(sessionID, lastUser),
+                      sessions,
+                      todos: todo,
+                      pinned: RafikiRouting.pinned(sessionID),
+                    })
+              if (reviewed === "again") continue
               yield* Effect.logInfo("exiting loop", { "session.id": sessionID })
               break
             }
           }
 
           step++
+          // The acceptance criteria of a new task, before its first request (rafiki/review-turn.ts).
+          if (step === 1 && !session.parentID) {
+            const message = msgs.find((msg) => msg.info.id === lastUser.id)
+            const part = message
+              ? yield* RafikiReview.start({
+                  user: lastUser,
+                  message,
+                  messages: msgs,
+                  root: ctx.project.vcs === "git" ? ctx.worktree : ctx.directory,
+                  settings: (yield* config.get()).review,
+                  verify: (yield* config.get()).verify,
+                  ask: askAside(sessionID, lastUser),
+                  sessions,
+                  todos: todo,
+                  pinned: RafikiRouting.pinned(sessionID),
+                })
+              : undefined
+            if (part && message) message.parts.push(part)
+          }
           if (step === 1)
             yield* title({
               session,
@@ -1853,6 +1968,8 @@ export const node = LayerNode.make({
     EventV2Bridge.node,
     RuntimeFlags.node,
     Database.node,
+    Snapshot.node,
+    Todo.node,
   ],
 })
 

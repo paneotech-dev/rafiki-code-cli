@@ -119,7 +119,7 @@ export function rounds(settings: Settings | undefined) {
 
 export const PRACTICE = [
   "# Working on a code change",
-  "- When the task reports a bug, reproduce it first: write a failing test, or run a short script that shows the wrong behaviour. Then fix the code, then run the relevant tests again and make sure they pass.",
+  "- When the task reports a bug, reproduce it first: write a test that fails because of the bug (a short script when the project has no test setup), run it and see it fail. Then fix the code, run it again until it passes, run the relevant existing tests, and keep the test.",
   "- Prefer reading the code that matters and editing it over long exploration of the repository. Once you understand the cause, make the change.",
   "- Network access may be restricted. Do not try to download packages, upstream releases or reference copies of the project to compare against; work from the code in front of you.",
   "- After a turn that changes files, the project's checks run automatically. If they fail, you get the failure and fix it; do not report success while a check fails.",
@@ -619,13 +619,24 @@ export function metaOf(part: { type: string; metadata?: Record<string, unknown> 
   return kind === "feedback" || kind === "final" ? (value as Meta) : undefined
 }
 
+// A round of the review pass (rafiki/review.ts) continues the turn too.
+function reviewRound(part: { type: string; metadata?: Record<string, unknown> }) {
+  if (part.type !== "text") return false
+  const value = part.metadata?.["review"] as { kind?: unknown } | undefined
+  return value?.kind === "feedback"
+}
+
+// True for a message the session added to continue a turn: a verify fix
+// round or a review round.
+export function isRound(parts: readonly { type: string; metadata?: Record<string, unknown> }[]) {
+  return parts.some((part) => metaOf(part)?.kind === "feedback" || reviewRound(part))
+}
+
 // The turn so far: from the last user message the user wrote (not a verify
-// round) to the end. Returns the files it changed, absolute, and how many
-// verify rounds it has had.
+// or review round) to the end. Returns the files it changed, absolute, and
+// how many verify rounds it has had.
 export function turn(messages: SessionV1.WithParts[], directory: string) {
-  const start = messages.findLastIndex(
-    (msg) => msg.info.role === "user" && !msg.parts.some((part) => metaOf(part)?.kind === "feedback"),
-  )
+  const start = messages.findLastIndex((msg) => msg.info.role === "user" && !isRound(msg.parts))
   const since = start === -1 ? [] : messages.slice(start)
   const used = since.filter(
     (msg) => msg.info.role === "user" && msg.parts.some((part) => metaOf(part)?.kind === "feedback"),

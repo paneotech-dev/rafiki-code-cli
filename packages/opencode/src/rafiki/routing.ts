@@ -6,8 +6,12 @@
 //                names one), `model` in the configuration, or an agent with a
 //                model of its own. A pinned session keeps its tier for every
 //                request; only an explicit /deep (or `run --deep`) moves a turn.
-// cheap work     on an unpinned session, explore subagents, session titles and
-//                compaction summaries go to rafiki-fast.
+// cheap work     on an unpinned session, explore subagents, session titles,
+//                compaction summaries and the acceptance criteria of a task
+//                (rafiki/review.ts) go to rafiki-fast.
+// the review     the review pass before a task is done (rafiki/review.ts) is
+//                a second opinion: it runs on rafiki-pro on any Rafiki tier,
+//                pinned or not, unless the session is on a stronger tier.
 // escalation     a turn goes to rafiki-pro on a difficulty signal only:
 //                  deep      /deep or `rafikicode run --deep`
 //                  plan      the plan agent on a wide change
@@ -32,7 +36,7 @@ export const COMPACT_FIRST = 60_000
 
 export const DEEP_DESCRIPTION = "send this message on Rafiki Pro, then go back to the session's tier"
 
-export type Purpose = "turn" | "subagent" | "title" | "compaction"
+export type Purpose = "turn" | "subagent" | "title" | "compaction" | "criteria" | "review"
 export type Signal = "deep" | "plan" | "failing" | "review"
 
 export interface Decision {
@@ -114,6 +118,11 @@ export function choose(input: {
   const tiers = Brand.models as readonly string[]
   if (!tiers.includes(input.tier)) return keep("not a Rafiki tier")
 
+  if (input.purpose === "review") {
+    if (strength(input.tier) >= strength(PRO)) return keep(`${reasons.review}; already on ${input.tier}`)
+    return { tier: PRO, reason: reasons.review, escalated: true }
+  }
+
   if (input.purpose === "turn" || (input.purpose === "subagent" && input.signal === "review")) {
     const signal = input.signal
     // /deep is the person's own choice, pinned or not; the others only on an unpinned session.
@@ -124,7 +133,14 @@ export function choose(input: {
 
   if (input.pinned) return keep("pinned tier")
   if (input.purpose === "subagent" && input.agent !== "explore") return keep("session tier")
-  const what = input.purpose === "subagent" ? "exploration subagent" : input.purpose === "title" ? "session title" : "compaction summary"
+  const what =
+    input.purpose === "subagent"
+      ? "exploration subagent"
+      : input.purpose === "title"
+        ? "session title"
+        : input.purpose === "criteria"
+          ? "acceptance criteria"
+          : "compaction summary"
   if (input.tier === FAST) return keep(`${what}: session tier`)
   return { tier: FAST, reason: `${what}: rafiki-fast`, escalated: false }
 }
