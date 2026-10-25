@@ -14,9 +14,12 @@
 //    for one more round (`review.rounds`, 0 or 1). The answer ends with a line
 //    that says how the review went and what it cost.
 //
-// Off with `review.enabled: false` or RAFIKICODE_REVIEW=0. Trivial requests
-// (a typo, a rename, a question) get no criteria and no review, and a turn
-// that changed only documentation is not reviewed.
+// The criteria are on by default (`review.criteria: false` turns them off).
+// The review pass is opt-in: `review.enabled: true` or RAFIKICODE_REVIEW=1. On
+// the eval it caught none of the wrong edits and costs a request on every
+// task, so it stays off until a stronger criteria writer or reviewer shows a
+// gain. Trivial requests (a typo, a rename, a question) get no criteria and no
+// review, and a turn that changed only documentation is not reviewed.
 import path from "path"
 import { Brand } from "@opencode-ai/core/brand/brand"
 import { isNote } from "./stuck"
@@ -25,6 +28,7 @@ import * as Routing from "./routing"
 
 export interface Settings {
   enabled?: boolean
+  criteria?: boolean
   model?: string
   rounds?: number
 }
@@ -53,8 +57,14 @@ export function envSetting(env: Record<string, string | undefined> = process.env
   return undefined
 }
 
+// The review pass: off unless turned on.
 export function enabled(settings: Settings | undefined, env: Record<string, string | undefined> = process.env) {
-  return envSetting(env) ?? settings?.enabled ?? true
+  return envSetting(env) ?? settings?.enabled ?? false
+}
+
+// The acceptance criteria and the reproduce first steps: on unless turned off.
+export function criteriaEnabled(settings: Settings | undefined) {
+  return settings?.criteria ?? true
 }
 
 export function rounds(settings: Settings | undefined) {
@@ -184,9 +194,11 @@ export function withReproduction(criteria: Criteria): string[] {
 }
 
 // The note added to the request: the criteria and, for a bug, how to reproduce it first.
-export function note(input: { criteria: string[]; bug: boolean; testCommand?: string }) {
+export function note(input: { criteria: string[]; bug: boolean; testCommand?: string; reviewed?: boolean }) {
   const lines = [
-    "Acceptance criteria for this task (they are in the todo list; a review checks each one before the task is done):",
+    input.reviewed
+      ? "Acceptance criteria for this task (they are in the todo list; a review checks each one before the task is done):"
+      : "Acceptance criteria for this task (they are in the todo list; check each one before you say the task is done):",
     ...input.criteria.map((item, index) => `${index + 1}. ${item}`),
   ]
   if (input.bug) lines.push("", ...reproduce(input.testCommand))

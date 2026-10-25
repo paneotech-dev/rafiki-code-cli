@@ -112,6 +112,8 @@ describe("rafikicode run with criteria and the review pass", () => {
       Brand.env.trustWorkspace,
     ])
       delete env[k]
+    // The review is opt-in; these tests turn it on unless they say otherwise.
+    env[Brand.env.review] = "1"
     for (const [k, v] of Object.entries(input.env ?? {})) {
       if (v === undefined) delete env[k]
       else env[k] = v
@@ -221,15 +223,38 @@ describe("rafikicode run with criteria and the review pass", () => {
     expect(userTurns.length).toBe(1)
   }, 240_000)
 
-  test("RAFIKICODE_REVIEW=0 turns it off", async () => {
+  test("by default the criteria and the reproduce first steps are on, the review is off", async () => {
     const result = await run({
       calls: (turn) => (turn === 1 ? shell("echo good > value.cfg") : undefined),
       aside: (kind) => (kind === "criteria" ? CRITERIA : verdict(false, false, false)),
-      env: { [Brand.env.review]: "0" },
+      env: { [Brand.env.review]: undefined },
     })
     expect(result.exitCode).toBe(0)
+    expect(asides.map((item) => item.kind)).toEqual(["criteria"])
+    expect(userTurns[0]).toContain("check each one before you say the task is done")
+    expect(userTurns[0]).toContain("Reproduce it before you fix it")
+    expect(userTurns.length).toBe(1)
+    expect(result.all).not.toContain("review on")
+  }, 240_000)
+
+  test("RAFIKICODE_REVIEW=0 turns the review off, review.criteria false turns the criteria off", async () => {
+    const off = await run({
+      calls: (turn) => (turn === 1 ? shell("echo good > value.cfg") : undefined),
+      aside: (kind) => (kind === "criteria" ? CRITERIA : verdict(false, false, false)),
+      env: { [Brand.env.review]: "0", OPENCODE_CONFIG_CONTENT: JSON.stringify({ review: { enabled: true } }) },
+    })
+    expect(off.exitCode).toBe(0)
+    expect(asides.map((item) => item.kind)).toEqual(["criteria"])
+    await gateway.close()
+    asides = []
+    const none = await run({
+      calls: (turn) => (turn === 1 ? shell("echo good > value.cfg") : undefined),
+      aside: (kind) => (kind === "criteria" ? CRITERIA : verdict(false, false, false)),
+      env: { OPENCODE_CONFIG_CONTENT: JSON.stringify({ review: { criteria: false } }) },
+    })
+    expect(none.exitCode).toBe(0)
     expect(asides).toEqual([])
-    expect(result.all).not.toContain("criteria")
+    expect(none.all).not.toContain("criteria")
   }, 240_000)
 
   test("a turn that changed nothing is not reviewed", async () => {

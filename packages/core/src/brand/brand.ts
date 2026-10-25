@@ -385,8 +385,9 @@ export const Brand = {
     // The verify step after a turn that changed files: 1, on or true turns it
     // on, 0, off or false turns it off; it wins over verify.enabled.
     verify: "RAFIKICODE_VERIFY",
-    // Acceptance criteria and the review pass before a task is done: 1, on or
-    // true turns them on, 0, off or false turns them off; it wins over review.enabled.
+    // The review pass before a task is done: 1, on or true turns it on, 0, off
+    // or false turns it off; it wins over review.enabled. The acceptance
+    // criteria do not depend on it (review.criteria).
     review: "RAFIKICODE_REVIEW",
     // Stuck detection (the same failure three times): 0, off or false turns it off.
     stuck: "RAFIKICODE_STUCK",
