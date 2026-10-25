@@ -73,12 +73,12 @@ counted with `git diff --numstat -M` against the upstream base.
 
 <!-- upstream-files:start -->
 
-Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 219. Changed lines: 9128 (6068 added, 3060 removed).
+Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 219. Changed lines: 9132 (6072 added, 3060 removed).
 
 | Class | Files | Added | Removed |
 | --- | ---: | ---: | ---: |
 | Source: a call into this fork's modules | 60 | 2060 | 348 |
-| Source: product name, file names and wording | 42 | 410 | 210 |
+| Source: product name, file names and wording | 42 | 414 | 210 |
 | Source: behaviour changed in place | 23 | 782 | 249 |
 | Tests of upstream, adapted | 39 | 780 | 186 |
 | Generated files | 4 | 391 | 188 |
@@ -86,7 +86,7 @@ Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 219. Changed lin
 | Documentation | 23 | 197 | 1182 |
 | Repository tooling and workflows | 6 | 23 | 8 |
 | Editor extension | 13 | 1405 | 210 |
-| Total | 219 | 6068 | 3060 |
+| Total | 219 | 6072 | 3060 |
 
 ### Source: a call into this fork's modules
 
@@ -165,7 +165,7 @@ On a conflict: Take upstream's side, then replace the literal with the value fro
 | `packages/core/src/oauth/page.ts` | 11 | 26 | The sign in result page names this product and shows its name where upstream draws its wordmark. |
 | `packages/core/src/plugin/agent.ts` | 2 | 1 | The plan agent may edit plans under each project directory name in `Brand.project.dirs`. |
 | `packages/core/src/plugin/command/initialize.txt` | 3 | 3 | Prompt text names this product and its configuration file. |
-| `packages/core/src/v1/config/config.ts` | 94 | 2 | The `compaction.prune` description gives this product's default (on for Rafiki tiers). The `verify` key configures the checks after a change (`rafiki/verify.ts`). The `channel` key is the update channel (`rafiki/update.ts`). The `compaction.threshold` and `compaction.warn_at` keys set the compaction point and the large request line (`rafiki/context-size.ts`). The `tool_output.max_bytes` description gives the cap of `rafiki/tool-output.ts` (32768) and says the head and the tail are kept. The `design` key turns the design guide and the layout plan of user interface work on or off (`rafiki/design.ts`). |
+| `packages/core/src/v1/config/config.ts` | 98 | 2 | The `compaction.prune` description gives this product's default (on for Rafiki tiers). The `verify` key configures the checks after a change (`rafiki/verify.ts`). The `channel` key is the update channel (`rafiki/update.ts`). The `compaction.threshold` and `compaction.warn_at` keys set the compaction point and the large request line (`rafiki/context-size.ts`). The `tool_output.max_bytes` description gives the cap of `rafiki/tool-output.ts` (32768) and says the head and the tail are kept. The `design` key turns the design guide and the layout plan of user interface work on or off (`rafiki/design.ts`). |
 | `packages/opencode/src/cli/cmd/agent.ts` | 2 | 1 | New agents are written under this product's project directory. |
 | `packages/opencode/src/cli/cmd/debug/index.ts` | 2 | 1 | The version line names this product. |
 | `packages/opencode/src/cli/cmd/mcp.ts` | 7 | 5 | Messages name this product; the configuration file candidates come from the brand module. |
