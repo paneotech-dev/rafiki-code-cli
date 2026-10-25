@@ -1,6 +1,6 @@
 // The screenshot tool's pure parts and the project dev server it can start.
 import { describe, expect, test } from "bun:test"
-import { isLocal, lookPrompt, target } from "../../src/tool/screenshot"
+import { capturesThisTask, isLocal, LIMIT_MESSAGE, lookPrompt, MAX_CAPTURES, target } from "../../src/tool/screenshot"
 import * as DevServer from "../../src/rafiki/dev-server"
 
 describe("screenshot targets", () => {
@@ -18,6 +18,25 @@ describe("screenshot targets", () => {
     const text = lookPrompt("http://localhost:3000/", ["desktop", "mobile"], "a pricing table with three plans")
     expect(text).toContain("desktop and mobile")
     expect(text).toContain("a pricing table with three plans")
+  })
+})
+
+describe("captures per task", () => {
+  const user = (text: string, synthetic = false) => ({ info: { role: "user" }, parts: [{ type: "text", text, synthetic }] })
+  const shot = (status = "completed") => ({ info: { role: "assistant" }, parts: [{ type: "tool", tool: "screenshot", state: { status } }] })
+  const other = { info: { role: "assistant" }, parts: [{ type: "tool", tool: "bash", state: { status: "completed" } }] }
+  test("counts the captures since the person last wrote", () => {
+    expect(capturesThisTask([user("build the page"), shot(), other, shot(), shot("error")])).toBe(2)
+    expect(capturesThisTask([user("first"), shot(), shot(), shot(), user("now the footer"), shot()])).toBe(1)
+    expect(capturesThisTask([])).toBe(0)
+  })
+  test("a note the session adds does not start a new task", () => {
+    expect(capturesThisTask([user("build it"), shot(), shot(), user("stuck note", true), shot()])).toBe(3)
+  })
+  test("the limit message names the limit and forbids rendering another way", () => {
+    expect(MAX_CAPTURES).toBe(3)
+    expect(LIMIT_MESSAGE).toContain("3 screenshot captures")
+    expect(LIMIT_MESSAGE).toContain("debugging port")
   })
 })
 

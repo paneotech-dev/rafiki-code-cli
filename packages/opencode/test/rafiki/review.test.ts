@@ -61,6 +61,7 @@ describe("criteria", () => {
     expect(text).toContain("`python bin/test`")
     expect(text).toContain("Keep the test")
     expect(Review.note({ criteria: ["one"], bug: false })).not.toContain("Reproduce")
+    expect(Review.note({ criteria: ["one"], bug: false })).toContain("Mark them completed in one update")
   })
 
   test("a todo list written by the model keeps the criteria", () => {

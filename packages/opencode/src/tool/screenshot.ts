@@ -44,6 +44,33 @@ export function lookPrompt(url: string, names: string[], lookFor?: string) {
     .join("\n")
 }
 
+// Captures per task: the first after building, then one per round of fixes.
+// The eval of 25 Oct 2026 saw a pricing page captured five times and then
+// driven by hand through the browser's debugging port for looks only, at
+// eight times the cost of the same task without the tool.
+export const MAX_CAPTURES = 3
+
+type Message = { info: { role: string }; parts: readonly { type: string; tool?: string; synthetic?: boolean; state?: { status?: string } }[] }
+
+// The screenshots taken since the person last wrote: the parts the session
+// added for the model (criteria, reminders) do not start a new task.
+export function capturesThisTask(messages: readonly Message[]) {
+  let count = 0
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i]
+    if (message.info.role === "user" && message.parts.some((part) => part.type === "text" && !part.synthetic)) break
+    for (const part of message.parts)
+      if (part.type === "tool" && part.tool === "screenshot" && part.state?.status === "completed") count++
+  }
+  return count
+}
+
+export const LIMIT_MESSAGE = [
+  `This task has had ${MAX_CAPTURES} screenshot captures, the most one task gets.`,
+  "Finish from what the last capture reported: fix only problems it measured or that the request names, then answer, and say what you could not check.",
+  "Do not render the page another way (a browser started from the shell, its debugging port, a script).",
+].join(" ")
+
 type ModelInfo = { providerID?: string; id?: string; capabilities?: { input?: { image?: boolean } } }
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1", "0.0.0.0"])
@@ -128,6 +155,9 @@ export const ScreenshotTool = Tool.define<typeof Parameters, Record<string, unkn
               new Error(`Unknown viewport ${wrong.join(", ")}: use desktop, mobile or WIDTHxHEIGHT such as 1280x720.`),
             )
           const viewports = views.flatMap((entry) => (entry.view ? [entry.view] : []))
+
+          if (capturesThisTask(ctx.messages) >= MAX_CAPTURES)
+            return { title: "Capture limit", output: LIMIT_MESSAGE, metadata: { browser: false, limit: MAX_CAPTURES } }
 
           const browser = Browser.find()
           if (!browser) return { title: "No browser", output: Browser.missingMessage(), metadata: { browser: false } }

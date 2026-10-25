@@ -1,6 +1,6 @@
 Takes screenshots of a web page in a headless browser (an installed Chrome, Chromium, Edge or Brave) and measures it: sideways overflow, overlapping elements, text contrast, missing labels, console errors, element boxes.
 
-Use it to check user interface work: render the page, look at desktop and mobile, compare with the request, fix, and take another.
+Use it to check user interface work: render the page, look at desktop and mobile, compare with the request, fix, and take another only to confirm a fix. A task gets 3 captures; stop when a capture shows no problem.
 - Open a local HTML file by its path, a running server by its URL, or set dev_server to start the project's dev server (package.json dev, start, serve or preview script) in the background. It keeps running for later calls and stops when the session ends.
 - Viewports default to desktop (1440x900) and mobile (390x844); full_page captures the whole height.
 - The images are attached when the model takes images; the measures come as text either way. When it takes none, a Rafiki tier that takes images describes the pictures if there is one; look_for tells it what the page should show.
