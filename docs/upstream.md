@@ -73,11 +73,11 @@ counted with `git diff --numstat -M` against the upstream base.
 
 <!-- upstream-files:start -->
 
-Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 219. Changed lines: 9132 (6072 added, 3060 removed).
+Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 219. Changed lines: 9138 (6078 added, 3060 removed).
 
 | Class | Files | Added | Removed |
 | --- | ---: | ---: | ---: |
-| Source: a call into this fork's modules | 60 | 2060 | 348 |
+| Source: a call into this fork's modules | 60 | 2066 | 348 |
 | Source: product name, file names and wording | 42 | 414 | 210 |
 | Source: behaviour changed in place | 23 | 782 | 249 |
 | Tests of upstream, adapted | 39 | 780 | 186 |
@@ -86,7 +86,7 @@ Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 219. Changed lin
 | Documentation | 23 | 197 | 1182 |
 | Repository tooling and workflows | 6 | 23 | 8 |
 | Editor extension | 13 | 1405 | 210 |
-| Total | 219 | 6072 | 3060 |
+| Total | 219 | 6078 | 3060 |
 
 ### Source: a call into this fork's modules
 
@@ -137,7 +137,7 @@ On a conflict: Take upstream's side of the conflict, then put the call back at t
 | `packages/opencode/src/session/prompt.ts` | 453 | 14 | The order of the system text (`rafiki/cache-prefix.ts`), continuation messages (`rafiki/resume.ts`) and the one retry, then the error, for an empty answer cut by the length limit (`rafiki/reasoning.ts`). Old tool output is pruned before the first request of a turn (`rafiki/prune.ts`). The project memory goes last in the stable system text, read once per session (`rafiki/memory.ts`). Before a turn that changed files ends, the project's checks run and a failure is sent back for a fix round; the working practice that goes with them opens the system text (`rafiki/verify-turn.ts`). A prompt marked "send now" asks the running turn to take it at its next safe point, and tool calls are counted so a step is never cut during one (`rafiki/steer.ts`). The session compacts before a request that would come near the key's tokens per minute limit (`rafiki/tpm.ts`). The compaction check before a request uses the size the request would have, and a request over `compaction.warn_at` shows one line suggesting /compact (`rafiki/context-size.ts`). The project instructions are the first reading of the session until it is compacted, so an edit of AGENTS.md does not rewrite the start of the prefix (`rafiki/cache-prefix.ts`). The tier of each request is chosen by task when the session's tier is not pinned, with the compaction before an escalated request, and `/deep` and `/review` are recorded as signals (`rafiki/routing.ts`); a title of an unpinned session is written by rafiki-fast. The acceptance criteria of a new task are written before its first request, and the change is reviewed against them after the checks, with one more round when some are not met (`rafiki/review-turn.ts`). On user interface work the design guide and the layout plan note are added to the request in memory (`rafiki/design.ts`). |
 | `packages/opencode/src/session/retry.ts` | 10 | 3 | Which gateway errors are never retried and how long to wait (`rafiki/gateway-errors.ts`, `rafiki/resilience.ts`). A status code in a message is read only where the message gives one (at the start, in brackets, after status, code, HTTP or error), never from digits inside a token count. |
 | `packages/opencode/src/session/revert.ts` | 2 | 0 | A cut turn is recovered before a revert (`rafiki/resume.ts`). |
-| `packages/opencode/src/session/system.ts` | 6 | 1 | System prompts pass through `Brand.prompt`; the date line leaves the environment block because `rafiki/cache-prefix.ts` places it after the stable part; the gateway provider's prompt starts with `Brand.identity`. |
+| `packages/opencode/src/session/system.ts` | 12 | 1 | System prompts pass through `Brand.prompt`; the date line leaves the environment block because `rafiki/cache-prefix.ts` places it after the stable part; the gateway provider's prompt starts with `Brand.identity`, and its models get `prompt/rafiki.txt` instead of the upstream default (which asks for one word answers and for the user to name the check command, neither of which works headless). |
 | `packages/opencode/src/session/tools.ts` | 4 | 4 | The session id goes to the truncation of MCP results, which writes the full output into the session folder (`rafiki/tool-output.ts`). |
 | `packages/opencode/src/tool/apply_patch.ts` | 14 | 15 | A patch to a file in `.rafiki/memory/` is refused: the project memory changes only through `memory_update` (`rafiki/memory.ts`). |
 | `packages/opencode/src/tool/edit.ts` | 8 | 5 | An edit to a file in `.rafiki/memory/` is refused: the project memory changes only through `memory_update` (`rafiki/memory.ts`). The language checks after the edit go through `rafiki/edit-check.ts` (only new errors, a time limit, a syntax check when no server reports). |

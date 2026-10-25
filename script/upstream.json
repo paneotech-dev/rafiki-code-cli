@@ -560,7 +560,7 @@
     {
       "path": "packages/opencode/src/session/system.ts",
       "class": "hook",
-      "why": "System prompts pass through `Brand.prompt`; the date line leaves the environment block because `rafiki/cache-prefix.ts` places it after the stable part; the gateway provider's prompt starts with `Brand.identity`."
+      "why": "System prompts pass through `Brand.prompt`; the date line leaves the environment block because `rafiki/cache-prefix.ts` places it after the stable part; the gateway provider's prompt starts with `Brand.identity`, and its models get `prompt/rafiki.txt` instead of the upstream default (which asks for one word answers and for the user to name the check command, neither of which works headless)."
     },
     {
       "path": "packages/opencode/src/session/tools.ts",
