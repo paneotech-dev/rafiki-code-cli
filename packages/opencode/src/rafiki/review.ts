@@ -202,7 +202,13 @@ export function note(input: { criteria: string[]; bug: boolean; testCommand?: st
     ...input.criteria.map((item, index) => `${index + 1}. ${item}`),
   ]
   if (input.bug) lines.push("", ...reproduce(input.testCommand))
-  lines.push("", "Keep the criteria items in the todo list when you update it.")
+  // Each todo update is a request that carries the whole list: on the eval of
+  // 25 Oct 2026 small tasks spent up to a fifth of their cost ticking criteria
+  // one at a time. The todo tool keeps the items the model leaves out.
+  lines.push(
+    "",
+    "The todo list keeps these items when you rewrite it. Mark them completed in one update, once you have checked them all.",
+  )
   return lines.join("\n")
 }
 
