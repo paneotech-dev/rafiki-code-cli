@@ -13,6 +13,7 @@ describe("rafiki prompt", () => {
       expect(prompt).toContain("# Requirements")
       expect(prompt).toContain("If the same approach fails twice for the same reason")
       expect(prompt).toContain("A check that also fails without your change is not yours to fix")
+      expect(prompt).toContain("Run a check again only after you change the code it covers")
       expect(prompt).not.toContain("One word answers are best")
       expect(prompt).not.toContain("ask the user for the command")
     }

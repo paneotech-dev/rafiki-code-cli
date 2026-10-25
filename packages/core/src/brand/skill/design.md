@@ -94,4 +94,9 @@ left to defaults:
 4. Compare with the request and this guide: hierarchy, spacing, contrast,
    overflow at 390px, overlapping elements, console errors, states. When no
    image comes back, work from the measures it reports.
-5. Fix what is off. Stop after 3 rounds, and say what is left.
+5. Fix what is off, then capture again to confirm. Stop as soon as a capture
+   shows no overflow, overlap, contrast or console problem and the request's
+   requirements are met: polish alone is not a reason for another capture.
+   A task gets 3 captures; say what is left.
+6. The `screenshot` tool is the only way to render: do not start a browser from
+   the shell, use its debugging port or write capture scripts.
