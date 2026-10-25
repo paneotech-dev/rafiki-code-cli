@@ -54,6 +54,8 @@ describe("criteria", () => {
 
   test("the note gives the reproduce first steps for a bug, with the test command", () => {
     const text = Review.note({ criteria: ["one", "two"], bug: true, testCommand: "python bin/test" })
+    expect(text).toContain("check each one before you say the task is done")
+    expect(Review.note({ criteria: ["one"], bug: false, reviewed: true })).toContain("a review checks each one")
     expect(text).toContain("1. one\n2. two")
     expect(text).toContain("Reproduce it before you fix it")
     expect(text).toContain("`python bin/test`")
@@ -162,8 +164,12 @@ describe("the review", () => {
 })
 
 describe("settings", () => {
-  test("on by default, the env wins, one extra round at most", () => {
-    expect(Review.enabled(undefined, {})).toBe(true)
+  test("the review is opt-in, the criteria are on, the env wins, one extra round at most", () => {
+    expect(Review.enabled(undefined, {})).toBe(false)
+    expect(Review.enabled(undefined, { [Brand.env.review]: "1" })).toBe(true)
+    expect(Review.enabled({ enabled: true }, {})).toBe(true)
+    expect(Review.criteriaEnabled(undefined)).toBe(true)
+    expect(Review.criteriaEnabled({ criteria: false })).toBe(false)
     expect(Review.enabled({ enabled: true }, { [Brand.env.review]: "off" })).toBe(false)
     expect(Review.enabled({ enabled: false }, {})).toBe(false)
     expect(Review.rounds({ rounds: 4 })).toBe(1)

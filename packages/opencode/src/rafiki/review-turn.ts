@@ -35,6 +35,10 @@ function off(settings: Review.Settings | undefined, env?: Record<string, string 
   return Flag.OPENCODE_DISABLE_PROJECT_CONFIG || !Review.enabled(settings, env)
 }
 
+function noCriteria(settings: Review.Settings | undefined) {
+  return Flag.OPENCODE_DISABLE_PROJECT_CONFIG || !Review.criteriaEnabled(settings)
+}
+
 export interface StartInput {
   user: SessionV1.User
   message: SessionV1.WithParts
@@ -53,7 +57,7 @@ export interface StartInput {
 // The criteria of a new task: written once per message the user wrote, kept
 // in the todo list and in a note added to the message. Returns the note's part.
 export const start = Effect.fnUntraced(function* (input: StartInput) {
-  if (off(input.settings, input.env)) return undefined
+  if (noCriteria(input.settings)) return undefined
   if (input.user.format?.type === "json_schema" || input.user.agent === "plan") return undefined
   if (input.message.parts.some((part) => Review.metaOf(part))) return undefined
   // A message already answered (a resumed turn) keeps what it had.
@@ -85,7 +89,7 @@ export const start = Effect.fnUntraced(function* (input: StartInput) {
     sessionID: input.user.sessionID,
     type: "text",
     synthetic: true,
-    text: Review.note({ criteria, bug: parsed.bug, testCommand }),
+    text: Review.note({ criteria, bug: parsed.bug, testCommand, reviewed: Review.enabled(input.settings, input.env) }),
     metadata: { [Review.METADATA]: meta },
   }
   yield* input.sessions.updatePart(part)

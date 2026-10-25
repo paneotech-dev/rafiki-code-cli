@@ -1360,7 +1360,11 @@
           "properties": {
             "enabled": {
               "type": "boolean",
-              "description": "Write 3 to 5 acceptance criteria at the start of a task that is not trivial, and review the change against them before the task is done (default: true; RAFIKICODE_REVIEW overrides it)"
+              "description": "Review the change against the acceptance criteria on a second model before the task is done (default: false; RAFIKICODE_REVIEW overrides it)"
+            },
+            "criteria": {
+              "type": "boolean",
+              "description": "Write 3 to 5 acceptance criteria at the start of a task that is not trivial, and reproduce a reported bug with a failing test first (default: true)"
             },
             "model": {
               "type": "string",
@@ -1375,7 +1379,7 @@
             }
           },
           "additionalProperties": false,
-          "description": "Acceptance criteria and a review pass on a second model before a task is reported as done"
+          "description": "Acceptance criteria at the start of a task, and an opt-in review pass on a second model before it is reported as done"
         },
         "attempts": {
           "type": "object",

@@ -215,7 +215,11 @@ export const Info = Schema.Struct({
     Schema.Struct({
       enabled: Schema.optional(Schema.Boolean).annotate({
         description:
-          "Write 3 to 5 acceptance criteria at the start of a task that is not trivial, and review the change against them before the task is done (default: true; RAFIKICODE_REVIEW overrides it)",
+          "Review the change against the acceptance criteria on a second model before the task is done (default: false; RAFIKICODE_REVIEW overrides it)",
+      }),
+      criteria: Schema.optional(Schema.Boolean).annotate({
+        description:
+          "Write 3 to 5 acceptance criteria at the start of a task that is not trivial, and reproduce a reported bug with a failing test first (default: true)",
       }),
       model: Schema.optional(Schema.String).annotate({
         description: "Model of the review, as provider/model (default: rafiki-pro on the Rafiki tiers, else the session's model)",
@@ -225,7 +229,7 @@ export const Info = Schema.Struct({
       }),
     }),
   ).annotate({
-    description: "Acceptance criteria and a review pass on a second model before a task is reported as done",
+    description: "Acceptance criteria at the start of a task, and an opt-in review pass on a second model before it is reported as done",
   }),
   attempts: Schema.optional(
     Schema.Struct({
