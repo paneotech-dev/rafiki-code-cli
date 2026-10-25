@@ -119,9 +119,9 @@ describe("scan", () => {
   test("a stuck note is not a new turn for the review, and a review round is not one for stuck detection", () => {
     const note = user("n1", { stuck: { kind: "stuck", reason: "repeat", subject: "x", key: "k", count: 3 } })
     const messages = [user("u1"), assistant("a1", "u1", []), note, assistant("a2", "n1", [])] as never
-    expect(Review.turn(messages).start.info.id).toBe("u1")
+    expect(Review.turn(messages).start.info.id as string).toBe("u1")
     const review = user("r1", { review: { kind: "feedback" } })
-    expect(Stuck.turnMessages([user("u1"), review] as never)[0].info.id).toBe("u1")
+    expect(Stuck.turnMessages([user("u1"), review] as never)[0].info.id as string).toBe("u1")
   })
 })
 
