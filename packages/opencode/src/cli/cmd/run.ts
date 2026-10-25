@@ -38,6 +38,7 @@ import * as RafikiCost from "@/rafiki/cost"
 import * as RafikiServed from "@/rafiki/served"
 import * as RafikiTierCheck from "@/rafiki/tier-check"
 import * as RafikiReasoning from "@/rafiki/reasoning"
+import * as RafikiEmptyStep from "@/rafiki/empty-step"
 import * as RafikiVerify from "@/rafiki/verify"
 import * as RafikiReview from "@/rafiki/review"
 import * as RafikiStuck from "@/rafiki/stuck"
@@ -1044,7 +1045,8 @@ export const RunCommand = effectCmd({
             }
 
             // A turn that spent its whole output budget reasoning is tried
-            // again once (rafiki/reasoning.ts), and a session compacted to stay
+            // again once (rafiki/reasoning.ts), so is an empty step
+            // (rafiki/empty-step.ts), and a session compacted to stay
             // under the key's tokens per minute limit (rafiki/tpm.ts); one line
             // says so.
             if (
@@ -1052,6 +1054,7 @@ export const RunCommand = effectCmd({
               event.properties.sessionID === sessionID &&
               event.properties.status.type === "retry" &&
               (RafikiReasoning.isRetryLine(event.properties.status.message) ||
+                RafikiEmptyStep.isRetryLine(event.properties.status.message) ||
                 RafikiTpm.isNotice(event.properties.status.message))
             ) {
               const line = event.properties.status.message

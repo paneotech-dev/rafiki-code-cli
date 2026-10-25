@@ -61,6 +61,7 @@ import * as RafikiDesign from "@/rafiki/design"
 import { SessionTools } from "./tools"
 import { LLMEvent } from "@opencode-ai/llm"
 import * as RafikiReasoning from "@/rafiki/reasoning"
+import * as RafikiEmptyStep from "@/rafiki/empty-step"
 import * as RafikiTpm from "@/rafiki/tpm"
 import * as RafikiContext from "@/rafiki/context-size"
 import * as RafikiRouting from "@/rafiki/routing"
@@ -1262,6 +1263,19 @@ const layer = Layer.effect(
                     })
                   })
                 : undefined
+            // A step with no text and no tool call (rafiki/empty-step.ts) is
+            // tried again once; the step before it says whether that happened.
+            // After a cut step that holds text, an empty continuation means the
+            // answer was already complete (rafiki/resume.ts), so it is not one.
+            const lastIndex = lastAssistantMsg ? msgs.indexOf(lastAssistantMsg) : -1
+            const before = lastIndex > 0 ? msgs.slice(0, lastIndex).findLast((m) => m.info.role === "assistant") : undefined
+            const previous = before?.info.role === "assistant" ? before.info : undefined
+            const empty =
+              !emptyLength &&
+              RafikiEmptyStep.applies(lastAssistant, lastAssistantMsg?.parts) &&
+              !(before && RafikiResume.isCutText(before))
+            const emptyRetry = empty && !RafikiEmptyStep.retried(previous, lastUser.id)
+            const ended = emptyLength ?? (empty && !emptyRetry ? RafikiEmptyStep.error() : undefined)
             if (plan) {
               // Tried again once, below, with the larger budget; the empty
               // turn keeps the line as its note and is not sent again.
@@ -1270,16 +1284,28 @@ const layer = Layer.effect(
               yield* sessions.updateMessage(lastAssistant)
               yield* status.set(sessionID, { type: "retry", attempt: 1, message: plan.line, next: Date.now() })
               yield* Effect.logInfo("reasoning exhausted, retrying", { "session.id": sessionID, output: plan.output })
+            } else if (emptyRetry) {
+              // Tried again below with the same messages; the empty step keeps
+              // the line as its note and is not sent again.
+              lastAssistant.error = RafikiEmptyStep.retryNote()
+              yield* sessions.updateMessage(lastAssistant)
+              yield* status.set(sessionID, { type: "retry", attempt: 1, message: RafikiEmptyStep.RETRY_LINE, next: Date.now() })
+              yield* Effect.logWarning("empty step, retrying", {
+                "session.id": sessionID,
+                messageID: lastAssistant.id,
+                finish: lastAssistant.finish,
+                parts: (lastAssistantMsg?.parts ?? []).map((part) => part.type).join(","),
+              })
             } else {
-              if (emptyLength) {
-                lastAssistant.error = emptyLength
+              if (ended) {
+                lastAssistant.error = ended
                 yield* sessions.updateMessage(lastAssistant)
-                yield* events.publish(Session.Event.Error, { sessionID, error: emptyLength })
+                yield* events.publish(Session.Event.Error, { sessionID, error: ended })
               }
               // The project's checks run before the turn is reported as done (rafiki/verify-turn.ts).
               let checks: RafikiVerify.Verify.Result | undefined
               const verified =
-                emptyLength || session.parentID
+                ended || session.parentID
                   ? "done"
                   : yield* RafikiVerify.afterTurn({
                       user: lastUser,
@@ -1326,7 +1352,7 @@ const layer = Layer.effect(
               if (verified === "again") continue
               // The review of the change against the task's criteria (rafiki/review-turn.ts).
               const reviewed =
-                emptyLength || session.parentID
+                ended || session.parentID
                   ? "done"
                   : yield* RafikiReview.afterTurn({
                       user: lastUser,

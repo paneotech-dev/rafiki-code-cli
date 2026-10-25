@@ -94,10 +94,11 @@ export function createMockGateway(options = {}) {
     // { "rafiki-fast": "rafiki-pro" }: answer a request for the first on the
     // second, the way the gateway does after a fallback (every chunk names it).
     answeredBy: options.answeredBy,
-    // (body) => { content, toolCall, delayMs, wordDelayMs } | undefined: a reply of its
+    // (body) => { content, toolCall, raw, delayMs, wordDelayMs } | undefined: a reply of its
     // own for the requests it picks (the risk check of auto mode, a script of
     // tool calls), after an optional delay; undefined leaves the request to
-    // the rules above.
+    // the rules above. raw is an event stream body sent byte for byte, to
+    // replay a stream the real gateway sent.
     respond: options.respond,
     refuse: options.refuse,
     // (kind, body) => string | undefined: the answer to a request of the
@@ -336,6 +337,10 @@ export function createMockGateway(options = {}) {
       const custom = opts.respond?.(body)
       if (custom?.delayMs) await new Promise((resolve) => setTimeout(resolve, custom.delayMs))
       if (custom && (res.destroyed || res.writableEnded)) return
+      if (custom?.raw !== undefined && body.stream === true) {
+        res.writeHead(200, { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache", connection: "keep-alive", ...headers })
+        return res.end(custom.raw)
+      }
       if (custom && !custom.toolCall) {
         if (body.stream === true) return stream(res, model, custom.content ?? "", headers, false, usage, custom.wordDelayMs)
         return json(res, 200, completion(model, custom.content ?? "", false, usage), headers)
