@@ -341,6 +341,36 @@ In `rafikicode run`, the criteria print as `~ criteria: 1. ... 2. ...` and a rou
 
 Like the checks, the criteria and the review are off when project configuration is disabled, and subagents do not run them.
 
+## Parallel attempts
+
+A hard task can be done two or three ways at once, keeping only the best change:
+
+- `/attempts 3 <task>` in the terminal interface, or `rafikicode run --attempts 3 "<task>"` (2 or 3).
+- `RAFIKICODE_ATTEMPTS=3` gives every `rafikicode run` that many attempts; `RAFIKICODE_ATTEMPTS=off` turns them off, the automatic ones included.
+- With `"attempts": { "auto": true }`, `rafikicode run` also uses them by itself on a hard task, by the same signs as [Tier by task](#tier-by-task) that are known before the task starts: `--deep`, or a wide change (a refactor, a migration, a change across the project, five or more files named). Off by default.
+
+Each attempt works in its own copy of the project: a git worktree of the current commit with your uncommitted changes, untracked files and small ignored files at the top (such as `.env`), or a plain copy when the folder is not a git repository. Dependency folders (`node_modules`, `vendor`, `.venv`, `venv`) are linked, not copied, so they are shared: a package an attempt installs is installed for the project too. Git must be installed.
+
+The attempts run on `rafiki-fast` (two Fast attempts cost less than one Pro answer). `"attempts": { "pro": true }`, or `--deep` with attempts, puts the last one on `rafiki-pro`; a model you chose with `--model` is kept. Each attempt gets a short hint with a different approach: the smallest change after reading the code and its callers, a test first, or the way the project already handles similar cases. Each runs the usual [checks](#verify) and, when the task is not trivial, the [acceptance criteria and the review](#acceptance-criteria-and-the-review).
+
+The attempt kept is the one whose checks passed; then the one with more criteria met by the review; ties go to the smaller diff. An attempt that stopped with an error or changed nothing is never kept. Only that change is applied to your working tree; when it no longer applies (you edited the same lines meanwhile), nothing is applied and the patch is saved in the temporary folder, with its path in the summary. Then one line per attempt and the total:
+
+```text
+attempt 1 (rafiki-fast, smallest change): checks passed (2 of 2), criteria 3 of 3, +4 -1 in 1 file, 0.012 USD, 95s  [kept]
+attempt 2 (rafiki-fast, test first): checks failing (1 of 2 passed), criteria 2 of 3, +31 -2 in 2 files, 0.018 USD, 140s
+attempts: kept attempt 1 (checks passed (2 of 2), attempt 2 checks failing (1 of 2 passed)), applied to the working tree; total 0.031 USD
+```
+
+The cost of an attempt is the gateway's figure for its requests and its review ("about" when some request had none); the total is the key's spend over all the attempts, read from the gateway. In the terminal interface the results then go to the session, which looks at the applied change and sums it up without doing the task again. `rafikicode run` exits 0 when a change was kept, 8 when it was kept with its checks failing, and 1 when nothing was kept; `--format json` gives an `attempt` event per attempt and a last `attempts` event (the attempt kept, the reason, every attempt, the total `cost`).
+
+The attempts run at the same time while the key's tokens per minute limit leaves about 500,000 tokens per attempt; otherwise fewer run at once and the others wait their turn. Their starts are a few seconds apart, and each one keeps every request under the gateway's input limit as any session does. Every copy and every process is removed at the end, after an error and on Ctrl+C. The attempts run in auto mode in their copies, with its guarded actions refused, since nobody can answer a question there; they never publish code. They cannot be combined with `--continue`, `--session`, `--attach` or `--command`.
+
+| setting | meaning |
+|---|---|
+| `attempts.auto` | `false` by default; `true` lets `rafikicode run` use attempts on a hard task without being asked |
+| `attempts.count` | the number of attempts of an automatic run, 2 or 3 (3 by default) |
+| `attempts.pro` | `false` by default; `true` puts the last attempt on `rafiki-pro` |
+
 ## Choosing a tier per project
 
 Put the model in the project file when a repository should always use a given tier:

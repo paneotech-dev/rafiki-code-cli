@@ -227,6 +227,23 @@ export const Info = Schema.Struct({
   ).annotate({
     description: "Acceptance criteria and a review pass on a second model before a task is reported as done",
   }),
+  attempts: Schema.optional(
+    Schema.Struct({
+      auto: Schema.optional(Schema.Boolean).annotate({
+        description:
+          "Run a hard task (rafikicode run with --deep, or a wide change) as parallel attempts without being asked (default: false)",
+      }),
+      count: Schema.optional(PositiveInt).annotate({
+        description: "Number of attempts of an automatic run, 2 or 3 (default: 3)",
+      }),
+      pro: Schema.optional(Schema.Boolean).annotate({
+        description: "Put the last attempt on rafiki-pro instead of rafiki-fast (default: false)",
+      }),
+    }),
+  ).annotate({
+    description:
+      "Parallel attempts: a task done 2 or 3 ways at once in copies of the project, keeping the change whose checks and review came out best (/attempts N, rafikicode run --attempts N)",
+  }),
   design: Schema.optional(
     Schema.Struct({
       guide: Schema.optional(Schema.Boolean).annotate({

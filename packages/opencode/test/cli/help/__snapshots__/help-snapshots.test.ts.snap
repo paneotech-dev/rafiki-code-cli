@@ -84,6 +84,8 @@ Options:
       --command             the command to run, use message for args                        [string]
       --deep                send the message on Rafiki Pro for this task, then go back to the
                             session's tier (the /deep command)                             [boolean]
+      --attempts            do the task 2 or 3 ways at once, each in a copy of the project, and keep
+                            the best change (the /attempts command)                         [number]
   -c, --continue, --resume  continue the last session                                      [boolean]
   -s, --session             session id to continue                                          [string]
       --fork                fork the session before continuing (requires --continue or --session)

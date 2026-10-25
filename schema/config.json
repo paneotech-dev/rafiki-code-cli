@@ -1377,6 +1377,27 @@
           "additionalProperties": false,
           "description": "Acceptance criteria and a review pass on a second model before a task is reported as done"
         },
+        "attempts": {
+          "type": "object",
+          "properties": {
+            "auto": {
+              "type": "boolean",
+              "description": "Run a hard task (rafikicode run with --deep, or a wide change) as parallel attempts without being asked (default: false)"
+            },
+            "count": {
+              "exclusiveMinimum": 0,
+              "type": "integer",
+              "maximum": 9007199254740991,
+              "description": "Number of attempts of an automatic run, 2 or 3 (default: 3)"
+            },
+            "pro": {
+              "type": "boolean",
+              "description": "Put the last attempt on rafiki-pro instead of rafiki-fast (default: false)"
+            }
+          },
+          "additionalProperties": false,
+          "description": "Parallel attempts: a task done 2 or 3 ways at once in copies of the project, keeping the change whose checks and review came out best (/attempts N, rafikicode run --attempts N)"
+        },
         "design": {
           "type": "object",
           "properties": {
