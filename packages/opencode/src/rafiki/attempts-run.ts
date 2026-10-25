@@ -291,7 +291,7 @@ function runOne(options: Options, workspace: Workspace, index: number, tier: str
   if (options.variant) args.push("--variant", options.variant)
   if (options.agent) args.push("--agent", options.agent)
   for (const file of options.files ?? []) args.push("--file", file)
-  args.push("--dir", workspace.dir, "--", Attempts.prompt(options.task, index, options.count))
+  args.push("--dir", workspace.dir, "--", Attempts.prompt(options.task, index, options.count, { original: options.dir, copy: workspace.dir }))
   const child =
     options.spawnRun?.(args, workspace.dir) ??
     (() => {

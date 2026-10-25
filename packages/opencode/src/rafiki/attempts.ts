@@ -131,12 +131,17 @@ export function tiers(input: { count: number; model?: string; pro?: boolean }): 
 }
 
 // The message of one attempt: the task, then its approach.
-export function prompt(task: string, index: number, count: number) {
+// where: the project folder and its copy, so a path the task gives to the
+// project is read as the same path in the copy.
+export function prompt(task: string, index: number, count: number, where?: { original: string; copy: string }) {
   const approach = APPROACHES[index % APPROACHES.length]!
+  const folder = where
+    ? `Work only in this copy, ${where.copy}: where the task names ${where.original}, use ${where.copy} instead, and never change files in ${where.original}.`
+    : "Work only in this folder."
   return [
     task,
     "",
-    `[Attempt ${index + 1} of ${count}, in a separate copy of the project. Approach for this attempt: ${approach.hint} Work only in this folder, do not ask questions, and finish the task here; do not commit or push.]`,
+    `[Attempt ${index + 1} of ${count}, in a separate copy of the project. Approach for this attempt: ${approach.hint} ${folder} Do not ask questions, and finish the task here; do not commit or push.]`,
   ].join("\n")
 }
 

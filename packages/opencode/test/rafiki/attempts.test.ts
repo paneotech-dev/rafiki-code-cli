@@ -81,6 +81,12 @@ describe("how attempts run", () => {
     }
   })
 
+  test("a path to the project means the same path in the copy", () => {
+    const text = Attempts.prompt("Fix /testbed/a.py.", 0, 2, { original: "/testbed", copy: "/tmp/x/attempt-1" })
+    expect(text).toContain("where the task names /testbed, use /tmp/x/attempt-1 instead")
+    expect(text).toContain("never change files in /testbed")
+  })
+
   test("the key's tokens per minute limit caps how many run at once", () => {
     expect(Attempts.concurrency(3, undefined)).toBe(3)
     expect(Attempts.concurrency(3, 2_000_000)).toBe(3)
