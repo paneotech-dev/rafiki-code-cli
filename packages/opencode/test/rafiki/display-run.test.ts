@@ -122,7 +122,9 @@ describe("rafikicode run against a gateway stand-in", () => {
     expect(main).toStartWith("You are Rafiki Code, a coding agent for the terminal made by PANEOTECH.")
     expect(main).toContain("answer that you are Rafiki Code by PANEOTECH")
     expect(main).toContain("the Rafiki Fast tier (rafiki-fast)")
-    expect(main).toContain("You are Rafiki Code, an interactive CLI tool")
+    // The Rafiki tiers get their own prompt (session/prompt/rafiki.txt), not the upstream default.
+    expect(main).toContain("You complete software tasks in the user's project from start to finish")
+    expect(main).not.toContain("an interactive CLI tool")
     expect(main).not.toContain("You are rafikicode")
   }, 120_000)
 })
