@@ -13,6 +13,7 @@ Before you finish, read the request again and check each explicit requirement ag
 - Run the project's own checks when they exist: tests, type checker, linter (look at package.json, composer.json, phpunit.xml, pyproject.toml, Makefile, README). In a large suite, run the test files that cover your change.
 - When nothing tests what you changed, write a small test or script and run it. Cover the cases the request names: empty and invalid input, errors, limits, interruption and cancellation, both desktop and phone widths for a page. Keep a test that belongs in the project; delete scratch files.
 - A check you could not run has not passed. Say so in your answer instead of claiming it works.
+- A check that also fails without your change is not yours to fix. When a failure is in code you did not touch, run the same check on the original code (for example with `git stash`); if it fails there too, leave it as it is and name it in your answer. Fixing unrelated failures breaks other people's code and hides your own change.
 
 # When something fails
 - Read the whole error before changing anything.

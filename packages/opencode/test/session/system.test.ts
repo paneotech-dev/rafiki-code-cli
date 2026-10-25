@@ -107,6 +107,7 @@ describe("session.system", () => {
       const prompt = SystemPrompt.provider({ providerID: "rafiki", id, api: { id } } as Provider.Model).join("\n")
       expect(prompt).toContain("# Requirements")
       expect(prompt).toContain("If the same approach fails twice for the same reason")
+      expect(prompt).toContain("A check that also fails without your change is not yours to fix")
       expect(prompt).not.toContain("One word answers are best")
     }
   })
