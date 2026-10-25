@@ -15,6 +15,7 @@ import PROMPT_META from "./prompt/meta.txt"
 
 import PROMPT_CODEX from "./prompt/codex.txt"
 import PROMPT_TRINITY from "./prompt/trinity.txt"
+import PROMPT_RAFIKI from "./prompt/rafiki.txt"
 import type { Provider } from "@/provider/provider"
 import type { Agent } from "@/agent/agent"
 import { Permission } from "@/permission"
@@ -32,6 +33,11 @@ export function provider(model: Provider.Model) {
 }
 
 function upstream(model: Provider.Model) {
+  // The Rafiki gateway tiers (DeepSeek V4 Pro and DeepSeek Flash behind them since
+  // 24 Oct 2026) get a prompt written for headless, end to end work: check every
+  // stated requirement, test before finishing, change approach after two equal
+  // failures, no internet lookups of the original fix (eval of 24 Oct 2026).
+  if (model.providerID === Brand.provider.id) return [PROMPT_RAFIKI]
   if (model.api.id.includes("muse")) {
     const name = model.api.id.includes("muse-glimmer") ? "Muse Glimmer" : "Muse Spark"
     return [PROMPT_META.replaceAll("{{MODEL_NAME}}", name)]
