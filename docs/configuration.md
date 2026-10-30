@@ -183,7 +183,8 @@ The rule is conservative:
 - The newest 20,000 tokens of tool output stay in full.
 - Only outputs of about 500 tokens (2,000 characters) or more are replaced.
 - Errors, commands that exited with a non-zero code, file edits and writes, skills and the todo list are always kept.
-- Nothing is replaced until at least 20,000 tokens can be removed at once, so the conversation changes in rare batches.
+- The newest run of each test, lint or type check command and the newest read of each file the session edits are always kept, however old.
+- Nothing is replaced before the context reaches two thirds of the compaction point (100,000 tokens by default; it follows `compaction.threshold` and `RAFIKICODE_COMPACT_AT`), and then only when at least 20,000 tokens can be removed at once, so the conversation changes in rare batches.
 
 The full output stays in the session on your machine; only what is sent to the model changes. The note names the call and its input, so the agent can run it again when it needs the text.
 
@@ -196,7 +197,8 @@ Providers bill input they have seen before at a lower rate when a request starts
 - The start of every request (system prompt, project instructions, tool definitions, project memory) is never changed during a session. The project instructions (`AGENTS.md` and the files in `instructions`) are read once per session: an edit made during the session is used after the next compaction, or in a new session. The date goes after that part, in a message of its own, and on `rafiki-max` its cache marker stays where it is. That part is read from the cache as before.
 - The conversation before the first replaced output is still read from the cache. From there on, the request after a batch is written to the cache again, once.
 - The note is built only from the call (tool, input, size), so once an output is replaced its text never changes again and is cached like the rest. On `rafiki-max` the markers on the last two messages move forward with the conversation as usual.
-- Because a batch removes at least 20,000 tokens, the one cache rewrite costs less than the input it saves on the following turns.
+- Input read from the cache costs a small share of the full price (about a fiftieth on `rafiki-fast`), so the request after a batch, sent at the full price from the first replaced output on, costs more than the batch saves on many later turns. That is why nothing is replaced until the session is close to its compaction point: there a batch puts the compaction off, which costs more again.
+- The compaction summary on `rafiki-fast` and `rafiki-pro` is asked for at the end of the conversation itself, with the same start (system prompt, instructions, tool definitions) and `tool_choice` set to `none`, so the provider reads almost all of that request from its cache. On `rafiki-max`, and when the summary goes to another tier or a `compaction` agent with its own model is configured, the summary request carries the conversation as text, as before.
 
 When asked who it is, the agent answers that it is Rafiki Code by PANEOTECH, and names the tier it runs on rather than guessing the model behind it.
 
