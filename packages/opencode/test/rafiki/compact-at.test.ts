@@ -124,10 +124,14 @@ async function run(side: Side, message: string, input?: string, extra: Record<st
 }
 
 const chats = (gateway: Gateway) => (gateway.requests as any[]).filter((entry) => entry.path === "/v1/chat/completions")
-// The requests of the task itself: they carry the tools.
-const task = (gateway: Gateway) => chats(gateway).filter((entry) => entry.tools > 0)
-const compactions = (gateway: Gateway) =>
-  (gateway.bodies as Body[]).filter((body) => JSON.stringify(body.json.messages).includes("Here is the conversation so far"))
+// A summary request: the transcript, or the replay of the turn with the summary instruction last.
+const isSummary = (body: Body) =>
+  JSON.stringify(body.json.messages).includes("Here is the conversation so far") ||
+  JSON.stringify(body.json.messages.at(-1)).includes("anchored summary")
+const compactions = (gateway: Gateway) => (gateway.bodies as Body[]).filter(isSummary)
+// The requests of the task itself: they carry the tools. A replayed summary carries them too, and is left out.
+const task = (gateway: Gateway) =>
+  chats(gateway).filter((entry) => entry.tools > 0 && !String(entry.last_user ?? "").includes("anchored summary"))
 
 describe("against the mock gateway", () => {
   test(

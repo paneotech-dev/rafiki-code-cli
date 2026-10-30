@@ -16,6 +16,7 @@ import { isOverflow } from "./overflow"
 import { PartID } from "./schema"
 import type { SessionID } from "./schema"
 import { SessionRetry } from "./retry"
+import * as RafikiCompactionReplay from "@/rafiki/compaction-replay"
 import * as RafikiTpm from "@/rafiki/tpm"
 import * as RafikiInputCap from "@/rafiki/input-cap"
 import * as RafikiGateway from "@/rafiki/gateway-errors"
@@ -637,6 +638,11 @@ const layer = Layer.effect(
           stack: e instanceof Error ? e.stack : undefined,
         })
         let error = RafikiResilience.describe(parse(e), e)
+        // A compaction replay that failed is written again from the transcript (rafiki/compaction-replay.ts).
+        if (RafikiCompactionReplay.active(ctx.assistantMessage.id)) {
+          ctx.assistantMessage.error = error
+          return
+        }
         // A request over the key's tokens per minute limit after the session
         // was already compacted for it: compacting again cannot help.
         if (

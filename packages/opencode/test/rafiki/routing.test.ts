@@ -189,7 +189,10 @@ async function run(side: Side, args: string[], input?: string) {
 
 const chats = (gateway: Gateway) => (gateway.requests as any[]).filter((entry) => entry.path === "/v1/chat/completions")
 const task = (gateway: Gateway) => chats(gateway).filter((entry) => entry.tools > 0)
-const isCompaction = (body: Body) => JSON.stringify(body.json.messages).includes("Here is the conversation so far")
+// A summary request: the transcript, or the replay of the turn with the summary instruction last.
+const isCompaction = (body: Body) =>
+  JSON.stringify(body.json.messages).includes("Here is the conversation so far") ||
+  JSON.stringify(body.json.messages.at(-1)).includes("anchored summary")
 const events = (stdout: string) =>
   stdout
     .split("\n")

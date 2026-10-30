@@ -12,6 +12,8 @@ import { Plugin } from "@/plugin"
 import { Config } from "@/config/config"
 import { NotFoundError } from "@/storage/storage"
 import * as RafikiPrune from "@/rafiki/prune"
+import * as RafikiContext from "@/rafiki/context-size"
+import * as RafikiCompactionReplay from "@/rafiki/compaction-replay"
 
 import { Effect, Layer, Context } from "effect"
 import { InstanceState } from "@/effect/instance-state"
@@ -21,7 +23,7 @@ import { RuntimeFlags } from "@/effect/runtime-flags"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { ProviderV2 } from "@opencode-ai/core/provider"
 import { ModelV2 } from "@opencode-ai/core/model"
-import { buildPrompt } from "@opencode-ai/core/session/compaction"
+import { buildPrompt, buildReplayPrompt } from "@opencode-ai/core/session/compaction"
 import * as RafikiTpm from "@/rafiki/tpm"
 import * as RafikiGateway from "@/rafiki/gateway-errors"
 import { SessionCompactionEvent } from "@opencode-ai/schema/session-compaction-event"
@@ -31,6 +33,12 @@ import * as RafikiRouting from "@/rafiki/routing"
 
 export const Event = SessionCompactionEvent
 
+// Tokens kept free for the system text, the tool definitions and the summary instruction when the summary
+// request replays the conversation (Run).
+const REPLAY_RESERVE = 20_000
+// What input read from the cache costs as a share of the full price, rounded up from the Rafiki tiers' price lists
+// (rafiki-fast 0.02, rafiki-pro 0.033).
+const REPLAY_CACHE_SHARE = 0.05
 export const PRUNE_MINIMUM = RafikiPrune.MINIMUM_TOKENS
 export const PRUNE_PROTECT = RafikiPrune.PROTECT_TOKENS
 const TOOL_OUTPUT_MAX_CHARS = 2_000
@@ -167,6 +175,17 @@ function splitTurn(input: {
   })
 }
 
+// Sends the summary request as the session's own turn request (system text, tool definitions, the conversation)
+// with the summary instruction as the last message, so it starts with the bytes the provider just cached.
+export type Run = (input: {
+  user: SessionV1.User
+  agent: Agent.Info
+  model: Provider.Model
+  processor: SessionProcessor.Handle
+  messages: SessionV1.WithParts[]
+  prompt: string
+}) => Effect.Effect<SessionProcessor.Result>
+
 export interface Interface {
   readonly isOverflow: (input: {
     tokens: SessionV1.Assistant["tokens"]
@@ -179,6 +198,7 @@ export interface Interface {
     sessionID: SessionID
     auto: boolean
     overflow?: boolean
+    run?: Run
   }) => Effect.Effect<"continue" | "stop">
   readonly create: (input: {
     sessionID: SessionID
@@ -288,7 +308,12 @@ const layer = Layer.effect(
       if (!RafikiPrune.enabled({ configured: cfg.compaction?.prune, providerID })) return
       yield* Effect.logInfo("pruning")
 
-      const found = RafikiPrune.select(msgs, { protect: PRUNE_PROTECT, minimum: PRUNE_MINIMUM })
+      const point = RafikiContext.compactAt({ compaction: cfg.compaction, providerID })
+      const found = RafikiPrune.select(msgs, {
+        protect: PRUNE_PROTECT,
+        minimum: PRUNE_MINIMUM,
+        from: point ? Math.floor(point * RafikiPrune.FROM_SHARE) : 0,
+      })
       yield* Effect.logInfo("found", { pruned: found.pruned, total: found.total })
       if (found.parts.length === 0) return
       const now = Date.now()
@@ -307,6 +332,7 @@ const layer = Layer.effect(
       sessionID: SessionID
       auto: boolean
       overflow?: boolean
+      run?: Run
     }) {
       const parent = input.messages.findLast((m) => m.info.id === input.parentID)
       if (!parent || parent.info.role !== "user") {
@@ -382,6 +408,41 @@ const layer = Layer.effect(
         8_000,
         RafikiGateway.isRafikiProvider(model.providerID) ? model.limit.input : undefined,
       )
+      // The summary as a replay of the turn (Run): when the summary goes to the session's own tier and nothing
+      // replaces the agent or the prompt. An overflow keeps the transcript above, which is cut to fit. The replay
+      // must also fit under the limits the transcript is cut to: the key's tokens per minute and the gateway's
+      // input cap, with room for the system text and the tool definitions.
+      const replayable =
+        input.run !== undefined &&
+        !input.overflow &&
+        !agent.model &&
+        compacting.prompt === undefined &&
+        model.id === userMessage.model.modelID &&
+        // A tier that caches only what a request marks (rafiki-max, Claude) prices cache reads and writes in
+        // another way and has not been measured with the replay: it keeps the transcript.
+        !CachePrefix.marks(model)
+      const replayAgent = replayable
+        ? yield* Effect.gen(function* () {
+            const size = (yield* estimate({ messages: history, model })) + REPLAY_RESERVE
+            const rafiki = RafikiGateway.isRafikiProvider(model.providerID)
+            const tpm = rafiki ? yield* Effect.promise(() => RafikiTpm.limit()) : undefined
+            const cap = rafiki ? model.limit.input : undefined
+            if ((tpm && size > tpm) || (cap && size > cap)) return undefined
+            // And it must cost less than the transcript. The replay sends again, at the full price, only what came
+            // after the last request (the last step's output and tool results); the rest is read from the cache
+            // at a small share of the price. The transcript is sent whole at the full price, but cuts each tool
+            // output short, so it is cheaper while the conversation is small.
+            const last = history.findLastIndex(
+              (item) => item.info.role === "assistant" && !item.info.summary && !!item.info.finish,
+            )
+            if (last < 0) return undefined
+            const info = history[last].info as SessionV1.Assistant
+            const cached = info.tokens.input + info.tokens.cache.read + info.tokens.cache.write
+            const added = yield* estimate({ messages: history.slice(last), model })
+            if (added + cached * REPLAY_CACHE_SHARE >= Token.estimate(conversation)) return undefined
+            return yield* agents.get(userMessage.agent)
+          })
+        : undefined
       const nextPrompt =
         compacting.prompt ??
         [
@@ -393,63 +454,94 @@ const layer = Layer.effect(
         ]
           .filter(Boolean)
           .join("\n\n")
-      const ctx = yield* InstanceState.context
-      const msg: SessionV1.Assistant = {
-        id: MessageID.ascending(),
-        role: "assistant",
-        parentID: input.parentID,
-        sessionID: input.sessionID,
-        mode: "compaction",
-        agent: "compaction",
-        variant: userMessage.model.variant,
-        summary: true,
-        path: {
-          cwd: ctx.directory,
-          root: ctx.worktree,
-        },
-        cost: 0,
-        tokens: {
-          output: 0,
-          input: 0,
-          reasoning: 0,
-          cache: { read: 0, write: 0 },
-        },
-        modelID: model.id,
-        providerID: model.providerID,
-        time: {
-          created: Date.now(),
-        },
-      }
-      yield* session.updateMessage(msg)
-      const processor = yield* processors.create({
-        assistantMessage: msg,
-        sessionID: input.sessionID,
-        model,
-      })
-      const result = yield* processor.process({
-        user: userMessage,
-        agent,
-        sessionID: input.sessionID,
-        tools: {},
-        system: [],
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: [
-                  nextPrompt,
-                  ...(compacting.prompt ? ["The following is the conversation history:", conversation] : []),
-                ]
-                  .filter(Boolean)
-                  .join("\n\n"),
-              },
-            ],
+      const replayPrompt = [buildReplayPrompt({ previousSummary: previousSummary !== undefined }), ...compacting.context]
+        .filter(Boolean)
+        .join("\n\n")
+      // One summary request: the replay of the turn (replay set) or the transcript.
+      const attempt = Effect.fn("SessionCompaction.attempt")(function* (replay: Agent.Info | undefined) {
+        const ctx = yield* InstanceState.context
+        const msg: SessionV1.Assistant = {
+          id: MessageID.ascending(),
+          role: "assistant",
+          parentID: input.parentID,
+          sessionID: input.sessionID,
+          mode: "compaction",
+          agent: "compaction",
+          variant: userMessage.model.variant,
+          summary: true,
+          path: {
+            cwd: ctx.directory,
+            root: ctx.worktree,
           },
-        ],
-        model,
+          cost: 0,
+          tokens: {
+            output: 0,
+            input: 0,
+            reasoning: 0,
+            cache: { read: 0, write: 0 },
+          },
+          modelID: model.id,
+          providerID: model.providerID,
+          time: {
+            created: Date.now(),
+          },
+        }
+        yield* session.updateMessage(msg)
+        if (replay) RafikiCompactionReplay.begin(msg.id)
+        const processor = yield* processors.create({
+          assistantMessage: msg,
+          sessionID: input.sessionID,
+          model,
+        })
+        const result = replay
+          ? yield* input.run!({
+              // The turn's own messages, without the request for the summary.
+              user: userMessage,
+              agent: replay,
+              model,
+              processor,
+              messages: history,
+              prompt: replayPrompt,
+            })
+          : yield* processor.process({
+              user: userMessage,
+              agent,
+              sessionID: input.sessionID,
+              tools: {},
+              system: [],
+              messages: [
+                {
+                  role: "user",
+                  content: [
+                    {
+                      type: "text",
+                      text: [
+                        nextPrompt,
+                        ...(compacting.prompt ? ["The following is the conversation history:", conversation] : []),
+                      ]
+                        .filter(Boolean)
+                        .join("\n\n"),
+                    },
+                  ],
+                },
+              ],
+              model,
+            })
+        return { result, processor }
       })
+      let { result, processor } = yield* attempt(replayAgent)
+      if (replayAgent) RafikiCompactionReplay.end(processor.message.id)
+      // A replay that ends without a summary (the model asked for a tool, which a summary may not call, or the
+      // request failed) is done again as the transcript, so the session is compacted as before. Not after a stop
+      // asked for by the person.
+      if (replayAgent && result !== "continue" && processor.message.error?.name !== "MessageAbortedError") {
+        yield* Effect.logInfo("compaction replay failed, using the transcript", {
+          "session.id": input.sessionID,
+          error: processor.message.error?.name,
+        })
+        yield* session.removeMessage({ sessionID: input.sessionID, messageID: processor.message.id })
+        ;({ result, processor } = yield* attempt(undefined))
+      }
 
       if (result === "compact") {
         processor.message.error = new SessionV1.ContextOverflowError({
