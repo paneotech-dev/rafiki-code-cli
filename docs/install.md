@@ -1,5 +1,7 @@
 # Install and update
 
+The latest release is 0.1.14 ([release notes](releases/0.1.14.md)). To update a copy you have: `rafikicode update` (pre-releases: `rafikicode update --pre`), then `rafikicode --version` to check. npm, Homebrew and winget can lag behind a release; on those, use the installer line instead, see [npm, Homebrew and winget may lag behind](#npm-homebrew-and-winget-may-lag-behind).
+
 `rafikicode` is one binary. There are four ways to install it, and all four install the same files: the archives published on the [GitHub release](https://github.com/paneotech-dev/rafiki-code-cli/releases) of each version, checked against the `SHA256SUMS` file published with them.
 
 | Channel | Command | Platforms |
