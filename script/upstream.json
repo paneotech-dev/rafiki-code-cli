@@ -540,7 +540,7 @@
     {
       "path": "packages/opencode/src/session/processor.ts",
       "class": "hook",
-      "why": "Retries, error wording and resuming a cut stream go through `rafiki/resilience.ts` and `rafiki/resume.ts`; the tier that answered is recorded on the message through `rafiki/served.ts`. A step stops at a safe point when a message marked \"send now\" waits (`rafiki/steer.ts`). A refusal over the key's tokens per minute limit compacts once and then stops with a message (`rafiki/tpm.ts`). A request refused over the gateway's input cap compacts the session and is sent once more without an error; refused again after that, the turn stops with one message instead of compacting in a loop (`rafiki/input-cap.ts`)."
+      "why": "Retries, error wording and resuming a cut stream go through `rafiki/resilience.ts` and `rafiki/resume.ts`; the tier that answered is recorded on the message through `rafiki/served.ts`. A step stops at a safe point when a message marked \"send now\" waits (`rafiki/steer.ts`). A refusal over the key's tokens per minute limit compacts once and then stops with a message (`rafiki/tpm.ts`). A request refused over the gateway's input cap compacts the session and is sent once more without an error; refused again after that, the turn stops with one message instead of compacting in a loop (`rafiki/input-cap.ts`). The error of a compaction summary replay that failed is kept on its message and not shown, since the summary is written again from the transcript (`rafiki/compaction-replay.ts`)."
     },
     {
       "path": "packages/opencode/src/session/prompt.ts",
