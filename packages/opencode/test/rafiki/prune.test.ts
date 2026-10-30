@@ -45,6 +45,8 @@ function setup(label: string) {
     quiet: true,
     bodies: true,
     toolCallEach: (turn: number) => callFor(turn, repo),
+    // Each request reports its own size, so the session reaches two thirds of its compaction point.
+    usage: (_body: unknown, tokens: number) => ({ prompt_tokens: tokens, completion_tokens: 8, total_tokens: tokens + 8 }),
   })
   return { home, repo, gateway }
 }
@@ -68,8 +70,10 @@ async function turn(side: Side, n: number, extra: Record<string, string | undefi
     RAFIKICODE_API_KEY: KEY,
   }
   // The test preload keeps the database in memory; the session must outlive one run here.
-  for (const k of ["XDG_CONFIG_HOME", "CI", "GITHUB_ACTIONS", "OPENCODE_CONFIG", "OPENCODE_CONFIG_DIR", "OPENCODE_CONFIG_CONTENT", "OPENCODE_PERMISSION", "OPENCODE_DISABLE_PRUNE", "OPENCODE_DB", Brand.env.headless, Brand.env.trustWorkspace, Brand.env.prune]) delete env[k]
+  for (const k of ["XDG_CONFIG_HOME", "CI", "GITHUB_ACTIONS", "OPENCODE_CONFIG", "OPENCODE_CONFIG_DIR", "OPENCODE_CONFIG_CONTENT", "OPENCODE_PERMISSION", "OPENCODE_DISABLE_PRUNE", "OPENCODE_DB", Brand.env.headless, Brand.env.trustWorkspace, Brand.env.prune, Brand.env.compactAt]) delete env[k]
   env.OPENCODE_CONFIG_CONTENT = JSON.stringify({ tool_output: { max_bytes: 50 * 1024 } })
+  // Pruning starts at two thirds of the compaction point: 60,000 tokens, reached after the sixth turn.
+  env[Brand.env.compactAt] = "90000"
   for (const [k, v] of Object.entries(extra)) {
     if (v === undefined) delete env[k]
     else env[k] = v
@@ -190,9 +194,16 @@ function user(id: string): SessionV1.WithParts {
   } as unknown as SessionV1.WithParts
 }
 
-function assistant(id: string, tools: { tool: string; size: number; status?: "completed" | "error"; exit?: number; compacted?: number }[]) {
+type Call = { tool: string; size: number; status?: "completed" | "error"; exit?: number; compacted?: number; input?: Record<string, unknown> }
+
+function assistant(id: string, tools: Call[], context = 0) {
   return {
-    info: { id, role: "assistant", sessionID: "s" },
+    info: {
+      id,
+      role: "assistant",
+      sessionID: "s",
+      tokens: { input: context, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+    },
     parts: tools.map((item, index) => ({
       id: `${id}-${index}`,
       type: "tool",
@@ -203,7 +214,7 @@ function assistant(id: string, tools: { tool: string; size: number; status?: "co
           ? { status: "error", input: {}, error: "x".repeat(item.size), time: { start: 0, end: 1 } }
           : {
               status: "completed",
-              input: { command: `cmd ${id}` },
+              input: item.input ?? { command: `cmd ${id}` },
               output: "x".repeat(item.size),
               title: "",
               metadata: item.exit === undefined ? {} : { exit: item.exit },
@@ -332,5 +343,53 @@ describe("the rule", () => {
     const summary = { ...assistant("s", []), info: { id: "s", role: "assistant", summary: true } } as unknown as SessionV1.WithParts
     const withSummary = [user("u0"), assistant("a0", [{ tool: "bash", size: 60_000 * TOKENS }]), summary, ...msgs.slice(4)]
     expect(Prune.select(withSummary, { minimum: 0 }).parts).toEqual([])
+  })
+
+  test("nothing happens before the context reaches the starting point", () => {
+    const msgs = (context: number) => [
+      user("u1"),
+      assistant("a1", [{ tool: "bash", size }]),
+      user("u2"),
+      assistant("a2", [{ tool: "bash", size }]),
+      user("u3"),
+      assistant("a3", [{ tool: "bash", size: 25_000 * TOKENS }], context),
+      user("u4"),
+    ]
+    const limits = { from: 100_000, minimum: 0 }
+    expect(Prune.select(msgs(99_999), limits).parts).toEqual([])
+    expect(Prune.select(msgs(100_000), limits).parts.map((part) => String(part.id))).toEqual(["a1-0"])
+    // No token count at all (another provider, an old session): the gate is off only when from is 0.
+    expect(Prune.select(msgs(0), limits).parts).toEqual([])
+    expect(Prune.select(msgs(0), { minimum: 0 }).parts.length).toBe(1)
+  })
+
+  test("the newest run of a test command and the newest read of an edited file are kept, older ones go", () => {
+    const test = { command: "bun test src/a.test.ts" }
+    const readA = { filePath: "/r/src/a.ts" }
+    const readB = { filePath: "/r/src/b.ts" }
+    const msgs = [
+      user("u1"),
+      assistant("a1", [
+        { tool: "bash", size, input: test },
+        { tool: "read", size, input: readA },
+        { tool: "read", size, input: readB },
+      ]),
+      user("u2"),
+      assistant("a2", [
+        { tool: "bash", size, input: test },
+        { tool: "read", size, input: readA },
+        { tool: "edit", size: 10, input: { filePath: "/r/src/a.ts" } },
+      ]),
+      user("u3"),
+      assistant("a3", [{ tool: "bash", size: 25_000 * TOKENS }]),
+      user("u4"),
+    ]
+    const found = Prune.select(msgs, { minimum: 0 })
+    // a2's test run and its read of the edited file are the newest of their kind; a1's read of b.ts, a file
+    // the session never edits, goes like any other output.
+    expect(found.parts.map((part) => String(part.id)).toSorted()).toEqual(["a1-0", "a1-1", "a1-2"])
+    // When the latest turn ran the tests again, the older run goes too.
+    const again = [...msgs.slice(0, -1), assistant("a4", [{ tool: "bash", size: 100, input: test }]), user("u5")]
+    expect(Prune.select(again, { minimum: 0 }).parts.map((part) => String(part.id))).toContain("a2-0")
   })
 })
