@@ -36,6 +36,9 @@ export const Event = SessionCompactionEvent
 // Tokens kept free for the system text, the tool definitions and the summary instruction when the summary
 // request replays the conversation (Run).
 const REPLAY_RESERVE = 20_000
+// What input read from the cache costs as a share of the full price, rounded up from the Rafiki tiers' price lists
+// (rafiki-fast 0.02, rafiki-pro 0.033).
+const REPLAY_CACHE_SHARE = 0.05
 export const PRUNE_MINIMUM = RafikiPrune.MINIMUM_TOKENS
 export const PRUNE_PROTECT = RafikiPrune.PROTECT_TOKENS
 const TOOL_OUTPUT_MAX_CHARS = 2_000
@@ -395,30 +398,6 @@ const layer = Layer.effect(
       )
       const msgs = structuredClone(selected.head)
       yield* plugin.trigger("experimental.chat.messages.transform", {}, { messages: msgs })
-      // The summary as a replay of the turn (Run): when the summary goes to the session's own tier and nothing
-      // replaces the agent or the prompt. An overflow keeps the transcript below, which is cut to fit.
-      // It must also fit under the limits the transcript is cut to: the key's tokens per minute and the gateway's
-      // input cap, with room for the system text and the tool definitions.
-      const replayable =
-        input.run !== undefined &&
-        !input.overflow &&
-        !agent.model &&
-        compacting.prompt === undefined &&
-        model.id === userMessage.model.modelID &&
-        // A tier that caches only what a request marks (rafiki-max, Claude): its cache of the conversation does
-        // not survive the change of tool_choice, so the replay would write the conversation to the cache again
-        // at a higher price than the transcript costs. Those keep the transcript.
-        !CachePrefix.marks(model)
-      const replayAgent = replayable
-        ? yield* Effect.gen(function* () {
-            const size = (yield* estimate({ messages: history, model })) + REPLAY_RESERVE
-            const rafiki = RafikiGateway.isRafikiProvider(model.providerID)
-            const tpm = rafiki ? yield* Effect.promise(() => RafikiTpm.limit()) : undefined
-            const cap = rafiki ? model.limit.input : undefined
-            if ((tpm && size > tpm) || (cap && size > cap)) return undefined
-            return yield* agents.get(userMessage.agent)
-          })
-        : undefined
       // The compaction request must fit under the key's tokens per minute limit
       // too, or it is refused like the request it is making room for.
       // And under the gateway's input cap (rafiki/input-cap.ts), or it is
@@ -429,6 +408,41 @@ const layer = Layer.effect(
         8_000,
         RafikiGateway.isRafikiProvider(model.providerID) ? model.limit.input : undefined,
       )
+      // The summary as a replay of the turn (Run): when the summary goes to the session's own tier and nothing
+      // replaces the agent or the prompt. An overflow keeps the transcript above, which is cut to fit. The replay
+      // must also fit under the limits the transcript is cut to: the key's tokens per minute and the gateway's
+      // input cap, with room for the system text and the tool definitions.
+      const replayable =
+        input.run !== undefined &&
+        !input.overflow &&
+        !agent.model &&
+        compacting.prompt === undefined &&
+        model.id === userMessage.model.modelID &&
+        // A tier that caches only what a request marks (rafiki-max, Claude) prices cache reads and writes in
+        // another way and has not been measured with the replay: it keeps the transcript.
+        !CachePrefix.marks(model)
+      const replayAgent = replayable
+        ? yield* Effect.gen(function* () {
+            const size = (yield* estimate({ messages: history, model })) + REPLAY_RESERVE
+            const rafiki = RafikiGateway.isRafikiProvider(model.providerID)
+            const tpm = rafiki ? yield* Effect.promise(() => RafikiTpm.limit()) : undefined
+            const cap = rafiki ? model.limit.input : undefined
+            if ((tpm && size > tpm) || (cap && size > cap)) return undefined
+            // And it must cost less than the transcript. The replay sends again, at the full price, only what came
+            // after the last request (the last step's output and tool results); the rest is read from the cache
+            // at a small share of the price. The transcript is sent whole at the full price, but cuts each tool
+            // output short, so it is cheaper while the conversation is small.
+            const last = history.findLastIndex(
+              (item) => item.info.role === "assistant" && !item.info.summary && !!item.info.finish,
+            )
+            if (last < 0) return undefined
+            const info = history[last].info as SessionV1.Assistant
+            const cached = info.tokens.input + info.tokens.cache.read + info.tokens.cache.write
+            const added = yield* estimate({ messages: history.slice(last), model })
+            if (added + cached * REPLAY_CACHE_SHARE >= Token.estimate(conversation)) return undefined
+            return yield* agents.get(userMessage.agent)
+          })
+        : undefined
       const nextPrompt =
         compacting.prompt ??
         [

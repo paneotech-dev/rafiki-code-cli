@@ -67,7 +67,10 @@ describe("compaction summary request", () => {
     fs.rmSync(home, { recursive: true, force: true })
   })
 
-  async function run(model: string, extra: Record<string, string> = {}) {
+  // A long request makes the transcript dearer than the replay, which reads it from the cache.
+  const LONG = "Print one word with the shell, then stop. Background for later: " + "the build log lists every package. ".repeat(600)
+
+  async function run(model: string, extra: Record<string, string> = {}, prompt = LONG) {
     const env: Record<string, string | undefined> = {
       ...process.env,
       COLUMNS: "120",
@@ -85,7 +88,7 @@ describe("compaction summary request", () => {
     }
     for (const k of ["XDG_CONFIG_HOME", "CI", "GITHUB_ACTIONS", "OPENCODE_CONFIG", "OPENCODE_CONFIG_DIR", "OPENCODE_CONFIG_CONTENT", "OPENCODE_PERMISSION", Brand.env.headless, Brand.env.trustWorkspace, Brand.env.cacheMarkers]) delete env[k]
     Object.assign(env, extra)
-    const proc = Bun.spawn(["bun", "run", path.join(root, "src/index.ts"), "run", "--model", `rafiki/${model}`, "Print one word with the shell, then stop."], {
+    const proc = Bun.spawn(["bun", "run", path.join(root, "src/index.ts"), "run", "--model", `rafiki/${model}`, prompt], {
       cwd: repo,
       stdin: "ignore",
       stdout: "pipe",
@@ -168,6 +171,17 @@ describe("compaction summary request", () => {
       const legacy = bodies.findIndex((body) => JSON.stringify(body.json.messages).includes("<conversation>"))
       expect(legacy, all).toBeGreaterThan(replay)
       expect(all).toContain("Print one word.")
+    },
+    { timeout: 120_000 },
+  )
+
+  test(
+    "a short conversation keeps the transcript, which costs less there",
+    async () => {
+      const { exitCode, all, bodies } = await run("rafiki-fast", {}, "Print one word with the shell, then stop.")
+      expect(exitCode, all).toBe(0)
+      expect(bodies.some(isSummary)).toBe(false)
+      expect(bodies.some((body) => JSON.stringify(body.json.messages).includes("<conversation>")), all).toBe(true)
     },
     { timeout: 120_000 },
   )
