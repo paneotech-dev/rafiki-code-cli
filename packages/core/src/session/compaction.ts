@@ -173,6 +173,20 @@ export const buildPrompt = (input: { readonly previousSummary?: string; readonly
   ].join("\n\n")
 }
 
+// The summary instruction when the request replays the conversation itself as messages: it follows the
+// conversation, so everything before it is the request the provider just read.
+export const buildReplayPrompt = (input: { readonly previousSummary: boolean }) => {
+  const instruction =
+    "Stop the task here and write no tool calls. Create a new anchored summary of the conversation above so another coding agent can continue the work."
+  if (!input.previousSummary) return [instruction, SUMMARY_TEMPLATE].join("\n\n")
+  return [
+    instruction,
+    "The conversation above starts with a summary of the work before it. " +
+      SUMMARY_UPDATE_INSTRUCTIONS.replaceAll("<prior-summary>", "earlier summary").replaceAll("<conversation>", "conversation after it"),
+    SUMMARY_TEMPLATE,
+  ].join("\n\n")
+}
+
 export const make = (dependencies: Dependencies) => {
   const config = settings(dependencies.config)
   const compactAfterOverflow = Effect.fn("SessionCompaction.compactAfterOverflow")(function* (input: Input) {

@@ -191,6 +191,71 @@ const layer = Layer.effect(
       } satisfies TaskPromptOps
     })
 
+    // The tool definitions of a request, for the turn and for the compaction summary written in its place.
+    const resolveTools = Effect.fn("SessionPrompt.resolveTools")(function* (input: {
+      agent: Agent.Info
+      session: Session.Info
+      model: Provider.Model
+      processor: SessionProcessor.Handle
+      messages: SessionV1.WithParts[]
+    }) {
+      const lastUserMsg = input.messages.findLast((m) => m.info.role === "user")
+      const bypassAgentCheck = lastUserMsg?.parts.some((p) => p.type === "agent") ?? false
+      const promptOps = yield* ops()
+      return yield* SessionTools.resolve({
+        agent: input.agent,
+        session: input.session,
+        model: input.model,
+        processor: input.processor,
+        bypassAgentCheck,
+        messages: input.messages,
+        promptOps,
+      }).pipe(
+        Effect.provideService(Plugin.Service, plugin),
+        Effect.provideService(Permission.Service, permission),
+        Effect.provideService(ToolRegistry.Service, registry),
+        Effect.provideService(MCP.Service, mcp),
+        Effect.provideService(Truncate.Service, truncate),
+        Effect.provideService(RuntimeFlags.Service, flags),
+      )
+    })
+
+    // The system text and the conversation of a request, in the stable order of rafiki/cache-prefix.ts. The turn
+    // and the compaction summary (compactionRun) both build their request here, so the summary request starts
+    // with the same bytes as the turn before it and the provider reads that part from its prompt cache.
+    const assemble = Effect.fn("SessionPrompt.assemble")(function* (input: {
+      agent: Agent.Info
+      session: Session.Info
+      model: Provider.Model
+      messages: SessionV1.WithParts[]
+    }) {
+      const ctx = yield* InstanceState.context
+      const sessionID = input.session.id
+      const [skills, env, instructions, mcpInstructions, messages] = yield* Effect.all([
+        sys.skills(input.agent),
+        sys.environment(input.model),
+        instruction.system().pipe(
+          Effect.orDie,
+          // The first reading of the session (rafiki/cache-prefix.ts), so the prefix stays the same.
+          Effect.map((list) => CachePrefix.instructions(sessionID, list)),
+        ),
+        sys.mcp(input.agent, input.session.permission),
+        MessageV2.toModelMessagesEffect(RafikiResume.withContinuations(input.messages), input.model),
+      ])
+      const cfg = yield* config.get()
+      const memory = input.session.parentID
+        ? ""
+        : RafikiMemory.forSession({
+            sessionID,
+            directory: ctx.directory,
+            worktree: ctx.worktree,
+            settings: cfg.memory,
+          })
+      const practice = RafikiVerify.Verify.enabled(cfg.verify) ? RafikiVerify.Verify.PRACTICE : undefined
+      const system = CachePrefix.order({ environment: env, instructions, mcp: mcpInstructions, skills, memory, practice })
+      return { system, messages }
+    })
+
     const cancel = Effect.fn("SessionPrompt.cancel")(function* (sessionID: SessionID) {
       yield* Effect.logInfo("cancel", { "session.id": sessionID })
       yield* state.cancel(sessionID)
@@ -1484,6 +1549,31 @@ const layer = Layer.effect(
               sessionID,
               auto: task.auto,
               overflow: task.overflow,
+              // The summary request is the turn's own request with the summary instruction at the end.
+              run: (input) =>
+                Effect.gen(function* () {
+                  const tools = yield* resolveTools({
+                    agent: input.agent,
+                    session,
+                    model: input.model,
+                    processor: input.processor,
+                    messages: input.messages,
+                  })
+                  const assembled = yield* assemble({ agent: input.agent, session, model: input.model, messages: input.messages })
+                  return yield* input.processor.process({
+                    user: input.user,
+                    agent: input.agent,
+                    permission: session.permission,
+                    sessionID,
+                    parentSessionID: session.parentID,
+                    system: assembled.system,
+                    messages: [...assembled.messages, { role: "user" as const, content: input.prompt }],
+                    tools,
+                    model: input.model,
+                    // The definitions stay in the request so its start matches the turn's; none may be called.
+                    toolChoice: "none",
+                  })
+                }),
             })
             if (result === "stop") break
             continue
@@ -1631,26 +1721,7 @@ const layer = Layer.effect(
             .pipe(Effect.onInterrupt(() => finalizeInterruptedAssistant))
 
           const outcome: "break" | "continue" = yield* Effect.gen(function* () {
-            const lastUserMsg = msgs.findLast((m) => m.info.role === "user")
-            const bypassAgentCheck = lastUserMsg?.parts.some((p) => p.type === "agent") ?? false
-            const promptOps = yield* ops()
-
-            const tools = yield* SessionTools.resolve({
-              agent,
-              session,
-              model,
-              processor: handle,
-              bypassAgentCheck,
-              messages: msgs,
-              promptOps,
-            }).pipe(
-              Effect.provideService(Plugin.Service, plugin),
-              Effect.provideService(Permission.Service, permission),
-              Effect.provideService(ToolRegistry.Service, registry),
-              Effect.provideService(MCP.Service, mcp),
-              Effect.provideService(Truncate.Service, truncate),
-              Effect.provideService(RuntimeFlags.Service, flags),
-            )
+            const tools = yield* resolveTools({ agent, session, model, processor: handle, messages: msgs })
 
             RafikiSteer.guard(tools, sessionID)
 
@@ -1668,27 +1739,7 @@ const layer = Layer.effect(
 
             yield* plugin.trigger("experimental.chat.messages.transform", {}, { messages: msgs })
 
-            const [skills, env, instructions, mcpInstructions, modelMsgs] = yield* Effect.all([
-              sys.skills(agent),
-              sys.environment(model),
-              instruction.system().pipe(
-                Effect.orDie,
-                // The first reading of the session (rafiki/cache-prefix.ts), so the prefix stays the same.
-                Effect.map((list) => CachePrefix.instructions(sessionID, list)),
-              ),
-              sys.mcp(agent, session.permission),
-              MessageV2.toModelMessagesEffect(RafikiResume.withContinuations(msgs), model),
-            ])
-            const memory = session.parentID
-              ? ""
-              : RafikiMemory.forSession({
-                  sessionID,
-                  directory: ctx.directory,
-                  worktree: ctx.worktree,
-                  settings: (yield* config.get()).memory,
-                })
-            const practice = RafikiVerify.Verify.enabled((yield* config.get()).verify) ? RafikiVerify.Verify.PRACTICE : undefined
-            const system = CachePrefix.order({ environment: env, instructions, mcp: mcpInstructions, skills, memory, practice })
+            const { system, messages: modelMsgs } = yield* assemble({ agent, session, model, messages: msgs })
             const format = lastUser.format ?? { type: "text" as const }
             if (format.type === "json_schema") system.push(STRUCTURED_OUTPUT_SYSTEM_PROMPT)
             const result = yield* handle.process({
