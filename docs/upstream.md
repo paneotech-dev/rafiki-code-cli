@@ -73,7 +73,7 @@ counted with `git diff --numstat -M` against the upstream base.
 
 <!-- upstream-files:start -->
 
-Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 219. Changed lines: 9167 (6107 added, 3060 removed).
+Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 219. Changed lines: 9173 (6113 added, 3060 removed).
 
 | Class | Files | Added | Removed |
 | --- | ---: | ---: | ---: |
@@ -83,10 +83,10 @@ Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 219. Changed lin
 | Tests of upstream, adapted | 39 | 780 | 186 |
 | Generated files | 4 | 391 | 188 |
 | Package identity and packaging | 9 | 20 | 479 |
-| Documentation | 23 | 197 | 1182 |
+| Documentation | 23 | 203 | 1182 |
 | Repository tooling and workflows | 6 | 23 | 8 |
 | Editor extension | 13 | 1405 | 210 |
-| Total | 219 | 6107 | 3060 |
+| Total | 219 | 6113 | 3060 |
 
 ### Source: a call into this fork's modules
 
@@ -325,7 +325,7 @@ On a conflict: Keep this fork's text. Read what upstream changed and carry over 
 | `README.it.md` | 1 | 51 | Translated pages of upstream: the install instructions are removed so that no page tells a reader to install the upstream product (`test/brand/docs-wording.test.ts`). |
 | `README.ja.md` | 1 | 51 | Translated pages of upstream: the install instructions are removed so that no page tells a reader to install the upstream product (`test/brand/docs-wording.test.ts`). |
 | `README.ko.md` | 1 | 51 | Translated pages of upstream: the install instructions are removed so that no page tells a reader to install the upstream product (`test/brand/docs-wording.test.ts`). |
-| `README.md` | 173 | 100 | This product's README, with the attribution section. |
+| `README.md` | 179 | 100 | This product's README, with the attribution section. |
 | `README.no.md` | 1 | 51 | Translated pages of upstream: the install instructions are removed so that no page tells a reader to install the upstream product (`test/brand/docs-wording.test.ts`). |
 | `README.pl.md` | 1 | 51 | Translated pages of upstream: the install instructions are removed so that no page tells a reader to install the upstream product (`test/brand/docs-wording.test.ts`). |
 | `README.ru.md` | 1 | 51 | Translated pages of upstream: the install instructions are removed so that no page tells a reader to install the upstream product (`test/brand/docs-wording.test.ts`). |

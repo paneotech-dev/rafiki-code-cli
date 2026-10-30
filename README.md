@@ -6,6 +6,8 @@ It is a thin fork of an open source coding agent; see [Attribution](#attribution
 
 ## Install
 
+The latest release is **0.1.14** ([release notes](./docs/releases/0.1.14.md), [all releases](https://github.com/paneotech-dev/rafiki-code-cli/releases)). Already installed? Run `rafikicode update`, then `rafikicode --version` to check.
+
 One line installer for Linux and macOS:
 
 ```bash
@@ -66,9 +68,13 @@ To update:
 
 ```bash
 rafikicode update            # latest release, checksum verified, binary replaced in place
+rafikicode update --pre      # the newest release, pre-releases included
+rafikicode --version         # the version you now have
 ```
 
-`rafikicode update <version>` installs a specific release.
+`rafikicode update <version>` installs a specific release. After an update, quit any open `rafikicode` window and start it again; `rafikicode --continue` reopens your last conversation.
+
+npm, Homebrew and winget can lag behind a release. If your copy came from one of them and `rafikicode update` does not reach the latest release, use the installer line for your system above instead.
 
 A copy installed by the installer script also updates itself: once a day at most it looks for a new release, downloads it in the background, verifies it against the published `SHA256SUMS`, and uses it from the next start. Set `"autoupdate": false` in `~/.rafikicode/config.json` to turn that off. Copies installed by npm, Homebrew or winget are updated by those tools and are only told when a release is out. The details are in [docs/install.md](./docs/install.md#updates).
 
