@@ -13,6 +13,7 @@ import { Config } from "@/config/config"
 import { NotFoundError } from "@/storage/storage"
 import * as RafikiPrune from "@/rafiki/prune"
 import * as RafikiContext from "@/rafiki/context-size"
+import * as RafikiCompactionReplay from "@/rafiki/compaction-replay"
 
 import { Effect, Layer, Context } from "effect"
 import { InstanceState } from "@/effect/instance-state"
@@ -422,7 +423,7 @@ const layer = Layer.effect(
       // too, or it is refused like the request it is making room for.
       // And under the gateway's input cap (rafiki/input-cap.ts), or it is
       // refused with a 413 and the session cannot be compacted at all.
-      const conversation = replayAgent ? "" : RafikiTpm.fit(
+      const conversation = RafikiTpm.fit(
         msgs.map(serialize).filter(Boolean).join("\n\n"),
         RafikiGateway.isRafikiProvider(model.providerID) ? yield* Effect.promise(() => RafikiTpm.limit()) : undefined,
         8_000,
@@ -431,83 +432,102 @@ const layer = Layer.effect(
       const nextPrompt =
         compacting.prompt ??
         [
-          replayAgent
-            ? buildReplayPrompt({ previousSummary: previousSummary !== undefined })
-            : buildPrompt({
-                previousSummary,
-                context: [conversation],
-              }),
+          buildPrompt({
+            previousSummary,
+            context: [conversation],
+          }),
           ...compacting.context,
         ]
           .filter(Boolean)
           .join("\n\n")
-      const ctx = yield* InstanceState.context
-      const msg: SessionV1.Assistant = {
-        id: MessageID.ascending(),
-        role: "assistant",
-        parentID: input.parentID,
-        sessionID: input.sessionID,
-        mode: "compaction",
-        agent: "compaction",
-        variant: userMessage.model.variant,
-        summary: true,
-        path: {
-          cwd: ctx.directory,
-          root: ctx.worktree,
-        },
-        cost: 0,
-        tokens: {
-          output: 0,
-          input: 0,
-          reasoning: 0,
-          cache: { read: 0, write: 0 },
-        },
-        modelID: model.id,
-        providerID: model.providerID,
-        time: {
-          created: Date.now(),
-        },
-      }
-      yield* session.updateMessage(msg)
-      const processor = yield* processors.create({
-        assistantMessage: msg,
-        sessionID: input.sessionID,
-        model,
+      const replayPrompt = [buildReplayPrompt({ previousSummary: previousSummary !== undefined }), ...compacting.context]
+        .filter(Boolean)
+        .join("\n\n")
+      // One summary request: the replay of the turn (replay set) or the transcript.
+      const attempt = Effect.fn("SessionCompaction.attempt")(function* (replay: Agent.Info | undefined) {
+        const ctx = yield* InstanceState.context
+        const msg: SessionV1.Assistant = {
+          id: MessageID.ascending(),
+          role: "assistant",
+          parentID: input.parentID,
+          sessionID: input.sessionID,
+          mode: "compaction",
+          agent: "compaction",
+          variant: userMessage.model.variant,
+          summary: true,
+          path: {
+            cwd: ctx.directory,
+            root: ctx.worktree,
+          },
+          cost: 0,
+          tokens: {
+            output: 0,
+            input: 0,
+            reasoning: 0,
+            cache: { read: 0, write: 0 },
+          },
+          modelID: model.id,
+          providerID: model.providerID,
+          time: {
+            created: Date.now(),
+          },
+        }
+        yield* session.updateMessage(msg)
+        if (replay) RafikiCompactionReplay.begin(msg.id)
+        const processor = yield* processors.create({
+          assistantMessage: msg,
+          sessionID: input.sessionID,
+          model,
+        })
+        const result = replay
+          ? yield* input.run!({
+              // The turn's own messages, without the request for the summary.
+              user: userMessage,
+              agent: replay,
+              model,
+              processor,
+              messages: history,
+              prompt: replayPrompt,
+            })
+          : yield* processor.process({
+              user: userMessage,
+              agent,
+              sessionID: input.sessionID,
+              tools: {},
+              system: [],
+              messages: [
+                {
+                  role: "user",
+                  content: [
+                    {
+                      type: "text",
+                      text: [
+                        nextPrompt,
+                        ...(compacting.prompt ? ["The following is the conversation history:", conversation] : []),
+                      ]
+                        .filter(Boolean)
+                        .join("\n\n"),
+                    },
+                  ],
+                },
+              ],
+              model,
+            })
+        return { result, processor }
       })
-      const result = replayAgent
-        ? yield* input.run!({
-            // The turn's own messages, without the request for the summary.
-            user: userMessage,
-            agent: replayAgent,
-            model,
-            processor,
-            messages: history,
-            prompt: nextPrompt,
-          })
-        : yield* processor.process({
-            user: userMessage,
-            agent,
-            sessionID: input.sessionID,
-            tools: {},
-            system: [],
-            messages: [
-              {
-                role: "user",
-                content: [
-                  {
-                    type: "text",
-                    text: [
-                      nextPrompt,
-                      ...(compacting.prompt ? ["The following is the conversation history:", conversation] : []),
-                    ]
-                      .filter(Boolean)
-                      .join("\n\n"),
-                  },
-                ],
-              },
-            ],
-            model,
-          })
+      let { result, processor } = yield* attempt(replayAgent)
+      if (replayAgent) RafikiCompactionReplay.end(processor.message.id)
+      // A replay that ends without a summary (the model asked for a tool, which a summary may not call, or the
+      // request failed) is done again as the transcript, so the session is compacted as before. Not after a stop
+      // asked for by the person.
+      if (replayAgent && result !== "continue" && processor.message.error?.name !== "MessageAbortedError") {
+        yield* Effect.logInfo("compaction replay failed, using the transcript", {
+          "session.id": input.sessionID,
+          error: processor.message.error?.name,
+        })
+        yield* session.removeMessage({ sessionID: input.sessionID, messageID: processor.message.id })
+        ;({ result, processor } = yield* attempt(undefined))
+      }
 
       if (result === "compact") {
         processor.message.error = new SessionV1.ContextOverflowError({

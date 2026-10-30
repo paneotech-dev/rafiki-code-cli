@@ -1,7 +1,7 @@
 // The compaction summary as a replay of the turn (session/compaction.ts, Run): on the session's own tier the
-// summary request carries the same system text, the same tool definitions and the same conversation as the
-// request before it, with the summary instruction as the last message and tool_choice "none". So it starts with
-// the bytes the provider has just cached instead of a transcript the provider has never seen.
+// summary request carries the same system text, the same tool definitions, the same tool_choice and the same
+// conversation as the request before it, with the summary instruction as the last message. So it starts with the
+// bytes the provider has just cached instead of a transcript the provider has never seen.
 //
 // `rafikicode run` against the mock gateway, with a compaction point low enough that the second step of the
 // task compacts first. The mock reports each request's own size as its usage.
@@ -30,9 +30,11 @@ describe("compaction summary request", () => {
   let gateway: ReturnType<typeof createMockGateway>
 
   let steps = 0
+  let replayAnswer: "summary" | "tool" = "summary"
 
   beforeEach(async () => {
     steps = 0
+    replayAnswer = "summary"
     home = fs.mkdtempSync(path.join(os.tmpdir(), "rafikicode-compaction-replay-"))
     repo = path.join(home, "repo")
     fs.mkdirSync(repo)
@@ -49,7 +51,13 @@ describe("compaction summary request", () => {
         const prompt = step && steps++ === 0 ? 5_000 : 100
         return { prompt_tokens: prompt, completion_tokens: 8, total_tokens: prompt + 8 }
       },
-      respond: (body: any) => (asksSummary(body) ? { content: SUMMARY } : undefined),
+      respond: (body: any) => {
+        if (!asksSummary(body)) return undefined
+        // replayAnswer "tool": the replay is answered with a tool call, as a model ignoring the instruction would.
+        if (replayAnswer === "tool" && isSummary({ raw: Buffer.alloc(0), json: body }))
+          return { toolCall: { name: "bash", arguments: { command: "echo again", description: "Again" } } }
+        return { content: SUMMARY }
+      },
     })
     await gateway.ready
   })
@@ -91,7 +99,7 @@ describe("compaction summary request", () => {
   }
 
   test(
-    "starts with the bytes of the turn before it and asks for no tool call",
+    "starts with the bytes of the turn before it",
     async () => {
       const { exitCode, all, bodies } = await run("rafiki-fast")
       expect(exitCode, all).toBe(0)
@@ -102,9 +110,9 @@ describe("compaction summary request", () => {
       const turn = bodies.slice(0, at).findLast((body) => Array.isArray(body.json.tools) && body.json.tools.length > 0)!
       expect(turn).toBeDefined()
 
-      // Same tool definitions, byte for byte, and none may be called.
+      // Same tool definitions and the same tool_choice, byte for byte.
       expect(JSON.stringify(summary.json.tools)).toBe(JSON.stringify(turn.json.tools))
-      expect(summary.json.tool_choice).toBe("none")
+      expect(summary.json.tool_choice).toBe(turn.json.tool_choice)
       // The turn's messages are the start of the summary request's messages, unchanged.
       const before = turn.json.messages
       expect(JSON.stringify(summary.json.messages.slice(0, before.length))).toBe(JSON.stringify(before))
@@ -145,6 +153,21 @@ describe("compaction summary request", () => {
       const legacy = bodies.find((body) => JSON.stringify(body.json.messages).includes("<conversation>"))
       expect(legacy, all).toBeDefined()
       expect(legacy!.json.tool_choice).toBeUndefined()
+    },
+    { timeout: 120_000 },
+  )
+
+  test(
+    "a replay answered with a tool call is written again from the transcript",
+    async () => {
+      replayAnswer = "tool"
+      const { exitCode, all, bodies } = await run("rafiki-fast")
+      expect(exitCode, all).toBe(0)
+      const replay = bodies.findIndex(isSummary)
+      expect(replay, all).toBeGreaterThan(0)
+      const legacy = bodies.findIndex((body) => JSON.stringify(body.json.messages).includes("<conversation>"))
+      expect(legacy, all).toBeGreaterThan(replay)
+      expect(all).toContain("Print one word.")
     },
     { timeout: 120_000 },
   )

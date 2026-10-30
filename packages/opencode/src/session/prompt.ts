@@ -1570,8 +1570,9 @@ const layer = Layer.effect(
                     messages: [...assembled.messages, { role: "user" as const, content: input.prompt }],
                     tools,
                     model: input.model,
-                    // The definitions stay in the request so its start matches the turn's; none may be called.
-                    toolChoice: "none",
+                    // The definitions stay, and tool_choice stays unset, so the request starts like the turn's (a
+                    // provider may render tool_choice "none" as a prompt without the tools). A summary cannot call
+                    // a tool (session/processor.ts); one that tries is written again from the transcript.
                   })
                 }),
             })
