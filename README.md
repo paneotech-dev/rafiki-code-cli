@@ -6,7 +6,7 @@ It is a thin fork of an open source coding agent; see [Attribution](#attribution
 
 ## Install
 
-The latest release is **0.1.14** ([release notes](./docs/releases/0.1.14.md), [all releases](https://github.com/paneotech-dev/rafiki-code-cli/releases)). Already installed? Run `rafikicode update`, then `rafikicode --version` to check.
+The latest release is **0.1.15** ([release notes](./docs/releases/0.1.15.md), [all releases](https://github.com/paneotech-dev/rafiki-code-cli/releases)). Already installed? Run `rafikicode update`, then `rafikicode --version` to check.
 
 One line installer for Linux and macOS:
 
