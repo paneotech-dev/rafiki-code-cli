@@ -33,6 +33,8 @@ import { ModelV2 } from "@opencode-ai/core/model"
 import { ModelStatus } from "./model-status"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { ProviderError } from "./error"
+import * as ConnectWatch from "@/rafiki/connect-watch"
+import { isRafikiProvider } from "@/rafiki/gateway-errors"
 
 const OPENAI_HEADER_TIMEOUT_DEFAULT = 300_000
 
@@ -1849,7 +1851,10 @@ const layer = Layer.effect(
         const existing = s.sdk.get(key)
         if (existing) return existing
 
-        options["fetch"] = timeoutFetch(options)
+        // A Rafiki gateway that drops the connection is reported in seconds, not minutes (rafiki/connect-watch.ts).
+        options["fetch"] = isRafikiProvider(model.providerID)
+          ? ConnectWatch.wrap(timeoutFetch(options))
+          : timeoutFetch(options)
         delete options["chunkTimeout"]
         delete options["headerTimeout"]
 
