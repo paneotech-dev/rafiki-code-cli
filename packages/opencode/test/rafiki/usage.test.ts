@@ -67,6 +67,29 @@ describe("loading usage", () => {
     expect(error.message).toBe(Contract.MESSAGE[Contract.ERROR.keyRevoked])
   })
 
+  test("a key the gateway still accepts is not told it was revoked", async () => {
+    const client = await mock({ anyKey: false })
+    const error = await failure(Usage.load(client, KEY, 30))
+    const explained = await Usage.explainRefusal(error, KEY, client.consoleURL, async () => true)
+    expect(explained.exitCode).toBe(Contract.EXIT.failed)
+    expect(explained.message).toContain("valid at the gateway but not registered in the Rafiki AI console")
+    expect(explained.message).not.toContain(Contract.MESSAGE[Contract.ERROR.keyRevoked])
+    const dead = await Usage.explainRefusal(error, KEY, client.consoleURL, async () => false)
+    expect(dead).toEqual({ message: Contract.MESSAGE[Contract.ERROR.keyRevoked], exitCode: Contract.EXIT.usage })
+  })
+
+  test("other refusals are passed through without asking the gateway", async () => {
+    const client = await mock({ usage: "absent" })
+    const error = await failure(Usage.load(client, KEY, 30))
+    let asked = false
+    const explained = await Usage.explainRefusal(error, KEY, client.consoleURL, async () => {
+      asked = true
+      return true
+    })
+    expect(asked).toBe(false)
+    expect(explained).toEqual({ message: error.message, exitCode: error.exitCode })
+  })
+
   test("a console that cannot be reached is a network failure, exit 4", async () => {
     const error = await failure(
       Usage.load({ consoleURL: "http://127.0.0.1:9", fetch: async () => Promise.reject(new Error("connection refused")) }, KEY, 30),

@@ -19,6 +19,7 @@ import * as Meter from "@opencode-ai/core/brand/meter"
 import { effectCmd, fail } from "@/cli/effect-cmd"
 import * as Contract from "./contract"
 import * as DeviceFlow from "./device-flow"
+import * as Doctor from "./doctor"
 
 export const DEFAULT_DAYS = 30
 export const MAX_DAYS = 365
@@ -189,6 +190,27 @@ export function render(body: UsageResponse, input: { days: number; consoleURL: s
   return lines
 }
 
+// The Console answers 401 both for a revoked key and for a key minted at the
+// gateway outside the Console. Telling the second one to sign in again was
+// wrong (whoami already tells them apart): ask the gateway, and when it still
+// accepts the key, say the Console does not know it and that runs still work.
+export async function explainRefusal(
+  cause: DeviceFlow.DeviceFlowError,
+  key: string,
+  consoleURL: string,
+  accepts: (key: string) => Promise<boolean> = (k) =>
+    Doctor.checkKey(Doctor.gatewayRoot(Brand.gatewayURL()), k, consoleURL, fetch, 10_000, Date.now())
+      .then((result) => Doctor.gatewayAccepts(result, Date.now()))
+      .catch(() => false),
+): Promise<{ message: string; exitCode: number }> {
+  if (cause.code !== Contract.ERROR.keyRevoked) return { message: cause.message, exitCode: cause.exitCode }
+  if (!(await accepts(key))) return { message: cause.message, exitCode: cause.exitCode }
+  return {
+    message: `${Doctor.notRegistered(consoleURL)}\n${Doctor.notRegisteredMeaning(consoleURL)} Its usage is not in the Rafiki AI console, so ${Brand.name} usage cannot show it.`,
+    exitCode: Contract.EXIT.failed,
+  }
+}
+
 export const UsageCommand = effectCmd({
   command: "usage",
   describe: `show what your Rafiki AI account was charged over the last ${DEFAULT_DAYS} days, by day and by tier`,
@@ -224,7 +246,9 @@ export const UsageCommand = effectCmd({
     }).pipe(
       Effect.catch((cause) =>
         cause instanceof DeviceFlow.DeviceFlowError
-          ? fail(cause.message, cause.exitCode)
+          ? Effect.promise(() => explainRefusal(cause, key, consoleURL)).pipe(
+              Effect.flatMap((explained) => fail(explained.message, explained.exitCode)),
+            )
           : fail(cause instanceof Error ? cause.message : String(cause), Contract.EXIT.internal),
       ),
     )
