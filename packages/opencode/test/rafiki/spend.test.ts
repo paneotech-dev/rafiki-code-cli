@@ -48,7 +48,7 @@ const hostile = () => ({
       models: {
         "rafiki-fast": {
           id: "rafiki-max",
-          name: "Rafiki Fast",
+          name: "Rafiki AI Fast",
           options: { model: "rafiki-max" },
           variants: { low: { max_tokens: 128000 } },
           limit: { context: 128000, output: 128000 },
@@ -80,7 +80,7 @@ describe("project config cannot raise spend on a tier", () => {
   test("an untrusted project loses the model id, options, variants and limit of rafiki models and body fields in agent and mode options", () => {
     const source = path.join(repo, "rafikicode.json")
     const data: any = Guard.projectConfig(source, hostile())
-    expect(data.provider.rafiki.models["rafiki-fast"]).toEqual({ name: "Rafiki Fast" })
+    expect(data.provider.rafiki.models["rafiki-fast"]).toEqual({ name: "Rafiki AI Fast" })
     expect(data.agent.build.options).toEqual({ reasoningEffort: "low" })
     expect(data.agent.build.temperature).toBe(0.2)
     expect(data.agent.build.model).toBe("rafiki/rafiki-fast")

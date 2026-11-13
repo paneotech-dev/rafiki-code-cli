@@ -18,9 +18,9 @@ export const CREDITS: Record<string, number> = {
 export const CONFIRM = "rafiki-max"
 
 const LABEL: Record<string, string> = {
-  "rafiki-fast": "Rafiki Fast",
-  "rafiki-pro": "Rafiki Pro",
-  "rafiki-max": "Rafiki Max",
+  "rafiki-fast": "Rafiki AI Fast",
+  "rafiki-pro": "Rafiki AI Pro",
+  "rafiki-max": "Rafiki AI Max",
 }
 
 // "15x credits", or undefined for a model that is not a Rafiki tier.
@@ -44,7 +44,7 @@ export function confirmTitle(model: string = CONFIRM) {
 
 export function confirmMessage(model: string = CONFIRM) {
   const rate = CREDITS[model] ?? 1
-  return `${label(model)} uses ${rate}x credits: each request costs ${rate} times what the same request costs on Rafiki Fast. This session stays on ${label(model)} until you pick another tier.`
+  return `${label(model)} uses ${rate}x credits: each request costs ${rate} times what the same request costs on ${label("rafiki-fast")}. This session stays on ${label(model)} until you pick another tier.`
 }
 
 // LiteLLM spells "every model" as an empty list or one of these markers.
@@ -80,5 +80,5 @@ export function signInAgainMessage(model: string) {
 // When the key comes from the environment (a server key), the sign-in cannot
 // replace it.
 export function serverKeyMessage(model: string) {
-  return `The key in ${Brand.env.apiKey} was created without the ${label(model)} tier, so the gateway would refuse ${model}. Create a key with ${boxName(model)} ticked in the Rafiki AI console and set ${Brand.env.apiKey} to it, or unset ${Brand.env.apiKey} and run ${Brand.name} login.`
+  return `The key in ${Brand.env.apiKey} was created without the ${label(model)} tier, so the gateway would refuse ${model}. Create a key with ${boxName(model)} ticked at ${Brand.keysURL()} and set ${Brand.env.apiKey} to it, or unset ${Brand.env.apiKey} and run ${Brand.name} login.`
 }

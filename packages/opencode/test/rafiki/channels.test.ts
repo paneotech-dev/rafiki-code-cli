@@ -42,7 +42,7 @@ const INSTALL_PS = "& ([scriptblock]::Create((irm https://github.com/paneotech-d
 
 const BREW_JSON = (version: string) => JSON.stringify({ formulae: [{ name: "rafikicode", versions: { stable: version } }] })
 const WINGET_SHOW = (version: string) =>
-  ["Found Rafiki Code [PaneoTech.RafikiCode]", `Version: ${version}`, "Publisher: PaneoTech", "Installer:", "  Installer Type: zip"].join("\r\n")
+  ["Found Rafiki AI Code [PaneoTech.RafikiCode]", `Version: ${version}`, "Publisher: PaneoTech", "Installer:", "  Installer Type: zip"].join("\r\n")
 
 // A Run that answers from a table and records every command.
 function stub(table: Record<string, { code?: number; stdout?: string }>) {

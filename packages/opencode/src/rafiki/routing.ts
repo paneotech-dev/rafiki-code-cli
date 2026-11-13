@@ -44,7 +44,7 @@ export const MAX = "rafiki-max"
 // Context size above which an escalated request compacts the session first.
 export const COMPACT_FIRST = 60_000
 
-export const DEEP_DESCRIPTION = "send this message on Rafiki Pro, then go back to the session's tier"
+export const DEEP_DESCRIPTION = "send this message on Rafiki AI Pro, then go back to the session's tier"
 
 export type Purpose = "turn" | "subagent" | "title" | "compaction" | "criteria" | "review"
 export type Signal = "deep" | "plan" | "failing" | "review" | "stuck"
@@ -127,7 +127,7 @@ export function choose(input: {
   if (!rafiki(input.providerID)) return keep("other provider")
   if (!enabled(input.env)) return keep(`routing off (${Brand.env.routing})`)
   const tiers = Brand.models as readonly string[]
-  if (!tiers.includes(input.tier)) return keep("not a Rafiki tier")
+  if (!tiers.includes(input.tier)) return keep("not a Rafiki AI tier")
 
   if (input.purpose === "review") {
     if (strength(input.tier) >= strength(PRO)) return keep(`${reasons.review}; already on ${input.tier}`)

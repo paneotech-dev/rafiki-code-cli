@@ -9,7 +9,7 @@ describe("rafiki prompt", () => {
     for (const id of ["rafiki-fast", "rafiki-pro", "rafiki-max", "deepseek-pro"]) {
       const parts = SystemPrompt.provider({ providerID: "rafiki", id, api: { id } } as Provider.Model)
       const prompt = parts.join("\n")
-      expect(parts[0]).toContain("Rafiki Code")
+      expect(parts[0]).toContain("Rafiki AI Code")
       expect(prompt).toContain("# Requirements")
       expect(prompt).toContain("If the same approach fails twice for the same reason")
       expect(prompt).toContain("A check that also fails without your change is not yours to fix")

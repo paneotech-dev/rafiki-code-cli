@@ -1,5 +1,5 @@
 // Choosing a tier: the price in credits shown beside each tier, the one
-// confirmation before Rafiki Max, and the key check from /key/info.
+// confirmation before Rafiki AI Max, and the key check from /key/info.
 import { describe, expect, test } from "bun:test"
 import * as Account from "../../src/brand/account"
 import * as Tier from "../../src/brand/tier"
@@ -35,7 +35,7 @@ describe("the key's models", () => {
 
   test("the message says the key lacks the tier and how to fix it", () => {
     const text = Tier.notOnKeyMessage("rafiki-max")
-    expect(text).toContain("approved without the Rafiki Max tier")
+    expect(text).toContain("approved without the Rafiki AI Max tier")
     expect(text).toMatch(/: rafikicode login$/)
   })
 })

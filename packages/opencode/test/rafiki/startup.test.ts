@@ -137,7 +137,7 @@ describe("startup diagnosis in the terminal", () => {
     // The line that made a real user give up is gone.
     expect(result.all).not.toContain("Unexpected error")
 
-    expect(result.all).toContain("Rafiki Code cannot start: a library it needs could not be loaded on this machine.")
+    expect(result.all).toContain("Rafiki AI Code cannot start: a library it needs could not be loaded on this machine.")
     // The cause is the temporary directory probe's own, measured on this
     // machine, not a guess read off the error text: that it probed at all is
     // the absence of the text the fallback would have printed.
@@ -172,7 +172,7 @@ describe("startup diagnosis in the terminal", () => {
   test("an illegal instruction is reported as a bug, and not sent for a reinstall that changes nothing", async () => {
     const result = await run([], { RAFIKICODE_TEST_STARTUP_ERROR: "Illegal instruction (core dumped)" })
 
-    expect(result.all).toContain("Rafiki Code cannot start: it stopped on an instruction this machine's CPU would not run.")
+    expect(result.all).toContain("Rafiki AI Code cannot start: it stopped on an instruction this machine's CPU would not run.")
     // No reinstall: the four archives labelled "baseline" are byte identical
     // to their siblings, and the binary has been driven on an emulated 2008
     // CPU with neither AVX nor AVX2, so there is no other build to fetch.
@@ -239,7 +239,7 @@ describe("startup diagnosis in the terminal", () => {
     })
 
     expect(result.all).not.toContain("Unexpected error")
-    expect(result.all).toContain("Rafiki Code cannot start: it has no directory it can write to.")
+    expect(result.all).toContain("Rafiki AI Code cannot start: it has no directory it can write to.")
     expect(result.all).toContain("ENOTDIR")
     expect(result.all).toContain("HOME=/path/you/own rafikicode")
     expect(result.stderr).toContain("Original error: ENOTDIR: not a directory, mkdir")
@@ -307,7 +307,7 @@ describe("startup diagnosis in the terminal", () => {
     async () => {
       const result = await runOnTerminal({ rows: 24, columns: 100 }, 60_000, [], { RAFIKICODE_TEST_CONSOLE: "conhost" })
 
-      expect(result.output).toContain("Rafiki Code cannot draw its full screen interface in this window.")
+      expect(result.output).toContain("Rafiki AI Code cannot draw its full screen interface in this window.")
       expect(result.output).toContain("old Windows console (conhost.exe)")
       expect(result.output).toContain(
         "Open Windows Terminal (install it from the Microsoft Store, or run: winget install --id Microsoft.WindowsTerminal) and run rafikicode there.",
@@ -367,7 +367,7 @@ describe("startup diagnosis in the terminal", () => {
     const result = await run([], { RAFIKICODE_TEST_STARTUP_ERROR: message })
 
     expect(result.all).not.toContain("Unexpected error")
-    expect(result.all).toContain("Rafiki Code stopped with a failure it has no diagnosis for.")
+    expect(result.all).toContain("Rafiki AI Code stopped with a failure it has no diagnosis for.")
     expect(result.all).toContain("rafikicode doctor")
     expect(result.all).toContain('rafikicode run "your task"')
     expect(result.all).toContain("report it at")
@@ -444,7 +444,7 @@ describe("startup diagnosis", () => {
     const env = { TERM: "xterm-256color" }
     const tty = { isTTY: true, columns: 120, rows: 40 }
     const conhost = Startup.terminal(env, tty, () => ({ ok: false, reason: "classic_console", host: "conhost" }))
-    expect(conhost?.headline).toBe("Rafiki Code cannot draw its full screen interface in this window.")
+    expect(conhost?.headline).toBe("Rafiki AI Code cannot draw its full screen interface in this window.")
     expect(conhost?.exitCode).toBe(7)
     expect(conhost?.step).toContain(Startup.WINDOWS_TERMINAL_STEP)
     expect(Startup.terminal(env, tty, () => ({ ok: false, reason: "no_virtual_terminal", host: "x" }))?.cause).toContain(
@@ -463,7 +463,7 @@ describe("startup diagnosis", () => {
   test("the old Windows console report, as the user reads it", () => {
     const text = Startup.render(Startup.windowsConsole("classic_console"), undefined, { argv: [], env: {} })
     expect(text.split(os.EOL)).toEqual([
-      "Rafiki Code cannot draw its full screen interface in this window.",
+      "Rafiki AI Code cannot draw its full screen interface in this window.",
       "",
       "Probable cause: this window is the old Windows console (conhost.exe), which Windows PowerShell and cmd open on Windows 10 outside Windows Terminal. It cannot draw the full screen interface.",
       "",
@@ -491,7 +491,7 @@ describe("startup diagnosis", () => {
     expect(diagnosis.kind).toBe("native_library")
     // The code this class was created for, which is what a script branches on.
     expect(diagnosis.exitCode).toBe(6)
-    expect(text).toContain("Rafiki Code cannot start: a library it needs could not be loaded on this machine.")
+    expect(text).toContain("Rafiki AI Code cannot start: a library it needs could not be loaded on this machine.")
     expect(text).toContain("Probable cause: no temporary directory on this machine will run a file.")
     expect(text).toContain("Directories tried:")
     for (const dir of dirs) expect(text).toContain(dir)

@@ -45,13 +45,14 @@ function keysPage() {
       stored = undefined
     }
   }
-  return Brand.consoleFor(stored) + Contract.PATH.keysPage
+  return Brand.keysURL(Brand.consoleFor(stored))
 }
 
 function withConsole(message: string) {
   // The contract writes the production host into its messages; on another
   // Console (staging, a local mock) the link must still be the right one.
-  return message.replace("console.rafikiai.io/keys", keysPage().replace(/^https?:\/\//, ""))
+  const page = keysPage().replace(/^https?:\/\//, "")
+  return message.replace("console.rafikiai.io/keys", page).replace("code.rafikiai.io/keys", page)
 }
 
 function tierFrom(message?: string) {

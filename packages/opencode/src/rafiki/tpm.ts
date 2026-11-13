@@ -15,6 +15,7 @@
 //
 // Every other 429 keeps the usual backoff (session/retry.ts).
 import * as Account from "@opencode-ai/core/brand/account"
+import { Brand } from "@opencode-ai/core/brand/brand"
 import { Token } from "@/util/token"
 
 // Share of the limit a request may use before the session is compacted first.
@@ -123,7 +124,7 @@ export const refusedLine = (cap?: number) =>
   `${PREFIX} the gateway refused a request larger than this key's limit of ${cap ? grouped(cap) + " " : ""}tokens per minute; it is sent once more after compacting.`
 
 export const stillTooLarge = (cap?: number) =>
-  `This request is larger than this key's limit of ${cap ? grouped(cap) + " " : ""}tokens per minute, even after compacting the session. Ask for a higher limit on this key in the Rafiki AI console, or start a new session.`
+  `This request is larger than this key's limit of ${cap ? grouped(cap) + " " : ""}tokens per minute, even after compacting the session. Raise this key's limit at ${Brand.keysURL()}, or start a new session.`
 
 // For tests.
 export function reset() {

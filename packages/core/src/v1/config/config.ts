@@ -156,7 +156,7 @@ export const Info = Schema.Struct({
         description: "Enable automatic compaction when context is full (default: true)",
       }),
       prune: Schema.optional(Schema.Boolean).annotate({
-        description: "Replace old, large tool outputs with a short note to shorten long sessions (default: on for Rafiki tiers, off otherwise; RAFIKICODE_PRUNE overrides it)",
+        description: "Replace old, large tool outputs with a short note to shorten long sessions (default: on for Rafiki AI tiers, off otherwise; RAFIKICODE_PRUNE overrides it)",
       }),
       tail_turns: Schema.optional(NonNegativeInt).annotate({
         description:
@@ -170,7 +170,7 @@ export const Info = Schema.Struct({
       }),
       threshold: Schema.optional(PositiveInt).annotate({
         description:
-          "Compact the session once its context reaches this many tokens, below the model's window (default: 150000 on Rafiki tiers, the window less the output reserve otherwise; RAFIKICODE_COMPACT_AT overrides it)",
+          "Compact the session once its context reaches this many tokens, below the model's window (default: 150000 on Rafiki AI tiers, the window less the output reserve otherwise; RAFIKICODE_COMPACT_AT overrides it)",
       }),
       warn_at: Schema.optional(NonNegativeInt).annotate({
         description:
@@ -222,7 +222,7 @@ export const Info = Schema.Struct({
           "Write 3 to 5 acceptance criteria at the start of a task that is not trivial, and reproduce a reported bug with a failing test first (default: true)",
       }),
       model: Schema.optional(Schema.String).annotate({
-        description: "Model of the review, as provider/model (default: rafiki-pro on the Rafiki tiers, else the session's model)",
+        description: "Model of the review, as provider/model (default: rafiki-pro on the Rafiki AI tiers, else the session's model)",
       }),
       rounds: Schema.optional(NonNegativeInt).annotate({
         description: "Extra rounds after a review with criteria not met, 0 or 1 (default: 1)",

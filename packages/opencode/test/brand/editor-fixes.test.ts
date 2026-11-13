@@ -77,7 +77,7 @@ describe("server password names", () => {
   test("the warning names RAFIKICODE_SERVER_PASSWORD and the user name, not the upstream variable", () => {
     const warn = Serve.check({ hostname: "127.0.0.1" }).warn!
     expect(warn).toBe(
-      "Warning: RAFIKICODE_SERVER_PASSWORD is not set, so the server on 127.0.0.1 has no password. Any program or user on this machine can use it to run commands as you and read your files, including the Rafiki Code key. Set RAFIKICODE_SERVER_PASSWORD (user name rafikicode) to require a password.",
+      "Warning: RAFIKICODE_SERVER_PASSWORD is not set, so the server on 127.0.0.1 has no password. Any program or user on this machine can use it to run commands as you and read your files, including the Rafiki AI Code key. Set RAFIKICODE_SERVER_PASSWORD (user name rafikicode) to require a password.",
     )
     expect(warn).not.toContain("OPENCODE")
     expect(Serve.check({ hostname: "0.0.0.0" }).refuse).toContain("Set RAFIKICODE_SERVER_PASSWORD")

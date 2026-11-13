@@ -18,10 +18,10 @@ const root = path.resolve(import.meta.dir, "../..")
 const scopeEnv = Brand.providers.testEnv
 const stubKey = "sk-stub-rafiki-scope-0001"
 const noKeyLines = [
-  "Rafiki Code needs a Rafiki AI account. Create one in the Rafiki AI console (https://console.rafikiai.io), then run: rafikicode login",
-  "On a server or in CI, create an API key at https://console.rafikiai.io/keys with the Rafiki Code option ticked, and set RAFIKICODE_API_KEY.",
+  "Not signed in. Run: rafikicode login (no account yet? Sign up at https://accounts.rafikiai.io/signup?product=code)",
+  "On a server or in CI, create a key at https://code.rafikiai.io/keys and set RAFIKICODE_API_KEY.",
 ]
-const outOfScopeLine = "rafikicode runs on Rafiki models only (rafiki-fast, rafiki-pro, rafiki-max). Run rafikicode models to see them."
+const outOfScopeLine = "rafikicode runs on Rafiki AI models only (rafiki-fast, rafiki-pro, rafiki-max). Run rafikicode models to see them."
 
 type Env = Record<string, string | undefined>
 
@@ -138,7 +138,7 @@ describe("providerScope on the merged config", () => {
     expect(merged.mode.review.model).toBeUndefined()
     expect(warnings.join("\n")).toContain("ignored enabled_providers in the configuration")
     expect(warnings.join("\n")).toContain("ignored model openai/gpt-4o, agent.build.model anthropic/claude-x, mode.review.model local/llama")
-    expect(warnings.join("\n")).toContain("runs on Rafiki models only")
+    expect(warnings.join("\n")).toContain("runs on Rafiki AI models only")
   })
 
   test("a config without enabled_providers still gets the scope, silently", () => {
@@ -219,8 +219,8 @@ describe("providers command", () => {
     for (const args of [["providers"], ["providers", "list"], ["auth", "login"], ["providers", "login", "--provider", "openai"], ["auth", "--help"]]) {
       const result = await cli(args)
       expect(result.exitCode).toBe(2)
-      expect(result.stderr).toContain("rafikicode providers is not available: rafikicode runs on Rafiki models only.")
-      expect(result.stderr).toContain("Sign in with rafikicode login, or on a server or in CI set RAFIKICODE_API_KEY (create a key at https://console.rafikiai.io/keys).")
+      expect(result.stderr).toContain("rafikicode providers is not available: rafikicode runs on Rafiki AI models only.")
+      expect(result.stderr).toContain("Sign in with rafikicode login, or on a server or in CI set RAFIKICODE_API_KEY (create a key at https://code.rafikiai.io/keys).")
     }
   }, 120_000)
 })

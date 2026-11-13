@@ -179,7 +179,7 @@ export const RunCommand = effectCmd({
         type: "string",
       })
       .option("deep", {
-        describe: "send the message on Rafiki Pro for this task, then go back to the session's tier (the /deep command)",
+        describe: "send the message on Rafiki AI Pro for this task, then go back to the session's tier (the /deep command)",
         type: "boolean",
       })
       .option("attempts", {

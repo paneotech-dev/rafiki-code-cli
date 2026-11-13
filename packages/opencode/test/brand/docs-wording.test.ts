@@ -42,8 +42,8 @@ describe("docs check", () => {
     ["It ships in the next release.", "next release"],
     ["Open Rafiki Console to create a key.", "Rafiki Console"],
     ["Top up your wallet.", "wallet"],
-    ["Rafiki Code \u2014 the agent.", "long dash"],
-    ["Rafiki Code \u2013 the agent.", "long dash"],
+    ["Rafiki AI Code \u2014 the agent.", "long dash"],
+    ["Rafiki AI Code \u2013 the agent.", "long dash"],
   ])("fails on %p", (line, label) => {
     const result = check(page("bad.md", `# Page\n\n${line}\n`))
     expect(result.code).toBe(1)

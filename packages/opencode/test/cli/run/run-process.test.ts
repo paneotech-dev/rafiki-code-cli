@@ -263,7 +263,7 @@ describe("opencode run (non-interactive subprocess)", () => {
         yield* llm.tool("bash", { command: "rm -f denied-file", description: "Remove a test file" })
         yield* llm.text("continued after rejection")
         const denied = yield* opencode.run("request permission", { permission: { bash: "ask" } })
-        // Rafiki Code: a run whose every tool call was rejected did nothing, so it fails.
+        // Rafiki AI Code: a run whose every tool call was rejected did nothing, so it fails.
         opencode.expectExit(denied, 1)
         expect(denied.stderr).toContain("permission requested: bash")
         expect(denied.stderr).toContain("Every tool call in this run was rejected")

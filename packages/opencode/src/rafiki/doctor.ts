@@ -115,7 +115,7 @@ export function gatewayRoot(url: string) {
 }
 
 function keysPage(consoleURL: string) {
-  return consoleURL + Contract.PATH.keysPage
+  return Brand.keysURL(consoleURL)
 }
 
 function detailOf(cause: unknown) {
@@ -556,16 +556,16 @@ export function gatewayAccepts(result: KeyResult, now: number) {
 // For a key the gateway accepts while the Console answers 401: minted directly
 // at the gateway, not revoked.
 export function notRegistered(consoleURL: string) {
-  return `This key is valid at the gateway but not registered in the Rafiki AI console (it was created outside the console). Create a key at ${keysPage(consoleURL)}, or run ${Brand.name} login.`
+  return `This key works at the gateway but is not in ${Brand.consoleName}. Create a key at ${keysPage(consoleURL)}, or run ${Brand.name} login.`
 }
 
 // What such a key means in practice: runs work, the Console cannot show it.
 export function notRegisteredMeaning(consoleURL: string) {
-  return `Usage still works and is metered at the gateway. The credit balance and key management of the Rafiki AI console do not apply to this key; create a key at ${keysPage(consoleURL)} to get them.`
+  return `Runs still work and are metered, but this key has no credit balance or key list in ${Brand.consoleName}.`
 }
 
 // Key types by gateway alias. Keys made for Rafiki Code (sign-in keys, and
-// Rafiki AI console keys with the Rafiki Code option) are rafikicode-<uuid>;
+// Rafiki AI Console keys with the Rafiki Code option) are rafikicode-<uuid>;
 // general console keys are rafiki-<uuid> and carry no Rafiki Code metadata.
 const CODE_ALIAS = /^rafikicode-/i
 const CONSOLE_ALIAS = /^rafiki-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -591,8 +591,8 @@ export function shortAlias(alias: string) {
   return match ? `${match[1]}...` : alias
 }
 
-export const NOT_CODE_KEY = `This key was not created for ${Brand.product}. Create one in the Rafiki AI console with the ${Brand.product} option ticked, or run ${Brand.name} login.`
-export const NOT_CODE_KEY_MEANING = `Runs still work, but ${Brand.product} tracks usage only on keys created for it.`
+export const NOT_CODE_KEY = `This key was not created for ${Brand.product}. Create one at ${Brand.keysURL()}, or run ${Brand.name} login.`
+export const NOT_CODE_KEY_MEANING = `Runs still work, but usage is tracked only on ${Brand.product} keys.`
 
 export async function checkKey(root: string, key: string, consoleURL: string, f: typeof fetch, timeoutMs: number, now: number): Promise<KeyResult> {
   const url = root + "/key/info"
@@ -743,7 +743,7 @@ export async function checkConsole(
     }
     return fail("console", `${consoleURL} does not accept this key (401)`, Contract.MESSAGE[Contract.ERROR.keyRevoked]!)
   }
-  if (response.status >= 500) return fail("console", `${consoleURL} answered ${response.status}`, "The Rafiki AI console is having trouble. Try again shortly.")
+  if (response.status >= 500) return fail("console", `${consoleURL} answered ${response.status}`, "The Rafiki AI Console is having trouble. Try again shortly.")
   return ok("console", `${consoleURL} reachable (${response.status})`)
 }
 

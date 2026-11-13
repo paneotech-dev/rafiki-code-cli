@@ -1,7 +1,7 @@
 // User-visible wording in the brand layer. Every string literal in the brand
 // message catalogs (the CLI brand modules, the terminal interface lines that
 // name the account, the VS Code extension) follows the product naming: the
-// account is "your Rafiki AI account", the site is "the Rafiki AI console
+// account is "your Rafiki AI account", the site is "the Rafiki AI Console
 // (console.rafikiai.io)". The old product name, the word "wallet" and the
 // capitalised "the Console" never appear. Comments and identifiers are not
 // user-visible and are not checked; the "Console:" field label of whoami stays,
@@ -93,7 +93,7 @@ describe("brand message wording", () => {
           'export const a = "needs a Rafiki Console account"',
           "export const b = `Top up your Wallet ${wallet}`",
           'export const c = "Open the Console key page"',
-          'export const d = "Create a key in the Rafiki AI console (console.rafikiai.io)"',
+          'export const d = "Create a key in the Rafiki AI Console (console.rafikiai.io)"',
           'export const e = "Console: https://console.rafikiai.io"',
           "export const f = `${a}Console asked to slow down`",
         ].join("\n"),

@@ -35,7 +35,7 @@ test("a long description is cut to fit", () => {
 })
 
 test("the footer heading names the product and its maker, the folder stays under it", () => {
-  expect(byline()).toBe("Rafiki Code by PANEOTECH")
+  expect(byline()).toBe("Rafiki AI Code by PANEOTECH")
   expect(where("~/RafikiCode:main", "0.1.11")).toBe("~/RafikiCode:main · 0.1.11")
   const long = where("~/projects/clients/a-very-long-folder-name/and-more", "0.1.11-rc.1")
   expect(long.length).toBe(36)

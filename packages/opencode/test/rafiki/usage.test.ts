@@ -56,7 +56,7 @@ describe("loading usage", () => {
     expect(error).toBeInstanceOf(DeviceFlowError)
     expect(error.exitCode).toBe(Contract.EXIT.failed)
     expect(error.message).toBe(
-      `The Rafiki AI console at ${client.consoleURL} does not serve usage to rafikicode. Open ${client.consoleURL}/usage in a browser to see it.`,
+      `The Rafiki AI Console at ${client.consoleURL} does not serve usage to rafikicode. Open ${client.consoleURL}/usage in a browser to see it.`,
     )
   })
 
@@ -72,7 +72,7 @@ describe("loading usage", () => {
     const error = await failure(Usage.load(client, KEY, 30))
     const explained = await Usage.explainRefusal(error, KEY, client.consoleURL, async () => true)
     expect(explained.exitCode).toBe(Contract.EXIT.failed)
-    expect(explained.message).toContain("valid at the gateway but not registered in the Rafiki AI console")
+    expect(explained.message).toContain("works at the gateway but is not in Rafiki AI Console")
     expect(explained.message).not.toContain(Contract.MESSAGE[Contract.ERROR.keyRevoked])
     const dead = await Usage.explainRefusal(error, KEY, client.consoleURL, async () => false)
     expect(dead).toEqual({ message: Contract.MESSAGE[Contract.ERROR.keyRevoked], exitCode: Contract.EXIT.usage })
@@ -95,7 +95,7 @@ describe("loading usage", () => {
       Usage.load({ consoleURL: "http://127.0.0.1:9", fetch: async () => Promise.reject(new Error("connection refused")) }, KEY, 30),
     )
     expect(error.exitCode).toBe(Contract.EXIT.network)
-    expect(error.message).toContain("Could not reach the Rafiki AI console to load usage: connection refused")
+    expect(error.message).toContain("Could not reach the Rafiki AI Console to load usage: connection refused")
   })
 
   test("an answer that is not the usage shape is reported with the console's own message", async () => {
@@ -124,7 +124,7 @@ describe("the report", () => {
       "  pro         3         40,000           6,000    0.2000",
       "  other       3          8,000           1,500    0.0420",
       "  total      15        168,000          15,500    0.2521",
-      '  "other" is every call of the account that was not made on a Rafiki Code tier.',
+      '  "other" is every call of the account that was not made on a Rafiki AI Code tier.',
       "  Prompt caching saved 0.0750 USD (0.0200 charged instead of 0.0950).",
       "",
       "By day (UTC)",
@@ -140,7 +140,7 @@ describe("the report", () => {
     const lines = Usage.render(body, input)
     expect(lines).toContain("  fast        9        120,000           8,000    0.0101")
     expect(lines.at(-1)).toBe(
-      "Daily figures are not served by this Rafiki AI console yet. Open https://console.example/usage in a browser to see them.",
+      "Daily figures are not served by this Rafiki AI Console yet. Open https://console.example/usage in a browser to see them.",
     )
     expect(lines.join("\n")).not.toContain("By day")
   })

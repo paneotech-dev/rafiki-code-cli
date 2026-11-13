@@ -1,4 +1,4 @@
-// Choosing Rafiki Max in the terminal interface: the key check from
+// Choosing Rafiki AI Max in the terminal interface: the key check from
 // /key/info and the switch shortcuts may make without asking.
 import { afterEach, describe, expect, test } from "bun:test"
 import { keyAllows, markConfirmed, resetConfirmed, sessionKey, silentSwitchAllowed } from "../../src/component/tier-choice"

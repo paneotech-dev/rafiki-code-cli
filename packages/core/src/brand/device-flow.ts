@@ -40,7 +40,7 @@ export function headlessMessage(reason: "key" | "ci" | "tty") {
           reason === "ci"
             ? "This looks like a CI environment, so the browser sign-in is not available."
             : "No terminal is attached, so the browser sign-in is not available.",
-          `Create a server key at ${Brand.consoleURL()}${Contract.PATH.keysPage} and set ${Brand.env.apiKey}:`,
+          `Create a key at ${Brand.keysURL()} and set ${Brand.env.apiKey}:`,
           `  export ${Brand.env.apiKey}=sk-...`,
         ]
   return lines.join("\n")
@@ -86,7 +86,7 @@ function failure(status: number, error: Contract.ErrorEnvelope["error"], ref: st
 
 function network(cause: unknown, what: string) {
   const detail = cause instanceof Error ? cause.message : String(cause)
-  return new DeviceFlowError(`Could not reach the Rafiki AI console to ${what}: ${detail}`, "network", Contract.EXIT.network)
+  return new DeviceFlowError(`Could not reach the Rafiki AI Console to ${what}: ${detail}`, "network", Contract.EXIT.network)
 }
 
 export interface Client {
@@ -131,9 +131,9 @@ export async function requestCode(
     throw network(cause, "start the sign-in")
   }
   const { body, error, ref } = await parse(response)
-  if (!response.ok) throw failure(response.status, error, ref, "The Rafiki AI console refused to start the sign-in.")
+  if (!response.ok) throw failure(response.status, error, ref, "The Rafiki AI Console refused to start the sign-in.")
   if (!body?.device_code || !body?.user_code || !body?.verification_uri) {
-    throw new DeviceFlowError("The Rafiki AI console sent an unexpected reply.", "invalid_response", Contract.EXIT.internal)
+    throw new DeviceFlowError("The Rafiki AI Console sent an unexpected reply.", "invalid_response", Contract.EXIT.internal)
   }
   return {
     ...body,
@@ -184,7 +184,7 @@ export async function pollToken(
     const { body, error, ref } = await parse(response)
     if (response.ok) {
       if (!body?.access_token) {
-        throw new DeviceFlowError("The Rafiki AI console sent an unexpected reply.", "invalid_response", Contract.EXIT.internal)
+        throw new DeviceFlowError("The Rafiki AI Console sent an unexpected reply.", "invalid_response", Contract.EXIT.internal)
       }
       return body as Contract.TokenResponse
     }
@@ -219,7 +219,7 @@ export async function pollToken(
     if (errorCode === Contract.ERROR.expiredToken || errorCode === Contract.ERROR.invalidGrant) {
       throw new DeviceFlowError(Contract.MESSAGE[errorCode], errorCode, Contract.EXIT.usage, ref)
     }
-    throw failure(response.status, error, ref, "The Rafiki AI console refused the sign-in.")
+    throw failure(response.status, error, ref, "The Rafiki AI Console refused the sign-in.")
   }
 }
 
@@ -254,7 +254,7 @@ export async function me(c: Client, key: string): Promise<Contract.MeResponse> {
     throw network(cause, "load the account")
   }
   const { body, error, ref } = await parse(response)
-  if (!response.ok) throw failure(response.status, error, ref, "The Rafiki AI console could not load the account.")
+  if (!response.ok) throw failure(response.status, error, ref, "The Rafiki AI Console could not load the account.")
   return body as Contract.MeResponse
 }
 
@@ -271,7 +271,7 @@ export async function revoke(c: Client, key: string, keyID: string): Promise<voi
   // 401 and 404 mean the key is already gone, which is what logout wants.
   if (response.ok || response.status === 401 || response.status === 404) return
   const { error, ref } = await parse(response)
-  throw failure(response.status, error, ref, "The Rafiki AI console could not revoke the key.")
+  throw failure(response.status, error, ref, "The Rafiki AI Console could not revoke the key.")
 }
 
 export async function refresh(c: Client, key: string): Promise<Contract.TokenResponse> {
@@ -286,9 +286,9 @@ export async function refresh(c: Client, key: string): Promise<Contract.TokenRes
     throw network(cause, "rotate the key")
   }
   const { body, error, ref } = await parse(response)
-  if (!response.ok) throw failure(response.status, error, ref, "The Rafiki AI console could not rotate the key.")
+  if (!response.ok) throw failure(response.status, error, ref, "The Rafiki AI Console could not rotate the key.")
   if (!body?.access_token) {
-    throw new DeviceFlowError("The Rafiki AI console sent an unexpected reply.", "invalid_response", Contract.EXIT.internal)
+    throw new DeviceFlowError("The Rafiki AI Console sent an unexpected reply.", "invalid_response", Contract.EXIT.internal)
   }
   return body as Contract.TokenResponse
 }

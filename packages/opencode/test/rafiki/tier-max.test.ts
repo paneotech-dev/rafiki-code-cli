@@ -30,14 +30,14 @@ describe("the check", () => {
 
   test("a key without the tier is refused with the fix", async () => {
     const text = await TierCheck.refusal("rafiki/rafiki-max", info(["rafiki-fast", "rafiki-pro"]))
-    expect(text).toContain("approved without the Rafiki Max tier")
+    expect(text).toContain("approved without the Rafiki AI Max tier")
     expect(text).toMatch(/: rafikicode login$/)
     expect(await TierCheck.refusal("rafiki/rafiki-max", info(["rafiki-fast", "rafiki-max"]))).toBeUndefined()
     expect(await TierCheck.refusal("rafiki/rafiki-max", info([]))).toBeUndefined()
   })
 
   test("the price note", () => {
-    expect(TierCheck.note("rafiki/rafiki-max")).toBe("Rafiki Max uses 15x credits.")
+    expect(TierCheck.note("rafiki/rafiki-max")).toBe("Rafiki AI Max uses 15x credits.")
     expect(TierCheck.note("rafiki/rafiki-fast")).toBeUndefined()
   })
 
@@ -92,7 +92,7 @@ describe("run against the mock gateway", () => {
       })
       const [, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])
       expect(await proc.exited).toBe(2)
-      expect(stderr).toContain("approved without the Rafiki Max tier")
+      expect(stderr).toContain("approved without the Rafiki AI Max tier")
       expect(stderr).toMatch(/: rafikicode login\s*$/m)
       expect(gateway.requests.some((r: any) => r.path === "/key/info")).toBe(true)
       expect(gateway.requests.some((r: any) => r.path === "/v1/chat/completions")).toBe(false)

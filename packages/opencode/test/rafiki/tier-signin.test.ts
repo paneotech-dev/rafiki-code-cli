@@ -1,4 +1,4 @@
-// Signing in again for Rafiki Max without leaving the interface: the sign-in
+// Signing in again for Rafiki AI Max without leaving the interface: the sign-in
 // the dialog runs (core/brand/device-flow.ts signIn) against the mock Console,
 // with the keys it delivers registered on the mock gateway, whose /key/info
 // answer is what the interface checks before and after.

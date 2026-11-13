@@ -144,7 +144,7 @@ function showCode(code: { user_code: string; verification_uri: string; verificat
 }
 
 const pollEvents: DeviceFlow.PollEvents = {
-  onSlowDown: ({ interval }) => UI.println(`${UI.Style.TEXT_DIM}The Rafiki AI console asked to slow down; polling every ${interval} s.${UI.Style.TEXT_NORMAL}`),
+  onSlowDown: ({ interval }) => UI.println(`${UI.Style.TEXT_DIM}The Rafiki AI Console asked to slow down; polling every ${interval} s.${UI.Style.TEXT_NORMAL}`),
   onRateLimited: ({ retryAfter }) => UI.println(`${UI.Style.TEXT_DIM}Rate limited; retrying in ${retryAfter} s.${UI.Style.TEXT_NORMAL}`),
   onLongWait: () =>
     UI.println(
@@ -197,7 +197,7 @@ export const LoginCommand = effectCmd({
     yargs
       .option("label", {
         type: "string",
-        describe: "name shown on the approval page and in the key list of the Rafiki AI console",
+        describe: "name shown on the approval page and in your list of signed-in computers",
       })
       .option("refresh", {
         type: "boolean",
@@ -274,7 +274,7 @@ export const LoginCommand = effectCmd({
       if (revoked) UI.println(`${UI.Style.TEXT_DIM}Revoked the previous key ${existing.key_alias ?? existing.key_id}.${UI.Style.TEXT_NORMAL}`)
       else
         UI.println(
-          `${UI.Style.TEXT_WARNING}Could not revoke the previous key ${existing.key_alias ?? existing.key_id}. Revoke it at ${Brand.consoleFor(existing.console_url)}${Contract.PATH.keysPage}.${UI.Style.TEXT_NORMAL}`,
+          `${UI.Style.TEXT_WARNING}Could not revoke the previous key ${existing.key_alias ?? existing.key_id}. Revoke it at ${Brand.sessionsURL(Brand.consoleFor(existing.console_url))}.${UI.Style.TEXT_NORMAL}`,
         )
     }
     UI.println(`Key ${credential.key_alias ?? "(no alias)"} stored at ${Credentials.file(dir)} (${expiry(credential)}).`)
@@ -300,7 +300,7 @@ export const LogoutCommand = effectCmd({
       // Its key is not trusted enough to send anywhere, so it is not revoked.
       Credentials.remove(dir)
       UI.println(`Removed ${Credentials.file(dir)} without revoking its key, because the file ${unsafe.reason}.`)
-      UI.println(`Revoke that key at ${Brand.consoleURL()}${Contract.PATH.keysPage} if it was yours.`)
+      UI.println(`If that key was yours, sign it out at ${Brand.sessionsURL()}.`)
       UI.println(signInAgain())
       return
     }
@@ -320,12 +320,12 @@ export const LogoutCommand = effectCmd({
         Effect.catch((cause) => {
           const message = cause instanceof Error ? cause.message : String(cause)
           UI.println(
-            `${UI.Style.TEXT_WARNING}Could not revoke the key in the Rafiki AI console (${message}). Revoke it at ${Brand.consoleFor(existing.console_url)}${Contract.PATH.keysPage}.${UI.Style.TEXT_NORMAL}`,
+            `${UI.Style.TEXT_WARNING}Could not revoke the key (${message}). Sign it out at ${Brand.sessionsURL(Brand.consoleFor(existing.console_url))}.${UI.Style.TEXT_NORMAL}`,
           )
           return Effect.succeed(false)
         }),
       )
-      if (revoked) UI.println(`Revoked key ${existing.key_alias ?? existing.key_id} in the Rafiki AI console.`)
+      if (revoked) UI.println(`Revoked key ${existing.key_alias ?? existing.key_id}.`)
     }
     Credentials.remove(dir)
     UI.println(`Removed ${Credentials.file(dir)}. Signed out.`)
@@ -341,7 +341,7 @@ export const WhoamiCommand = effectCmd({
     yargs.option("offline", {
       type: "boolean",
       default: false,
-      describe: "print the stored credential without asking the Rafiki AI console",
+      describe: "print the stored credential without asking the Rafiki AI Console",
     }),
   handler: Effect.fn("Cli.rafiki.whoami")(function* (args) {
     const envKey = process.env[Brand.env.apiKey]
@@ -383,7 +383,7 @@ export const WhoamiCommand = effectCmd({
             )
           }
           const message = cause instanceof Error ? cause.message : String(cause)
-          UI.println(`${UI.Style.TEXT_DIM}Could not load the account from the Rafiki AI console (${message}).${UI.Style.TEXT_NORMAL}`)
+          UI.println(`${UI.Style.TEXT_DIM}Could not load the account from the Rafiki AI Console (${message}).${UI.Style.TEXT_NORMAL}`)
           return Effect.succeed(undefined)
         }),
       )
@@ -404,7 +404,7 @@ export const WhoamiCommand = effectCmd({
       }
     }
     if (envKey) {
-      UI.println("Account: a server key from the environment (details are on the key page of the Rafiki AI console).")
+      UI.println(`Account: a server key from the environment (see ${Brand.keysURL()}).`)
       return
     }
     UI.println(`Account: ${describeOwner(stored!.owner)}`)
@@ -465,7 +465,7 @@ export const TrustCommand = effectCmd({
 export function providersMessage() {
   return [
     `${Brand.name} providers is not available: ${Brand.name} runs on ${Brand.provider.name} models only.`,
-    `Sign in with ${Brand.name} login, or on a server or in CI set ${Brand.env.apiKey} (create a key at ${Brand.consoleURL()}${Contract.PATH.keysPage}).`,
+    `Sign in with ${Brand.name} login, or on a server or in CI set ${Brand.env.apiKey} (create a key at ${Brand.keysURL()}).`,
   ].join("\n")
 }
 
@@ -485,7 +485,7 @@ export const ProvidersCommand = Brand.providers.open() ? UpstreamProvidersComman
 // One line per check, ok, a warning, or a plain fix hint; exit 0 unless a line failed.
 export const DoctorCommand = effectCmd({
   command: "doctor",
-  describe: `check this terminal's ${Brand.product} setup: config, project config, workspace trust, key, gateway, tiers, Rafiki AI console, PATH, version`,
+  describe: `check this terminal's ${Brand.product} setup: config, project config, workspace trust, key, gateway, tiers, Rafiki AI Console, PATH, version`,
   instance: false,
   builder: (yargs: Argv) =>
     yargs

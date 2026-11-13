@@ -54,7 +54,7 @@ async function help(
 describe("brand constants", () => {
   test("binary and product names", () => {
     expect(Brand.name).toBe("rafikicode")
-    expect(Brand.product).toBe("Rafiki Code")
+    expect(Brand.product).toBe("Rafiki AI Code")
     expect(Brand.dir).toBe("rafikicode")
   })
 
@@ -328,7 +328,7 @@ describe("help output", () => {
     const result = await help(["doctor", "--help"])
     expect(result.exitCode).toBe(0)
     expect(result.stderr).toContain("rafikicode doctor")
-    expect(result.stderr).toContain("check this terminal's Rafiki Code setup")
+    expect(result.stderr).toContain("check this terminal's Rafiki AI Code setup")
     expect(result.stderr).toContain("--timeout")
     expect(result.stderr).not.toMatch(upstreamWord)
   }, 60_000)

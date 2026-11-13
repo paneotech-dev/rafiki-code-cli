@@ -12,10 +12,9 @@ export function missing() {
 }
 
 export function noKey() {
-  const url = Brand.consoleURL()
   return [
-    `${Brand.product} needs a Rafiki AI account. Create one in the Rafiki AI console (${url}), then run: ${Brand.name} login`,
-    `On a server or in CI, create an API key at ${url}${Contract.PATH.keysPage} with the Rafiki Code option ticked, and set ${Brand.env.apiKey}.`,
+    `Not signed in. Run: ${Brand.name} login (no account yet? Sign up at ${Brand.signup})`,
+    `On a server or in CI, create a key at ${Brand.keysURL()} and set ${Brand.env.apiKey}.`,
   ].join("\n")
 }
 

@@ -12,12 +12,13 @@ import { InstallationChannel, InstallationLocal, InstallationVersion } from "../
 
 const gatewayDefault = "https://gateway.rafikiai.io/v1"
 const consoleDefault = "https://console.rafikiai.io"
+const codeAppDefault = "https://code.rafikiai.io"
 const providerID = "rafiki"
 const models = ["rafiki-fast", "rafiki-pro", "rafiki-max"] as const
 const labels: Record<(typeof models)[number], string> = {
-  "rafiki-fast": "Rafiki Fast",
-  "rafiki-pro": "Rafiki Pro",
-  "rafiki-max": "Rafiki Max",
+  "rafiki-fast": "Rafiki AI Fast",
+  "rafiki-pro": "Rafiki AI Pro",
+  "rafiki-max": "Rafiki AI Max",
 }
 
 // Request defaults for the gateway tiers. rafiki-fast is a reasoning model
@@ -214,11 +215,22 @@ function schemaRepair(text: string, value: unknown, kind: SchemaKind = "config",
   return text.replace(pattern, (_, key: string) => `${key}"${url}"`)
 }
 
+// A page of the Rafiki AI Code app when base is the production Console. Any
+// other Console (staging, a local mock) keeps every key on its own /keys.
+function pageFor(base: string, page: "/keys" | "/sessions") {
+  const clean = base.replace(/\/+$/, "")
+  return clean === consoleDefault ? `${codeAppDefault}${page}` : `${clean}/keys`
+}
+
 export const Brand = {
   // Binary and script name, also the npm package name.
   name: "rafikicode",
   // Human readable product name.
-  product: "Rafiki Code",
+  product: "Rafiki AI Code",
+  // The console that holds the account and its credit, as people see it named.
+  consoleName: "Rafiki AI Console",
+  // Where a new person creates a Rafiki AI account for Rafiki AI Code.
+  signup: "https://accounts.rafikiai.io/signup?product=code",
   // The company that makes the product, as the product names itself.
   vendor: "PANEOTECH",
   // Short prefix for terminal window titles.
@@ -653,6 +665,16 @@ export const Brand = {
   consoleFor(stored: string | undefined) {
     return stored && consoleAllowed(stored) ? stored.replace(/\/+$/, "") : Brand.consoleURL()
   },
+  // The page where people create and revoke API keys: API keys in the
+  // Rafiki AI Code app for the production Console, else that Console's own
+  // key page (staging, a local mock).
+  keysURL(base: string = Brand.consoleURL()) {
+    return pageFor(base, "/keys")
+  },
+  // The page listing the computers signed in with rafikicode login.
+  sessionsURL(base: string = Brand.consoleURL()) {
+    return pageFor(base, "/sessions")
+  },
   // True when the key may be sent to this Console URL: https, or http to
   // 127.0.0.1, [::1] or localhost.
   consoleAllowed(url: string | undefined) {
@@ -720,7 +742,7 @@ export const Brand = {
   config() {
     if (Brand.sessionKeyRefusedInCI()) {
       warnOnce(
-        `${Brand.product}: CI is set, so the stored browser sign-in is not used. Create an API key at ${Brand.consoleURL()}/keys with the Rafiki Code option ticked, and set ${Brand.env.apiKey}.`,
+        `${Brand.product}: CI is set, so the stored browser sign-in is not used. Create a key at ${Brand.keysURL()} and set ${Brand.env.apiKey}.`,
       )
       return { autoupdate: false as boolean, disabled_providers: [...Brand.disabledProviders] }
     }
@@ -732,7 +754,7 @@ export const Brand = {
   },
   provider: {
     id: providerID,
-    name: "Rafiki",
+    name: "Rafiki AI",
     reasoningEfforts,
     // The tiers kept out of the model lists (see unlistedModels).
     unlisted: unlistedModels,
@@ -749,6 +771,12 @@ export const Brand = {
     // prompt row), or "" when the model name already starts with it.
     label(providerName: string, modelName: string) {
       return modelName === providerName || modelName.startsWith(providerName + " ") ? "" : providerName
+    },
+    // The name an editor's model list shows over ACP: "Rafiki AI Fast", not
+    // "Rafiki AI/Rafiki AI Fast"; other providers keep "Provider/Model".
+    modelName(providerName: string, modelName: string) {
+      const prefix = Brand.provider.label(providerName, modelName)
+      return prefix ? `${prefix}/${modelName}` : modelName
     },
     // The tier of a gateway alias: rafiki-fast is fast. Undefined for any other model.
     tier(model: string): "fast" | "pro" | "max" | undefined {

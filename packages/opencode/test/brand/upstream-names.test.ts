@@ -422,7 +422,7 @@ describe("upstream names in what is produced", () => {
         schemas: {
           Config: {
             properties: {
-              description: { type: "string", description: "Read from opencode.json by Rafiki Code." },
+              description: { type: "string", description: "Read from opencode.json by Rafiki AI Code." },
               summary: { type: "string", default: "opencode" },
             },
           },

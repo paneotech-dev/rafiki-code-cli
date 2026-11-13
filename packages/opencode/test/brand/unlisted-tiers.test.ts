@@ -1,7 +1,7 @@
 // Unlisted tiers (Brand.provider.unlisted): a tier listed there is left out
 // of the model lists people choose from (rafikicode models, the terminal
 // interface picker, the model option an editor gets over ACP). Since
-// 10 October 2026 the list is empty and every tier, Rafiki Max included, is
+// 10 October 2026 the list is empty and every tier, Rafiki AI Max included, is
 // offered. A listed tier stays registered, so an explicit choice still
 // reaches the gateway.
 import { afterEach, describe, expect, test } from "bun:test"
@@ -26,9 +26,9 @@ const providers = [
     id: "rafiki",
     name: "Rafiki",
     models: {
-      "rafiki-fast": { id: "rafiki-fast", name: "Rafiki Fast" },
-      "rafiki-pro": { id: "rafiki-pro", name: "Rafiki Pro" },
-      "rafiki-max": { id: "rafiki-max", name: "Rafiki Max", variants: { high: {} } },
+      "rafiki-fast": { id: "rafiki-fast", name: "Rafiki AI Fast" },
+      "rafiki-pro": { id: "rafiki-pro", name: "Rafiki AI Pro" },
+      "rafiki-max": { id: "rafiki-max", name: "Rafiki AI Max", variants: { high: {} } },
     },
   },
 ]
@@ -73,7 +73,7 @@ describe("the switch", () => {
 
   test("the out of scope message names the offered tiers", () => {
     expect(MissingKey.outOfScope()).toBe(
-      "rafikicode runs on Rafiki models only (rafiki-fast, rafiki-pro, rafiki-max). Run rafikicode models to see them.",
+      "rafikicode runs on Rafiki AI models only (rafiki-fast, rafiki-pro, rafiki-max). Run rafikicode models to see them.",
     )
   })
 })

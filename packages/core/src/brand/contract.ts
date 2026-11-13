@@ -98,10 +98,10 @@ export const MESSAGE: Record<string, string> = {
   [ERROR.unknownClient]: "Unknown client.",
   [ERROR.unauthenticated]: "Missing API key. Run rafikicode login, or set RAFIKICODE_API_KEY.",
   [ERROR.keyRevoked]: "This key was revoked or has expired. Run rafikicode login.",
-  [ERROR.wrongKeyKind]: "This key cannot be refreshed here. Create a new key at console.rafikiai.io/keys.",
+  [ERROR.wrongKeyKind]: "This key cannot be refreshed here. Create a new key at code.rafikiai.io/keys.",
   [ERROR.serviceUnavailable]: "The service is not available.",
   [ERROR.keyBudgetExhausted]:
-    "Your key has run out of budget. Top up or raise the key's budget at console.rafikiai.io/keys.",
+    "Your key has run out of budget. Raise its budget at code.rafikiai.io/keys.",
   [ERROR.tierNotAllowed]:
     "This key is not allowed to use the <tier> tier. Sign in again to replace the key with one that includes it (keep <Tier> ticked on the approval page): rafikicode login",
   [ERROR.gatewayUnavailable]: "The model gateway is having trouble. Try again shortly.",

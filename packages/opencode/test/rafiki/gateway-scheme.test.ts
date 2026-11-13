@@ -126,7 +126,7 @@ describe("Console URL scheme", () => {
     expect(failure?.message).not.toContain("console.rafikiai.io/keys")
     process.env[Brand.env.apiKey] = stubKey
     const serverKey = classify({ statusCode: 429, responseBody: JSON.stringify({ error: { type: "budget_exceeded", message: "Budget has been exceeded" } }) })
-    expect(serverKey?.message).toContain("console.rafikiai.io/keys")
+    expect(serverKey?.message).toContain("code.rafikiai.io/keys")
   })
 })
 

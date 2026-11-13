@@ -82,7 +82,7 @@ Options:
       --log-level           log level           [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure                run without external plugins                                   [boolean]
       --command             the command to run, use message for args                        [string]
-      --deep                send the message on Rafiki Pro for this task, then go back to the
+      --deep                send the message on Rafiki AI Pro for this task, then go back to the
                             session's tier (the /deep command)                             [boolean]
       --attempts            do the task 2 or 3 ways at once, each in a copy of the project, and keep
                             the best change (the /attempts command)                         [number]
@@ -148,7 +148,7 @@ Options:
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode licenses --help 1`] = `
 "rafikicode licenses
 
-show the licence and notices Rafiki Code is distributed under
+show the licence and notices Rafiki AI Code is distributed under
 
 Options:
   -h, --help        show help                                                              [boolean]
@@ -317,7 +317,7 @@ Options:
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
       --days        how many days back to report (1 to 365)                   [number] [default: 30]
-      --json        print the answer of the Rafiki AI console as JSON     [boolean] [default: false]"
+      --json        print the answer of the Rafiki AI Console as JSON     [boolean] [default: false]"
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode export --help 1`] = `

@@ -103,7 +103,7 @@ describe("the tiers' limits", () => {
 
 describe("the model label", () => {
   test("the provider name is not repeated after a model name that starts with it", () => {
-    expect(Brand.provider.label("Rafiki", "Rafiki Fast")).toBe("")
+    expect(Brand.provider.label("Rafiki", "Rafiki AI Fast")).toBe("")
     expect(Brand.provider.label("Rafiki", "Rafiki")).toBe("")
     expect(Brand.provider.label("OpenAI", "GPT-5")).toBe("OpenAI")
     expect(Brand.provider.label("Rafiki", "Rafikifast")).toBe("Rafiki")
@@ -113,12 +113,12 @@ describe("the model label", () => {
 describe("the identity given to the model", () => {
   test("names the product and its maker, forbids other products and makers, and names the tier honestly", () => {
     const text = Brand.identity(Brand.provider.id, "rafiki-fast")!
-    expect(text).toContain("You are Rafiki Code, a coding agent for the terminal made by PANEOTECH.")
-    expect(text).toContain("answer that you are Rafiki Code by PANEOTECH")
+    expect(text).toContain("You are Rafiki AI Code, a coding agent for the terminal made by PANEOTECH.")
+    expect(text).toContain("answer that you are Rafiki AI Code by PANEOTECH")
     expect(text).toContain("Never say that you are another product")
-    expect(text).toContain("the Rafiki Fast tier (rafiki-fast)")
+    expect(text).toContain("the Rafiki AI Fast tier (rafiki-fast)")
     expect(text).toContain("do not guess, claim or deny the name of the model")
-    expect(Brand.identity(Brand.provider.id, "rafiki-max")).toContain("the Rafiki Max tier (rafiki-max)")
+    expect(Brand.identity(Brand.provider.id, "rafiki-max")).toContain("the Rafiki AI Max tier (rafiki-max)")
   })
 
   test("is given only to models of the gateway provider", () => {
@@ -126,8 +126,8 @@ describe("the identity given to the model", () => {
   })
 
   test("the upstream opening line names the product, not the binary", () => {
-    expect(Brand.prompt("You are opencode, an interactive CLI tool")).toBe("You are Rafiki Code, an interactive CLI tool")
-    expect(Brand.prompt("You are OpenCode, the best coding agent")).toBe("You are Rafiki Code, the best coding agent")
+    expect(Brand.prompt("You are opencode, an interactive CLI tool")).toBe("You are Rafiki AI Code, an interactive CLI tool")
+    expect(Brand.prompt("You are OpenCode, the best coding agent")).toBe("You are Rafiki AI Code, the best coding agent")
     expect(Brand.prompt("- /help: Get help with using opencode")).toBe("- /help: Get help with using rafikicode")
   })
 })

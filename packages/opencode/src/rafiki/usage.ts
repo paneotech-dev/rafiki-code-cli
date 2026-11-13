@@ -1,5 +1,5 @@
 // rafikicode usage: what the account was charged over the last days, by tier
-// and by day, read from the Rafiki AI console (GET /api/v1/usage). These are
+// and by day, read from the Rafiki AI Console (GET /api/v1/usage). These are
 // the console's own figures, the amounts charged, not estimates.
 //
 // The split by tier comes from the per model rows (a call made on a tier
@@ -60,7 +60,7 @@ export async function load(c: Pick<DeviceFlow.Client, "consoleURL" | "fetch">, k
     })
   } catch (cause) {
     const detail = cause instanceof Error ? cause.message : String(cause)
-    throw new DeviceFlow.DeviceFlowError(`Could not reach the Rafiki AI console to load usage: ${detail}`, "network", Contract.EXIT.network)
+    throw new DeviceFlow.DeviceFlowError(`Could not reach the Rafiki AI Console to load usage: ${detail}`, "network", Contract.EXIT.network)
   }
   const text = await response.text()
   const body = (() => {
@@ -75,13 +75,13 @@ export async function load(c: Pick<DeviceFlow.Client, "consoleURL" | "fetch">, k
   }
   if (response.status === 404) {
     throw new DeviceFlow.DeviceFlowError(
-      `The Rafiki AI console at ${c.consoleURL} does not serve usage to ${Brand.name}. Open ${usagePage(c.consoleURL)} in a browser to see it.`,
+      `The Rafiki AI Console at ${c.consoleURL} does not serve usage to ${Brand.name}. Open ${usagePage(c.consoleURL)} in a browser to see it.`,
       "not_found",
       Contract.EXIT.failed,
     )
   }
   if (!response.ok || !body || typeof body !== "object") {
-    const message = typeof body?.error?.message === "string" ? body.error.message : `The Rafiki AI console answered ${response.status}.`
+    const message = typeof body?.error?.message === "string" ? body.error.message : `The Rafiki AI Console answered ${response.status}.`
     throw new DeviceFlow.DeviceFlowError(
       `Could not load usage: ${message}`,
       "usage_failed",
@@ -167,7 +167,7 @@ export function render(body: UsageResponse, input: { days: number; consoleURL: s
   lines.push("")
 
   if (!Array.isArray(body.by_day)) {
-    lines.push(`Daily figures are not served by this Rafiki AI console yet. Open ${usagePage(input.consoleURL)} in a browser to see them.`)
+    lines.push(`Daily figures are not served by this Rafiki AI Console yet. Open ${usagePage(input.consoleURL)} in a browser to see them.`)
     return lines
   }
   const columns = [...Cost.TIERS, OTHER].filter((tier) => body.by_day!.some((day) => (day.by_tier ?? []).some((row) => row.tier === tier)))
@@ -206,7 +206,7 @@ export async function explainRefusal(
   if (cause.code !== Contract.ERROR.keyRevoked) return { message: cause.message, exitCode: cause.exitCode }
   if (!(await accepts(key))) return { message: cause.message, exitCode: cause.exitCode }
   return {
-    message: `${Doctor.notRegistered(consoleURL)}\n${Doctor.notRegisteredMeaning(consoleURL)} Its usage is not in the Rafiki AI console, so ${Brand.name} usage cannot show it.`,
+    message: `${Doctor.notRegistered(consoleURL)}\n${Doctor.notRegisteredMeaning(consoleURL)} ${Brand.name} usage cannot show it.`,
     exitCode: Contract.EXIT.failed,
   }
 }
@@ -225,7 +225,7 @@ export const UsageCommand = effectCmd({
       .option("json", {
         type: "boolean",
         default: false,
-        describe: "print the answer of the Rafiki AI console as JSON",
+        describe: "print the answer of the Rafiki AI Console as JSON",
       }),
   handler: Effect.fn("Cli.rafiki.usage")(function* (args) {
     const days = args.days

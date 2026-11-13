@@ -1,4 +1,4 @@
-// A key approved without Rafiki Max: the model dialog offers to sign in again
+// A key approved without Rafiki AI Max: the model dialog offers to sign in again
 // on the spot, then reloads the configuration and retries the switch. The
 // sign-in, the reload and the gateway's answers are stubs here; the dialog
 // records what it would show.

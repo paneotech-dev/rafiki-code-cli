@@ -1,4 +1,5 @@
 import type { SessionConfigOption } from "@agentclientprotocol/sdk"
+import { Brand } from "@opencode-ai/core/brand/brand"
 
 export const DEFAULT_VARIANT_VALUE = "default"
 
@@ -174,9 +175,10 @@ function buildModelSelectOptions(
     Object.values(provider.models)
       .sort((a, b) => a.name.localeCompare(b.name))
       .flatMap((model) => {
+        const label = Brand.provider.modelName(provider.name, model.name)
         const base = {
           value: `${provider.id}/${model.id}`,
-          name: `${provider.name}/${model.name}`,
+          name: label,
         }
         if (!options.includeVariants || !model.variants) return [base]
 
@@ -186,7 +188,7 @@ function buildModelSelectOptions(
             .filter((variant) => variant !== DEFAULT_VARIANT_VALUE)
             .map((variant) => ({
               value: `${provider.id}/${model.id}/${variant}`,
-              name: `${provider.name}/${model.name} (${formatVariantName(variant)})`,
+              name: `${label} (${formatVariantName(variant)})`,
             })),
         ]
       }),

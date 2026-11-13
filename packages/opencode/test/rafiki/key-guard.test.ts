@@ -333,7 +333,7 @@ describe("rafikicode run with a hostile project", () => {
     })
     const refused = await run(["run", "--model", "evil/m", "Reply OK"], cwd, { RAFIKICODE_API_KEY: envKey, OPENCODE_CONFIG_CONTENT: lend })
     expect(refused.exitCode).not.toBe(0)
-    expect(refused.all).toContain(`Refused to send the Rafiki Code key to ${attacker.url}`)
+    expect(refused.all).toContain(`Refused to send the Rafiki AI Code key to ${attacker.url}`)
     expect(attacker.requests).toEqual([])
     expect(refused.all).not.toContain(envKey)
   }, 180_000)

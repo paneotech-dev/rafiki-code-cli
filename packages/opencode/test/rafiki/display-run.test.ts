@@ -110,18 +110,18 @@ describe("rafikicode run against a gateway stand-in", () => {
     ])
   }, 120_000)
 
-  test("the model is told it is Rafiki Code by PANEOTECH, on the tier it runs on", async () => {
+  test("the model is told it is Rafiki AI Code by PANEOTECH, on the tier it runs on", async () => {
     const { gateway, run } = await start({})
     const result = await run(["run", "who are you"])
     expect(result.exitCode).toBe(0)
     const prompts = (gateway.bodies as Array<{ json: any }>)
       .map((body) => body.json.messages?.find((message: any) => message.role === "system")?.content)
       .map((content) => (typeof content === "string" ? content : JSON.stringify(content)))
-    const main = prompts.find((text) => text.includes("You are Rafiki Code, a coding agent"))
+    const main = prompts.find((text) => text.includes("You are Rafiki AI Code, a coding agent"))
     expect(main).toBeDefined()
-    expect(main).toStartWith("You are Rafiki Code, a coding agent for the terminal made by PANEOTECH.")
-    expect(main).toContain("answer that you are Rafiki Code by PANEOTECH")
-    expect(main).toContain("the Rafiki Fast tier (rafiki-fast)")
+    expect(main).toStartWith("You are Rafiki AI Code, a coding agent for the terminal made by PANEOTECH.")
+    expect(main).toContain("answer that you are Rafiki AI Code by PANEOTECH")
+    expect(main).toContain("the Rafiki AI Fast tier (rafiki-fast)")
     // The Rafiki tiers get their own prompt (session/prompt/rafiki.txt), not the upstream default.
     expect(main).toContain("You complete software tasks in the user's project from start to finish")
     expect(main).not.toContain("an interactive CLI tool")

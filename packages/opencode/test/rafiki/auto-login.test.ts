@@ -19,8 +19,8 @@ const root = path.resolve(import.meta.dir, "../..")
 // The message from before this change, word for word, for the given Console.
 const oldMessage = (url: string) =>
   [
-    `Error: Rafiki Code needs a Rafiki AI account. Create one in the Rafiki AI console (${url}), then run: rafikicode login`,
-    `On a server or in CI, create an API key at ${url}/keys with the Rafiki Code option ticked, and set RAFIKICODE_API_KEY.`,
+    `Error: Not signed in. Run: rafikicode login (no account yet? Sign up at https://accounts.rafikiai.io/signup?product=code)`,
+    `On a server or in CI, create a key at ${url}/keys and set RAFIKICODE_API_KEY.`,
   ].join("\n")
 
 let home: string
@@ -151,7 +151,7 @@ describe("rafikicode run with no key, against the mock Console and the mock gate
     expect(out).toContain(`${console_!.url}/device`)
     expect(out).toMatch(/[BCDFGHJKMNPQRSTVWXZ]{4}-[BCDFGHJKMNPQRSTVWXZ]{4}/)
     expect(out).toContain("Signed in as")
-    expect(out).not.toContain("needs a Rafiki AI account")
+    expect(out).not.toContain("Sign up at https://accounts.rafikiai.io")
     expect(result.exitCode).toBe(0)
     expect(result.stdout).toContain("Mock gateway reply")
     expect(codeRequests().length).toBe(1)
@@ -164,7 +164,7 @@ describe("rafikicode run with no key, against the mock Console and the mock gate
     const out = plain(result.stderr)
     expect(out).toContain("Not signed in. Starting sign-in.")
     expect(out).toContain("Error: Sign-in was denied in the browser.")
-    expect(out).toContain("Rafiki Code needs a Rafiki AI account.")
+    expect(out).toContain("Not signed in. Run: rafikicode login")
     expect(out).toContain("set RAFIKICODE_API_KEY.")
     expect(result.exitCode).not.toBe(0)
     expect(fs.existsSync(credentials())).toBe(false)
