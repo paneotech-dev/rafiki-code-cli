@@ -142,7 +142,7 @@ elif [ -z "${RAFIKICODE_STAGING_API_KEY:-}" ]; then
     note "  staging. Without that credential it cannot say the build works, so it"
     note "  does not run and the release is blocked. Add the repository secret"
     note "  RAFIKICODE_STAGING_API_KEY (an API key of the staging test account,"
-    note "  created with the Rafiki Code option ticked)."
+    note "  created at code.rafikiai.io/keys on staging)."
     annotate error "$(gate_name): not run" "RAFIKICODE_STAGING_API_KEY is not set, so the gate cannot sign in or run a task against staging. The release is blocked until the repository secret is added."
     summary "### $(gate_name): not run"
     summary ""

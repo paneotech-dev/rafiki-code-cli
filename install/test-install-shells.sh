@@ -41,7 +41,7 @@ done
 
 # bash is unaffected: the guard is invisible to it.
 out=$(bash "$INSTALLER" --help 2>&1) && rc=0 || rc=$?
-[ "$rc" = "0" ] && [[ "$out" == *"Rafiki Code installer"* ]]; check $? "bash runs the installer as before"
+[ "$rc" = "0" ] && [[ "$out" == *"Rafiki AI Code installer"* ]]; check $? "bash runs the installer as before"
 
 for posix_sh in dash "busybox sh" "busybox ash"; do
     bin=${posix_sh%% *}
@@ -51,7 +51,7 @@ for posix_sh in dash "busybox sh" "busybox ash"; do
     # the user never sees a problem at all.
     out=$($posix_sh "$INSTALLER" --help 2>&1) && rc=0 || rc=$?
     [ "$rc" = "0" ] \
-        && [[ "$out" == *"Rafiki Code installer"* ]] \
+        && [[ "$out" == *"Rafiki AI Code installer"* ]] \
         && [[ "$out" != *"Illegal option"* ]] \
         && [[ "$out" != *"syntax error"* ]]; check $? "$posix_sh ./install.sh re-runs itself under bash and works"
 

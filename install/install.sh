@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Rafiki Code installer. Served at https://get.rafikiai.io and kept in the
+# Rafiki AI Code installer. Served at https://get.rafikiai.io and kept in the
 # repository under install/install.sh. Downloads the release archive for this
 # machine, verifies it against the SHA256SUMS published with the release, and
 # installs the binary atomically into a user owned directory.
@@ -169,7 +169,7 @@ trap 'exit 143' TERM
 
 usage() {
     cat <<EOF
-Rafiki Code installer
+Rafiki AI Code installer
 
 Usage: install.sh [options]
 
@@ -2373,7 +2373,8 @@ if [ -n "${path_hint:-}" ] && { [ -z "$linked_path" ] || [ -n "$shadowed" ]; }; 
 fi
 print_message info "  ${step}. Sign in to your Rafiki AI account:"
 print_message info "       ${run_cmd} login"
-print_message info "     ${MUTED}On a server with no browser, use a key from https://console.rafikiai.io/keys (tick the Rafiki Code option):${NC}"
+print_message info "     ${MUTED}No account yet? Sign up at https://accounts.rafikiai.io/signup?product=code${NC}"
+print_message info "     ${MUTED}On a server with no browser, use a key from https://code.rafikiai.io/keys:${NC}"
 print_message info "       export RAFIKICODE_API_KEY=sk-..."
 step=$((step + 1))
 # The one command that answers "did that work?". It checks the config files, the

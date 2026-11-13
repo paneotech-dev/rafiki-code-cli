@@ -1,7 +1,7 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-    Rafiki Code installer for Windows.
+    Rafiki AI Code installer for Windows.
 
 .DESCRIPTION
     Downloads the release archive for this machine, verifies it against the
@@ -768,6 +768,7 @@ if ($RafikicodeInstallAsFile -or $NoModifyPath) {
 }
 Write-Step '  1. Sign in to your Rafiki AI account:'
 Write-Step "       $App login"
+Write-Step '     No account yet? Sign up at https://accounts.rafikiai.io/signup?product=code'
 Write-Step '  2. Check the whole setup, once signed in:'
 Write-Step "       $App doctor"
 Write-Step '  3. Start it in your workspace folder, or in any project folder:'

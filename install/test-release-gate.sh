@@ -58,7 +58,7 @@ case "\$1" in
     whoami)
         [ "\${RAFIKICODE_API_KEY:-}" = "${KEY}" ] || { echo "Not signed in." >&2; exit 2; }
         if [ "${whoami}" = "unreachable" ]; then
-            echo "Could not load the account from the Rafiki AI console (fetch failed)."
+            echo "Could not load the account from the Rafiki AI Console (fetch failed)."
             echo "Account: a server key from the environment"
             exit 0
         fi
