@@ -1,6 +1,6 @@
 # Project memory
 
-Rafiki Code keeps a short memory for each project, so a new session starts with what earlier sessions learned: what the project is, what was decided and why, where the work stands, and the commands and gotchas worth knowing. It is four plain Markdown files in the project, which you can read, edit and commit like any other file.
+Rafiki AI Code keeps a short memory for each project, so a new session starts with what earlier sessions learned: what the project is, what was decided and why, where the work stands, and the commands and gotchas worth knowing. It is four plain Markdown files in the project, which you can read, edit and commit like any other file.
 
 ## The files
 

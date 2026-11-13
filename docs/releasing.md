@@ -1,4 +1,4 @@
-# Releasing Rafiki Code
+# Releasing Rafiki AI Code
 
 This page is for maintainers. It says what a release needs from the repository settings, how to add it, and what a release run publishes.
 
@@ -37,7 +37,7 @@ The key is read from that secret and nowhere else. It is redacted from the gate'
 
 1. Sign in at https://console.rafikiai.io with a dedicated test account, not a personal or customer account.
 2. Give that account a small budget, enough for a few releases. Each release runs thirteen one line tasks.
-3. Open https://console.rafikiai.io/keys and create a new key with the Rafiki Code option ticked. Copy the key when it is shown.
+3. Open https://code.rafikiai.io/keys and create a new key. Copy the key when it is shown.
 4. Open https://github.com/paneotech-dev/rafiki-code-cli, then Settings, then Secrets and variables, then Actions.
 5. On the Secrets tab, choose New repository secret.
 6. Name: `RAFIKICODE_STAGING_API_KEY`. Secret: the key from step 3. Choose Add secret.

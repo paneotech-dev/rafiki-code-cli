@@ -1,6 +1,6 @@
 # Relation to the upstream project
 
-Rafiki Code CLI is a fork. The [attribution section of the README](../README.md#attribution)
+Rafiki AI Code CLI is a fork. The [attribution section of the README](../README.md#attribution)
 names the upstream project and its licence. This page is for maintainers: how
 the fork is kept close to upstream, which upstream files it edits and why, and
 how an upstream merge is done.
@@ -73,11 +73,11 @@ counted with `git diff --numstat -M` against the upstream base.
 
 <!-- upstream-files:start -->
 
-Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 220. Changed lines: 9497 (6357 added, 3140 removed).
+Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 221. Changed lines: 9510 (6367 added, 3143 removed).
 
 | Class | Files | Added | Removed |
 | --- | ---: | ---: | ---: |
-| Source: a call into this fork's modules | 61 | 2339 | 428 |
+| Source: a call into this fork's modules | 62 | 2349 | 431 |
 | Source: product name, file names and wording | 42 | 414 | 210 |
 | Source: behaviour changed in place | 23 | 782 | 249 |
 | Tests of upstream, adapted | 39 | 780 | 186 |
@@ -86,7 +86,7 @@ Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 220. Changed lin
 | Documentation | 23 | 203 | 1182 |
 | Repository tooling and workflows | 6 | 23 | 8 |
 | Editor extension | 13 | 1405 | 210 |
-| Total | 220 | 6357 | 3140 |
+| Total | 221 | 6367 | 3143 |
 
 ### Source: a call into this fork's modules
 
@@ -105,6 +105,7 @@ On a conflict: Take upstream's side of the conflict, then put the call back at t
 | `packages/core/src/v1/config/permission.ts` | 35 | 2 | The `mode` and `auto_check` settings of the permission config (`core/brand/permission-mode.ts`), checked next to the rules. |
 | `packages/opencode/script/schema.ts` | 15 | 1 | Descriptions in the published schema are rewritten with `Brand.prompt`. |
 | `packages/opencode/src/acp/agent.ts` | 4 | 3 | Authentication and the key check go through `rafiki/acp.ts`. |
+| `packages/opencode/src/acp/config-option.ts` | 4 | 2 | Model names in the editor's list come from `Brand.provider.modelName`, so a tier reads `Rafiki AI Fast` instead of `Rafiki AI/Rafiki AI Fast`. |
 | `packages/opencode/src/agent/agent.ts` | 7 | 1 | Headless permission defaults come from `BrandTrust.headlessPermission`; plans are allowed under each project directory name. The general subagent does not get `memory_update` (`rafiki/memory.ts`). |
 | `packages/opencode/src/cli/cmd/acp.ts` | 5 | 1 | The internal server gets a generated password (`rafiki/acp.ts`). |
 | `packages/opencode/src/cli/cmd/attach.ts` | 16 | 4 | Terminal check before the interface loads (`rafiki/startup.ts`), credentials from the server file (`rafiki/server-file.ts`), and option text. |
@@ -122,7 +123,7 @@ On a conflict: Take upstream's side of the conflict, then put the call back at t
 | `packages/opencode/src/index.ts` | 68 | 10 | Registers this product's commands, installs the startup guard, applies a staged update, restarts from a usable temporary directory, reports an unexpected error through `rafiki/startup.ts`, runs the folder checks before anything else is loaded (`rafiki/folders-early.ts`), and moves a start in a folder that is not a project to the default workspace (`rafiki/workspace.ts`). It also registers `rafikicode github` (`rafiki/github-setup.ts`), and waits for output a pipe has not taken yet before the final exit (`rafiki/drain.ts`). |
 | `packages/opencode/src/permission/index.ts` | 84 | 5 | A request for the "publish" permission (`core/brand/publish.ts`) is asked every time: wildcard and shell allows and earlier "always" answers do not apply to it, and only a rule named "publish" can deny it. Permission modes (`core/brand/permission-mode.ts`, `rafiki/auto-mode.ts`): plan mode refuses changes with a note, auto mode runs what the rules would ask about and asks for guarded actions (`core/brand/guarded.ts`) and for commands the risk check (`rafiki/risk-check.ts`) rates high; `mode` and `auto_check` are settings, not rules. Reads the config for them. |
 | `packages/opencode/src/provider/error.ts` | 28 | 2 | Gateway errors are classified by `rafiki/gateway-errors.ts`; a message names this product's sign in step. A 429 that refuses a request larger than the key's tokens per minute limit becomes a context overflow (`rafiki/tpm.ts`). |
-| `packages/opencode/src/provider/provider.ts` | 4 | 1 | `BrandGuard.request` in front of every provider request keeps the key on the gateway (`test/rafiki/key-guard.test.ts`); the model priority list is extended from the brand module. |
+| `packages/opencode/src/provider/provider.ts` | 10 | 2 | `BrandGuard.request` in front of every provider request keeps the key on the gateway (`test/rafiki/key-guard.test.ts`); the model priority list is extended from the brand module. |
 | `packages/opencode/src/provider/transform.ts` | 8 | 1 | The cache marker is set by tier (`rafiki/cache-prefix.ts`); the output limit of the gateway provider is the model's own. |
 | `packages/opencode/src/server/routes/instance/httpapi/handlers/session.ts` | 4 | 1 | A part update that marks a queued message "send now" asks the running turn to take it next (`rafiki/steer.ts`). |
 | `packages/opencode/src/server/routes/instance/httpapi/public.ts` | 2 | 1 | The published OpenAPI document passes through `Brand.document`. |

@@ -233,6 +233,11 @@
       "why": "Authentication and the key check go through `rafiki/acp.ts`."
     },
     {
+      "path": "packages/opencode/src/acp/config-option.ts",
+      "class": "hook",
+      "why": "Model names in the editor's list come from `Brand.provider.modelName`, so a tier reads `Rafiki AI Fast` instead of `Rafiki AI/Rafiki AI Fast`."
+    },
+    {
       "path": "packages/opencode/src/acp/error.ts",
       "class": "logic",
       "why": "A defect that escapes an ACP handler is written to stderr instead of being dropped. Not specific to this product."

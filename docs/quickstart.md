@@ -4,7 +4,7 @@ This page takes you from nothing to a first file written by `rafikicode` in abou
 
 Terms used here: a **terminal** is the text window where you type commands. **PATH** is the list of folders your shell searches for programs. An **API key** is a key issued by Rafiki AI with its own spending limit; every model call made with it uses credits in your Rafiki AI account. **Headless** means running where nobody can answer a question, such as a server, a container or a CI (continuous integration) pipeline.
 
-You need a Rafiki AI account. Rafiki Code is part of Rafiki AI by PANEOTECH, and the Rafiki AI console at [console.rafikiai.io](https://console.rafikiai.io) is where you sign in, create keys and see your credits.
+You need a Rafiki AI account. Rafiki AI Code is part of Rafiki AI by PANEOTECH, and the Rafiki AI Console at [console.rafikiai.io](https://console.rafikiai.io) is where you sign in, create keys and see your credits.
 
 ## 1. Install
 
@@ -34,7 +34,7 @@ Added /root/.rafikicode/bin to PATH in /root/.bashrc
 Next steps:
   1. Sign in to your Rafiki AI account:
        rafikicode login
-     On a server with no browser, use a key from https://console.rafikiai.io/keys (tick the Rafiki Code option):
+     On a server with no browser, use a key from https://code.rafikiai.io/keys:
        export RAFIKICODE_API_KEY=sk-...
 ```
 
@@ -95,7 +95,7 @@ Waiting for approval...
 2. Sign in with your Rafiki AI account, check that the code matches the one in your terminal, and approve.
 3. The terminal prints `Signed in` with your account and stores the key in `~/.rafikicode/credentials` (readable only by you).
 
-The code is eight letters shown as `XXXX-XXXX` and expires after 10 minutes; run `rafikicode login` again if it does. `--label NAME` sets the name shown on the approval page and in the key list of the Rafiki AI console, so you can tell your machines apart:
+The code is eight letters shown as `XXXX-XXXX` and expires after 10 minutes; run `rafikicode login` again if it does. `--label NAME` sets the name shown on the approval page and in the key list of the Rafiki AI Console, so you can tell your machines apart:
 
 ```bash
 rafikicode login --label work-laptop
@@ -116,7 +116,7 @@ You can also skip `login`: start `rafikicode` (or `rafikicode run "your task"`) 
 
 ### Or use an API key
 
-On a server, in CI, or wherever you prefer a key: create a key in the Rafiki AI console at [console.rafikiai.io/keys](https://console.rafikiai.io/keys) and tick the Rafiki Code option. Keys created without that option are not billed through Rafiki Code, so always tick it for keys you use with `rafikicode`. Then:
+On a server, in CI, or wherever you prefer a key: create a key on API keys in Rafiki AI Code at [code.rafikiai.io/keys](https://code.rafikiai.io/keys). Keys created without that option are not billed through Rafiki AI Code, so always tick it for keys you use with `rafikicode`. Then:
 
 ```bash
 export RAFIKICODE_API_KEY=...   # the key you created
@@ -178,7 +178,7 @@ Every request goes through the Rafiki AI gateway under a tier name:
 
 A request on `rafiki-pro` uses four times the credits of the same request on `rafiki-fast`, and one on `rafiki-max` fifteen times. In the terminal interface the model dialog (`/models`) shows each tier with its rate; the first time a session switches to `rafiki-max` it asks you to confirm, and a new session starts on `rafiki-fast` (or the model in your configuration), never on `rafiki-max` by itself.
 
-When you sign in, the approval page lets you tick the tiers the key may use; all three are ticked unless you untick one. If you pick `rafiki-max` and the key was approved without it, the interface offers to sign in again on the spot: choose "Sign in again now" (or press `y`), approve in the browser, and the switch to Rafiki Max goes ahead with the new key. `rafikicode run` stops before sending anything and names the one command that fixes it, `rafikicode login`.
+When you sign in, the approval page lets you tick the tiers the key may use; all three are ticked unless you untick one. If you pick `rafiki-max` and the key was approved without it, the interface offers to sign in again on the spot: choose "Sign in again now" (or press `y`), approve in the browser, and the switch to Rafiki AI Max goes ahead with the new key. `rafikicode run` stops before sending anything and names the one command that fixes it, `rafikicode login`.
 
 Pick a tier for one run with `-m` (or `--model`):
 
@@ -194,7 +194,7 @@ While a task runs the prompt row shows the tier, what your key has spent in this
 
 A message you type while the agent works is queued: it is shown with a `QUEUED` badge and goes out when the running step ends. To send it now, press Enter again on the empty prompt, press `ctrl+x` then Enter, pick "Send queued message now" in the command list (`ctrl+p`), or click the queued message and pick "Send now". The running turn stops after the tool call in progress (a file being written is always finished first), keeps what it did, and takes your message next.
 
-The sidebar (`ctrl+x b` shows or hides it) starts with two sentences about the project, read from `.rafiki/memory/project.md`, else from the first paragraph of `AGENTS.md` or `README.md`; an edit of the memory shows within a few seconds. Under it, `Agents` lists the subagents of the conversation with their state, time and progress (the share of their own todo list that is done, or the steps taken when they keep none); click one to open it. `Todo` follows, with the list of the running subagent while it has one. The footer reads `Rafiki Code by PANEOTECH`, with the folder and the version under it.
+The sidebar (`ctrl+x b` shows or hides it) starts with two sentences about the project, read from `.rafiki/memory/project.md`, else from the first paragraph of `AGENTS.md` or `README.md`; an edit of the memory shows within a few seconds. Under it, `Agents` lists the subagents of the conversation with their state, time and progress (the share of their own todo list that is done, or the steps taken when they keep none); click one to open it. `Todo` follows, with the list of the running subagent while it has one. The footer reads `Rafiki AI Code by PANEOTECH`, with the folder and the version under it.
 
 ## Pick up where you left off
 
@@ -219,5 +219,5 @@ rafikicode uninstall --force
 
 - [Configuration](./configuration.md) for every setting the CLI honors.
 - [Headless and CI](./headless-and-ci.md) for servers, pipelines and scripts.
-- [Editors](./ide.md) to use Rafiki Code from Zed, JetBrains IDEs, Cline or Aider.
+- [Editors](./ide.md) to use Rafiki AI Code from Zed, JetBrains IDEs, Cline or Aider.
 - [Troubleshooting](./troubleshooting.md) when something does not work.

@@ -1,6 +1,6 @@
 # Install and update
 
-The latest release is 0.1.15 ([release notes](releases/0.1.15.md)). To update a copy you have: `rafikicode update` (pre-releases: `rafikicode update --pre`), then `rafikicode --version` to check. npm, Homebrew and winget can lag behind a release; on those, use the installer line instead, see [npm, Homebrew and winget may lag behind](#npm-homebrew-and-winget-may-lag-behind).
+The latest release is 0.1.16 ([release notes](releases/0.1.16.md)). To update a copy you have: `rafikicode update` (pre-releases: `rafikicode update --pre`), then `rafikicode --version` to check. npm, Homebrew and winget can lag behind a release; on those, use the installer line instead, see [npm, Homebrew and winget may lag behind](#npm-homebrew-and-winget-may-lag-behind).
 
 `rafikicode` is one binary. There are four ways to install it, and all four install the same files: the archives published on the [GitHub release](https://github.com/paneotech-dev/rafiki-code-cli/releases) of each version, checked against the `SHA256SUMS` file published with them.
 
@@ -222,7 +222,7 @@ With `"channel": "pre"` on such a copy, `rafikicode update` prints the same line
 
 ## Licence
 
-Rafiki Code is distributed under the MIT licence. Every channel delivers the licence and the notice with the binary:
+Rafiki AI Code is distributed under the MIT licence. Every channel delivers the licence and the notice with the binary:
 
 - `rafikicode licenses` prints both. They are compiled into the binary.
 - Every release archive holds `LICENSE` and `NOTICE` beside the binary.

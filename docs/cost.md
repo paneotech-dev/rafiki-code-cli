@@ -1,6 +1,6 @@
 # What a task costs
 
-Rafiki Code shows what the last request sent, what your key has spent, and what your account was charged over the last days. Every figure comes from the gateway or the Rafiki AI console; none is worked out from a price list. Amounts are in USD, the unit your Rafiki AI account keeps its credits in and the one `rafikicode whoami` prints.
+Rafiki AI Code shows what the last request sent, what your key has spent, and what your account was charged over the last days. Every figure comes from the gateway or the Rafiki AI Console; none is worked out from a price list. Amounts are in USD, the unit your Rafiki AI account keeps its credits in and the one `rafikicode whoami` prints.
 
 | Figure | Where it comes from |
 |---|---|
@@ -8,7 +8,7 @@ Rafiki Code shows what the last request sent, what your key has spent, and what 
 | Share of the window | tokens the last request sent, over the window of the tier that answered (1,000,000 on every tier) |
 | Spent this session | the key's spend as the gateway counts it (`/key/info`), less its spend when the session started |
 | Key spent and budget, share used | the key's spend and budget as the gateway reports them (`/key/info`) |
-| Credits left | the balance of your account as the Rafiki AI console reports it (`/api/v1/me`) |
+| Credits left | the balance of your account as the Rafiki AI Console reports it (`/api/v1/me`) |
 | `rafikicode usage` | the amounts the console recorded as charged |
 
 ## Context
@@ -18,7 +18,7 @@ The sidebar's `Context` block describes the last request of the session, not a s
 ```text
 Last request sent 24,530 tokens
 20,480 of them cached
-2% of the 1M window of Rafiki Fast
+2% of the 1M window of Rafiki AI Fast
 412 tokens received
 ```
 
@@ -26,7 +26,7 @@ The prompt row shows the same in short (`24.5K sent (2%)`). The tokens sent are 
 
 In a long session the tokens sent can drop from one turn to the next: old, large tool outputs are replaced with a short note once enough of them have piled up. See [Long sessions: old tool output](configuration.md#long-sessions-old-tool-output).
 
-Every turn sends the whole conversation again, so the size of the context is what a turn costs. A session is compacted (summarised) once its context reaches 150,000 tokens, on every tier, before the request that would pass that size is sent; the share then reads about 15% of the 1M window. Until version 0.1.11 a session grew to about 936,000 tokens on Rafiki Fast and 968,000 on Rafiki Pro and Rafiki Max before it was compacted, and a long session resent hundreds of thousands of tokens on every turn, most of them read from the cache but all of them billed. `compaction.threshold` or `RAFIKICODE_COMPACT_AT` moves the point; see [Context](configuration.md#context-and-tokens-in-the-terminal-interface).
+Every turn sends the whole conversation again, so the size of the context is what a turn costs. A session is compacted (summarised) once its context reaches 150,000 tokens, on every tier, before the request that would pass that size is sent; the share then reads about 15% of the 1M window. Until version 0.1.11 a session grew to about 936,000 tokens on Rafiki AI Fast and 968,000 on Rafiki AI Pro and Rafiki AI Max before it was compacted, and a long session resent hundreds of thousands of tokens on every turn, most of them read from the cache but all of them billed. `compaction.threshold` or `RAFIKICODE_COMPACT_AT` moves the point; see [Context](configuration.md#context-and-tokens-in-the-terminal-interface).
 
 A request over 200,000 tokens shows one line:
 
@@ -54,7 +54,7 @@ Credits left: 12.40 USD
 from the gateway at 12:04:31
 ```
 
-The key's spend and budget are read from the gateway when the interface starts, when a session is opened, and after each answer has completed (once things settle, and once more about 20 seconds later, because the gateway may count a request a moment after answering it). They are never read while an answer is streaming, and reading never holds up the interface. The credits are read from the Rafiki AI console at the same moments.
+The key's spend and budget are read from the gateway when the interface starts, when a session is opened, and after each answer has completed (once things settle, and once more about 20 seconds later, because the gateway may count a request a moment after answering it). They are never read while an answer is streaming, and reading never holds up the interface. The credits are read from the Rafiki AI Console at the same moments.
 
 - `This session` is the difference between two readings of the key, so anything else charged to the same key in the meantime (another terminal, an editor) is in it too.
 - When a reading fails, the last figures stay on screen, the prompt row marks them `(stale)` and the sidebar says since when they have not been updated. A figure that was never read is not shown: before the first reading the prompt row says `spend not read yet`.
@@ -74,7 +74,7 @@ The terminal never moves a task to another tier by itself.
 
 ## When the gateway answers on another tier
 
-When the tier you asked for cannot answer, the gateway answers on the next tier up (`rafiki-fast` on `rafiki-pro`). Rafiki Code reads the tier named in the answer and counts the request on that tier: the tier path and the context figure follow the tier that answered. The message footer in the terminal interface says so (`Build · Rafiki Pro (asked for Rafiki Fast)`), and `rafikicode run` prints a second header line:
+When the tier you asked for cannot answer, the gateway answers on the next tier up (`rafiki-fast` on `rafiki-pro`). Rafiki AI Code reads the tier named in the answer and counts the request on that tier: the tier path and the context figure follow the tier that answered. The message footer in the terminal interface says so (`Build · Rafiki AI Pro (asked for Rafiki AI Fast)`), and `rafikicode run` prints a second header line:
 
 ```text
 > build · rafiki-pro (rafiki-fast was asked for, the gateway answered on rafiki-pro)
@@ -114,7 +114,7 @@ By tier
   pro         3         40,000           6,000    0.2000
   other       3          8,000           1,500    0.0420
   total      15        168,000          15,500    0.2521
-  "other" is every call of the account that was not made on a Rafiki Code tier.
+  "other" is every call of the account that was not made on a Rafiki AI Code tier.
 
 By day (UTC)
   Day          Calls     fast      pro    other   Charged
@@ -122,7 +122,7 @@ By day (UTC)
   2026-10-01       8   0.0050   0.2000        -    0.2050
 ```
 
-These are the amounts charged to your account, as the Rafiki AI console recorded them. The report covers the whole account: calls from other terminals, from editors and from the console itself are included.
+These are the amounts charged to your account, as the Rafiki AI Console recorded them. The report covers the whole account: calls from other terminals, from editors and from the console itself are included.
 
 If the console does not serve the daily figures, the command prints the by tier table and says so. Exit codes: 0 on success, 1 when the console has no usage route, 2 when the key is missing or no longer valid, 4 when the console cannot be reached.
 

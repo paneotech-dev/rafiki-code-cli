@@ -1,6 +1,6 @@
 # Pull request review
 
-`rafikicode` reviews a change the same way it does anything else: you hand it a diff and instructions, it answers. This page gives a recipe for reviewing a pull request from your terminal and one for reviewing every pull request in CI with the bundled GitHub Action. Both use credits in your Rafiki AI account through a key, so the cost of a review is visible per key in the Rafiki AI console.
+`rafikicode` reviews a change the same way it does anything else: you hand it a diff and instructions, it answers. This page gives a recipe for reviewing a pull request from your terminal and one for reviewing every pull request in CI with the bundled GitHub Action. Both use credits in your Rafiki AI account through a key, so the cost of a review is visible per key in the Rafiki AI Console.
 
 ## What a review costs
 
@@ -42,7 +42,7 @@ The repository ships a composite action at `.github/actions/rafikicode-review` a
 
 Setup, once per repository:
 
-1. In the Rafiki AI console at [console.rafikiai.io/keys](https://console.rafikiai.io/keys), create a key and tick the Rafiki Code option. Name it after the repository, choose the tiers the review may use, and give it a budget you are comfortable spending on reviews per month. A key never spends more than its budget or the credits in your Rafiki AI account.
+1. In the Rafiki AI Console at [code.rafikiai.io/keys](https://code.rafikiai.io/keys), create a key. Name it after the repository, choose the tiers the review may use, and give it a budget you are comfortable spending on reviews per month. A key never spends more than its budget or the credits in your Rafiki AI account.
 2. Store the key as the repository secret `RAFIKICODE_API_KEY`.
 3. Pick the `rafikicode` release to run and store two repository variables: `RAFIKICODE_VERSION` (for example `0.1.4`) and `RAFIKICODE_SHA256`, the `rafikicode-linux-x64.tar.gz` line from that release's `SHA256SUMS` (paste several lines if your runners differ). The action refuses to run without both.
 4. Copy `.github/workflows/rafikicode-review.example.yml` to `.github/workflows/rafikicode-review.yml` and commit it. When you use the action from another repository, change `uses:` to the published reference pinned by full commit SHA, for example `paneotech-dev/rafiki-code-cli/.github/actions/rafikicode-review@<commit sha>`. A tag can be moved to other code later; a commit SHA cannot, and it also pins the install script the action runs.
@@ -67,16 +67,16 @@ Inputs, all optional except `api-key`, `version` and `sha256`:
 | `prompt` | built in review prompt | your own instructions; the diff is appended |
 | `max-diff-lines` | `4000` | cut the diff here and say so in the comment |
 | `post-comment` | `true` | post to the pull request |
-| `comment-header` | `## Rafiki Code review` | first line of the comment |
+| `comment-header` | `## Rafiki AI Code review` | first line of the comment |
 | `working-directory` | the workspace | where the review runs |
 | `check-setup` | `true` | run `rafikicode doctor` first and stop on a failed check |
 | `github-token` | `github.token` | token for `gh`; needs `pull-requests: write` |
 
 Outputs: `review-file` (path of the review text) and `exit-code`.
 
-Exit codes of the review step follow the CLI's table in [Headless and CI](./headless-and-ci.md#exit-codes): 0 posted, 1 the run failed, 2 the key was refused, 3 the key's budget or the account's credits are spent (nothing was charged), 4 the gateway or the Rafiki AI console was unreachable, 5 internal error. On 2, 3 and 4 the action posts a one line comment naming the cause, then fails the job so the pull request shows a red check rather than silence.
+Exit codes of the review step follow the CLI's table in [Headless and CI](./headless-and-ci.md#exit-codes): 0 posted, 1 the run failed, 2 the key was refused, 3 the key's budget or the account's credits are spent (nothing was charged), 4 the gateway or the Rafiki AI Console was unreachable, 5 internal error. On 2, 3 and 4 the action posts a one line comment naming the cause, then fails the job so the pull request shows a red check rather than silence.
 
-Budget note: one key budget covers every pull request that uses it. Watch the key's page in the Rafiki AI console for the first weeks, then set the budget from what you see. When the budget runs out, reviews stop with exit code 3 and a comment saying so; merges are not blocked unless you make the check required.
+Budget note: one key budget covers every pull request that uses it. Watch the key's page in the Rafiki AI Console for the first weeks, then set the budget from what you see. When the budget runs out, reviews stop with exit code 3 and a comment saying so; merges are not blocked unless you make the check required.
 
 Security notes:
 

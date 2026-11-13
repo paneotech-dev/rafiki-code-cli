@@ -78,7 +78,7 @@ The structure of the nested keys (`permission`, `agent`, `mcp`, and so on) is un
 | variable | purpose |
 |---|---|
 | `RAFIKICODE_UPDATE_CHANNEL` | `stable` or `pre`: the update channel for this process, over the `channel` setting. See [Update channels](./install.md#update-channels) |
-| `RAFIKICODE_API_KEY` | API key for headless and CI use, created in the Rafiki AI console with the Rafiki Code option ticked. Takes precedence over the stored sign in |
+| `RAFIKICODE_API_KEY` | API key for headless and CI use, created in the Rafiki AI Console. Takes precedence over the stored sign in |
 | `RAFIKICODE_GATEWAY_URL` | override the gateway base URL (local test servers). Default `https://gateway.rafikiai.io/v1`. Must be https; plain http is accepted only for `127.0.0.1`, `[::1]` or `localhost`. Any other value is not used, a warning is printed and the key is not sent there. The same rule applies to the gateway URL the console returns at sign in and to a `baseURL` in your own configuration |
 | `RAFIKICODE_CACHE_MARKERS` | which tiers carry a prompt cache marker (a field that tells the model provider where the repeated start of a request ends, so it can reuse it at a lower price): `all`, `off`, or tier names separated by commas. Unset, the CLI marks the tiers that need one. Every request starts with the same text in the same order on every tier either way; today's date is sent after that text, in a message of its own |
 | `RAFIKICODE_PERMISSION_MODE` | `ask`, `auto` or `plan`: the permission mode of this process, over `permission.mode` and the mode last picked for the project. Picking a mode with Shift+Tab during the session wins over it. See [Permission modes](#permission-modes) |
@@ -92,12 +92,13 @@ The structure of the nested keys (`permission`, `agent`, `mcp`, and so on) is un
 | `RAFIKICODE_WARN_AT` | the size in tokens of a single request above which one line suggests `/compact` or a new session, over `compaction.warn_at`. Unset, `200000`. `0` or `off` turns the line off. See [Context](#context-and-tokens-in-the-terminal-interface) |
 | `RAFIKICODE_PRUNE` | `0`, `off` or `false` stops replacing old tool output; `1`, `on` or `true` turns it on, on any provider. Wins over `compaction.prune`. Unset, it is on for the Rafiki tiers. See [Long sessions: old tool output](#long-sessions-old-tool-output) |
 | `RAFIKICODE_MEMORY` | `0`, `off` or `false` turns the project memory off for this run; `1`, `on` or `true` turns it on. Wins over `memory.enabled`. See [Project memory](./memory.md) |
-| `RAFIKICODE_CONSOLE_URL` | override the Rafiki AI console base URL used by `login`, `logout`, `whoami` and `doctor`. Default `https://console.rafikiai.io`. The key is sent there, so only an https URL is used (plain http only for 127.0.0.1, [::1] or localhost); any other value is ignored with a warning, and so is a console URL on plain http elsewhere returned at sign in |
+| `RAFIKICODE_CONSOLE_URL` | override the Rafiki AI Console base URL used by `login`, `logout`, `whoami` and `doctor`. Default `https://console.rafikiai.io`. The key is sent there, so only an https URL is used (plain http only for 127.0.0.1, [::1] or localhost); any other value is ignored with a warning, and so is a console URL on plain http elsewhere returned at sign in |
 | `RAFIKICODE_INSTALL_DIR` | installer target directory. Default `~/.rafikicode/bin` |
 | `RAFIKICODE_RELEASE_API`, `RAFIKICODE_RELEASE_BASE` | point the installer and `rafikicode update` at another release server (mirrors, tests). Must be https. The installer accepts plain http only for `127.0.0.1` or `[::1]` together with `--allow-http-loopback` or `RAFIKICODE_INSTALL_ALLOW_HTTP_LOOPBACK=1` (local tests); `rafikicode update` follows the same rule with `RAFIKICODE_INSTALL_ALLOW_HTTP_LOOPBACK=1`, and follows a redirect only to a URL that passes it |
 | `RAFIKICODE_TRUST_WORKSPACE` | `1` or `true` trusts the workspace of this run, or a list of directories separated by `:`: its project plugins, custom tools, provider packages and settings load. `rafikicode trust` stores the same decision. See [workspace trust](security/workspace-trust.md) |
 | `RAFIKICODE_REASONING_EFFORT` | reasoning effort sent on every tier: `none`, `low`, `medium`, `high`, or `default` for no parameter. See [Reasoning and output limits](#reasoning-and-output-limits) |
 | `RAFIKICODE_MAX_OUTPUT_TOKENS` | output token limit for every tier, from 1024 to the most the model behind the tier can write (384000 on `rafiki-fast`, 128000 on `rafiki-pro` and `rafiki-max`). A value above a tier's maximum is ignored for that tier |
+| `RAFIKICODE_CONNECT_WAIT` | seconds to wait for the gateway to accept a connection before its first answer in a process. Default `10`; then the task stops with `Cannot reach the model gateway` and exit code 4. Off behind a proxy. `0` turns it off |
 | `RAFIKICODE_RETRY_WINDOW` | how long, in seconds, a task keeps retrying when the connection to the gateway is lost after the gateway has answered at least once. Default `120`. Retries back off from 2 seconds to 30 seconds with a random part added to each wait. `0` goes back to a single retry. See [When the connection drops](troubleshooting.md#when-the-connection-drops) |
 | `RAFIKICODE_DISABLE_PROJECT_CONFIG` | set to `1` or `true` to load nothing from the working tree: no project config files, plugins, tools, skills, MCP servers, formatters or language servers. Alias of `OPENCODE_DISABLE_PROJECT_CONFIG`. See [workspace trust](security/workspace-trust.md) |
 | `RAFIKICODE_BROWSER` | path of the Chrome, Chromium, Edge or Brave the `screenshot` tool runs, when it is not in the usual place (`CHROME_PATH` works too). See [User interface work](#user-interface-work) |
@@ -126,7 +127,7 @@ Server password: stored in /home/you/.rafikicode/servers/4096.json (user name ra
 
 Every tier is a *reasoning model*: it thinks before it answers, and the thinking counts against the output token limit. By default `rafiki-fast` and `rafiki-pro` may write up to 64000 output tokens and `rafiki-max` up to 32000, and no reasoning setting is sent, so the model decides how much to think.
 
-If a turn spends its whole output budget thinking and writes no answer, Rafiki Code tries that turn again once, by itself, and says so in one line: "The model used its whole output budget reasoning; trying again once with ...". The retry asks for twice the output (up to the most the model behind the tier can write: 384,000 on `rafiki-fast`, 128,000 on `rafiki-pro` and `rafiki-max`) and, on `rafiki-fast` and `rafiki-max`, one step less reasoning. This happens in the terminal interface and in `rafikicode run`.
+If a turn spends its whole output budget thinking and writes no answer, Rafiki AI Code tries that turn again once, by itself, and says so in one line: "The model used its whole output budget reasoning; trying again once with ...". The retry asks for twice the output (up to the most the model behind the tier can write: 384,000 on `rafiki-fast`, 128,000 on `rafiki-pro` and `rafiki-max`) and, on `rafiki-fast` and `rafiki-max`, one step less reasoning. This happens in the terminal interface and in `rafikicode run`.
 
 If the retry also comes back empty, the reply stops with "The model used its whole output budget reasoning and wrote no answer, also when tried again". Turn reasoning off with the `none` variant:
 
@@ -144,7 +145,7 @@ The sidebar's `Context` block and the prompt row describe the last request of th
 Context
 Last request sent 24,530 tokens
 20,480 of them cached
-2% of the 1M window of Rafiki Fast
+2% of the 1M window of Rafiki AI Fast
 412 tokens received
 ```
 
@@ -200,11 +201,11 @@ Providers bill input they have seen before at a lower rate when a request starts
 - Input read from the cache costs a small share of the full price (about a fiftieth on `rafiki-fast`), so the request after a batch, sent at the full price from the first replaced output on, costs more than the batch saves on many later turns. That is why nothing is replaced until the session is close to its compaction point: there a batch puts the compaction off, which costs more again.
 - The compaction summary on `rafiki-fast` and `rafiki-pro` is asked for at the end of the conversation itself, with the same start as the step before it (system prompt, instructions, tool definitions), so the provider reads almost all of that request from its cache. The summary request carries the conversation as text, as before, when that costs less (a short conversation: the text shortens each tool output), on `rafiki-max`, when the summary goes to another tier, when a `compaction` agent with its own model is configured, and when the model asks for a tool instead of writing the summary.
 
-When asked who it is, the agent answers that it is Rafiki Code by PANEOTECH, and names the tier it runs on rather than guessing the model behind it.
+When asked who it is, the agent answers that it is Rafiki AI Code by PANEOTECH, and names the tier it runs on rather than guessing the model behind it.
 
 ## Permission modes
 
-A permission mode decides how much Rafiki Code asks before a tool runs. There are three:
+A permission mode decides how much Rafiki AI Code asks before a tool runs. There are three:
 
 | mode | what happens |
 |---|---|
@@ -212,7 +213,7 @@ A permission mode decides how much Rafiki Code asks before a tool runs. There ar
 | Auto | tool calls run without a question, except the guarded actions below, which still ask every time |
 | Plan | read-only: reading, searching and commands that change nothing run; edits and commands that change things are refused with a note, and the agent describes the change it proposes instead |
 
-In the terminal interface, Shift+Tab cycles Ask, Auto, Plan. The mode shows in the status row under the prompt (`Build · Auto · Rafiki Fast`) and in the footer (`shift+tab auto mode`), and the command palette has "Permission mode" too. The pick is kept per project on your machine, in `~/.local/state/rafikicode/permission-mode.json` (`$XDG_STATE_HOME/rafikicode/` when it is set), never in the project, so nothing about it is committed. The next session in that project starts in the same mode. Shift+Tab used to select the previous agent; that action now has no key by default (`agent_cycle_reverse` in the interface keybinds).
+In the terminal interface, Shift+Tab cycles Ask, Auto, Plan. The mode shows in the status row under the prompt (`Build · Auto · Rafiki AI Fast`) and in the footer (`shift+tab auto mode`), and the command palette has "Permission mode" too. The pick is kept per project on your machine, in `~/.local/state/rafikicode/permission-mode.json` (`$XDG_STATE_HOME/rafikicode/` when it is set), never in the project, so nothing about it is committed. The next session in that project starts in the same mode. Shift+Tab used to select the previous agent; that action now has no key by default (`agent_cycle_reverse` in the interface keybinds).
 
 Where the mode comes from, first match wins:
 
@@ -238,7 +239,7 @@ In Auto mode these still ask, each time, with the reason on the question (`Auto 
 | administrator rights | `sudo`, `su`, `doas`, `pkexec` |
 | git history rewrites, on any branch | `git push --force`, `git reset --hard`, `git filter-branch`, `git branch -D` of the default branch |
 | a download piped into a shell | `curl ... \| sh`, `wget -O- ... \| bash`, `bash -c "$(curl ...)"`, `sh <(curl ...)` |
-| credential files, read or written | `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.netrc`, `~/.npmrc`, `~/.docker/config.json`, a `.env` file outside the project, the Rafiki Code sign-in file |
+| credential files, read or written | `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.netrc`, `~/.npmrc`, `~/.docker/config.json`, a `.env` file outside the project, the Rafiki AI Code sign-in file |
 | a tool that sends email | |
 | package publishing | `npm publish`, `pnpm publish`, `cargo publish`, `twine upload`, `gem push`, `docker push` |
 | stopping processes this session did not start | `kill 1234`, `pkill node`, `killall`, `taskkill`; `kill` of a process the session started is not guarded |
@@ -255,7 +256,7 @@ To turn the risk check off, set `"permission": { "auto_check": false }`; command
 
 ## Checks after a change
 
-A task is not called done until the project's own checks pass. After a turn that changed files, before the answer is final, Rafiki Code runs the project's tests, type check, lint or build, and sends a failure back to the agent for another fix round.
+A task is not called done until the project's own checks pass. After a turn that changed files, before the answer is final, Rafiki AI Code runs the project's tests, type check, lint or build, and sends a failure back to the agent for another fix round.
 
 ### Which checks
 
@@ -322,11 +323,11 @@ To turn the checks off, set `"verify": {"enabled": false}` in your configuration
 
 ## Acceptance criteria and the review
 
-At the start of a task that is not trivial, `rafikicode` writes 3 to 5 checkable acceptance criteria from your request, with one short request to Rafiki Fast (to your tier when you chose one, see [Tier by task](#tier-by-task)). They appear at the top of the session's todo list (as `Criterion: ...` items) and are added to the request, so the agent works towards them and checks them before it says the task is done. Trivial requests get none: a request under 40 characters, a question, or a small edit such as a typo or a rename.
+At the start of a task that is not trivial, `rafikicode` writes 3 to 5 checkable acceptance criteria from your request, with one short request to Rafiki AI Fast (to your tier when you chose one, see [Tier by task](#tier-by-task)). They appear at the top of the session's todo list (as `Criterion: ...` items) and are added to the request, so the agent works towards them and checks them before it says the task is done. Trivial requests get none: a request under 40 characters, a question, or a small edit such as a typo or a rename.
 
 When the request reports a bug, the agent reproduces it first: it writes a test next to the existing tests of that code (a short script when the project has no test setup), runs it and sees it fail, fixes the code, runs it again until it passes, and keeps the test. The project's test command is named when one is found. One of the criteria is that reproduction. When the bug cannot be reproduced here, the agent says so and fixes it from the code.
 
-The review is off by default. Turn it on with `"review": {"enabled": true}` in your configuration, or `RAFIKICODE_REVIEW=1` for one run. It costs one more request on every task that changes files, and on our evaluation it caught none of the wrong changes, so it stays opt-in until a stronger setup shows a gain. When it is on, before the task is reported as done, after the checks of the turn, a review runs on Rafiki Pro. It sees only the request, the criteria, the diff of the turn, the results of the checks and the last commands the agent ran, never the whole conversation, and answers pass or fail for each criterion. The criteria met are ticked in the todo list. When some are not met, they go back to the agent with the reasons for one more round (`review.rounds`, 1 by default, 0 for none), then the review runs again. A turn that changed no files, or only documentation, is not reviewed.
+The review is off by default. Turn it on with `"review": {"enabled": true}` in your configuration, or `RAFIKICODE_REVIEW=1` for one run. It costs one more request on every task that changes files, and on our evaluation it caught none of the wrong changes, so it stays opt-in until a stronger setup shows a gain. When it is on, before the task is reported as done, after the checks of the turn, a review runs on Rafiki AI Pro. It sees only the request, the criteria, the diff of the turn, the results of the checks and the last commands the agent ran, never the whole conversation, and answers pass or fail for each criterion. The criteria met are ticked in the todo list. When some are not met, they go back to the agent with the reasons for one more round (`review.rounds`, 1 by default, 0 for none), then the review runs again. A turn that changed no files, or only documentation, is not reviewed.
 
 The answer then ends with one line, which gives the review's cost (the criteria included):
 
@@ -340,7 +341,7 @@ In `rafikicode run`, the criteria print as `~ criteria: 1. ... 2. ...` and a rou
 | `review.criteria` | `true` by default; `false` turns the acceptance criteria and the reproduce first steps off (and with them the review, which needs the criteria) |
 | `review.enabled` | `false` by default; `true` turns the review on. `RAFIKICODE_REVIEW=1` or `0` does the same for one run, and wins over it |
 | `review.rounds` | extra rounds after a review with criteria not met, 0 or 1 (1 by default) |
-| `review.model` | the model of the review as `provider/model`; by default Rafiki Pro on the Rafiki tiers (Rafiki Max on a Rafiki Max session, the session's tier with `RAFIKICODE_ROUTING=off`), else the session's model |
+| `review.model` | the model of the review as `provider/model`; by default Rafiki AI Pro on the Rafiki tiers (Rafiki AI Max on a Rafiki AI Max session, the session's tier with `RAFIKICODE_ROUTING=off`), else the session's model |
 
 Like the checks, the criteria and the review are off when project configuration is disabled, and subagents do not run them.
 
@@ -388,7 +389,7 @@ Command line flags (`--model`) win over both files for a single run.
 
 ## Tier by task
 
-When you have not chosen a tier, Rafiki Code picks one per request by what the request is for:
+When you have not chosen a tier, Rafiki AI Code picks one per request by what the request is for:
 
 - Explore subagents, session titles, compaction summaries and the acceptance criteria of a task go to `rafiki-fast`.
 - The review before a task is done, when you turn it on, always runs on `rafiki-pro` (or the session's tier when it is `rafiki-max`), chosen tier or not: it is a second opinion. See [Acceptance criteria and the review](#acceptance-criteria-and-the-review).
@@ -402,7 +403,7 @@ Each choice is written to the debug log (`routing`, with the tier and the reason
 
 ## User interface work
 
-When a request is user interface work (a page, a component, a layout, CSS or Tailwind, a restyle; or a vague request about files that are mostly `.css`, `.html`, `.vue`, `.svelte` or components), Rafiki Code does three things:
+When a request is user interface work (a page, a component, a layout, CSS or Tailwind, a restyle; or a vague request about files that are mostly `.css`, `.html`, `.vue`, `.svelte` or components), Rafiki AI Code does three things:
 
 - **Design guide.** A short guide is added to that request: start from the project's own tokens and components, a type scale and a 4px spacing rhythm, colour tokens with contrast of at least 4.5:1, every state designed (hover, focus, disabled, empty, loading, error), mobile first with nothing scrolling sideways at 390px, and the accessibility basics. It is added once per session, at the first such request, and is also the built-in skill `ui-design` for work it did not recognise. `"design": { "guide": false }` turns it off.
 - **A layout plan first.** On that request the agent replies with a short plan (the sections in order, the components, the states, the mobile layout) and writes no files until you answer. Reply to build it, or say what to change. Say "no plan" or "just build it" in the request to skip it, or set `"design": { "plan": false }`. There is no plan step in `rafikicode run`, `serve`, `github` and `pr`, in Plan mode (which plans anyway) and in subagents.

@@ -5,7 +5,7 @@ Cline is an open source coding agent extension for VS Code. It can talk to any O
 ## What you need
 
 - VS Code with the Cline extension installed from the marketplace.
-- A Rafiki AI key: create one in the Rafiki AI console at [console.rafikiai.io/keys](https://console.rafikiai.io/keys) and tick the Rafiki Code option. Use a dedicated key for Cline, since the console shows spend per key and you can revoke it without signing your terminal out.
+- A Rafiki AI key: create one on API keys in Rafiki AI Code at [code.rafikiai.io/keys](https://code.rafikiai.io/keys). Use a dedicated key for Cline, since the console shows spend per key and you can revoke it without signing your terminal out.
 
 ## Settings
 
@@ -27,15 +27,15 @@ Optional fields in the Model Configuration section of the same screen (labels as
 | Context Window size | `128000` |
 | Max Output Tokens | `16384` |
 | Supports Images | off |
-| Input Price and Output Price | leave empty or zero; Cline's cost display cannot reflect Rafiki AI credits; use the Rafiki AI console for spend |
+| Input Price and Output Price | leave empty or zero; Cline's cost display cannot reflect Rafiki AI credits; use the Rafiki AI Console for spend |
 
 Leave any Azure identity option unchecked.
 
 ## Check it works
 
-Ask Cline something small ("summarize this file") and check the key's page in the Rafiki AI console: the request appears under the key you used. If Cline reports an authentication error, the key was pasted with extra whitespace or has been revoked; if it reports a budget error, see [Headless and CI, budget exhaustion](./headless-and-ci.md#budget-exhaustion).
+Ask Cline something small ("summarize this file") and check the key's page in the Rafiki AI Console: the request appears under the key you used. If Cline reports an authentication error, the key was pasted with extra whitespace or has been revoked; if it reports a budget error, see [Headless and CI, budget exhaustion](./headless-and-ci.md#budget-exhaustion).
 
 ## Notes
 
 - Cline sends its own system prompt and tool definitions; it does not read your `AGENTS.md`. Put the same conventions in Cline rules (for example a `.clinerules` file at the project root) if you want parity with the CLI.
-- Other tools with an OpenAI compatible provider setting work the same way: base URL, key, tier name. Aider, and the full Rafiki Code agent in Zed and JetBrains IDEs through ACP, are covered on [Using Rafiki Code from your editor](./ide.md).
+- Other tools with an OpenAI compatible provider setting work the same way: base URL, key, tier name. Aider, and the full Rafiki AI Code agent in Zed and JetBrains IDEs through ACP, are covered on [Using Rafiki AI Code from your editor](./ide.md).

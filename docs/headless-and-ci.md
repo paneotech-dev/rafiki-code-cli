@@ -4,10 +4,10 @@ Headless means running `rafikicode` where no person can open a browser: a build 
 
 ## API keys
 
-`rafikicode login` is the sign in for terminals people sit at: it needs a person to approve a code in a browser. Machines use an API key instead. Create one in the Rafiki AI console:
+`rafikicode login` is the sign in for terminals people sit at: it needs a person to approve a code in a browser. Machines use an API key instead:
 
-1. Open [console.rafikiai.io/keys](https://console.rafikiai.io/keys) and sign in with your Rafiki AI account.
-2. Create a key, tick the Rafiki Code option, give it a name that identifies the machine or pipeline, and set a budget. Keys created without the Rafiki Code option are not billed through Rafiki Code, so always tick it for keys you use with `rafikicode`. The budget caps what this key can spend from the credits in your Rafiki AI account; a key never spends more than the account holds.
+1. Open [code.rafikiai.io/keys](https://code.rafikiai.io/keys) and sign in with your Rafiki AI account.
+2. Create a key, give it a name that identifies the machine or pipeline, and set a budget. The budget caps what this key can spend from the credits in your Rafiki AI account; a key never spends more than the account holds.
 3. Copy the key. It is shown once.
 
 Put it in the environment of the job:
@@ -20,7 +20,7 @@ export RAFIKICODE_API_KEY=...
 
 The installer puts `rafikicode` on the PATH through `~/.bashrc`, which non-interactive shells do not read. In cron, CI steps and `ssh host "command"`, call `~/.rafikicode/bin/rafikicode` by its full path or add the directory to the PATH in the job.
 
-Store the key in the secret store of your CI system, never in the repository. Revoke it from the same page of the Rafiki AI console when the machine is retired; the next request fails with a clear message.
+Store the key in the secret store of your CI system, never in the repository. Revoke it from the same page of the Rafiki AI Console when the machine is retired; the next request fails with a clear message.
 
 `rafikicode login` refuses to start where no terminal is attached (exit code 2, `No terminal is attached, so the browser sign-in is not available.`), and while `RAFIKICODE_API_KEY` is set (exit code 2).
 
@@ -174,7 +174,7 @@ A wildcard such as `"permission": "allow"` or `{"bash": "allow"}` does not allow
 
 ## Checking a machine with doctor
 
-`rafikicode doctor` runs the checks a headless job depends on and prints one line each: `ok`, `WARN` with a fix hint and a note on the line below, `FAIL` with a fix hint, or `skip` when an earlier check makes it moot. It ends with `All checks passed`, naming the warnings when there are any, or `N checks need attention, see the lines marked FAIL.` With a key created in the Rafiki AI console, in a checkout you have not trusted:
+`rafikicode doctor` runs the checks a headless job depends on and prints one line each: `ok`, `WARN` with a fix hint and a note on the line below, `FAIL` with a fix hint, or `skip` when an earlier check makes it moot. It ends with `All checks passed`, naming the warnings when there are any, or `N checks need attention, see the lines marked FAIL.` With a key created in the Rafiki AI Console, in a checkout you have not trusted:
 
 ```text
 ok    config      ~/.rafikicode/config.json not created yet, built in defaults apply
@@ -191,7 +191,7 @@ ok    path        rafikicode resolves to /usr/local/bin/rafikicode (a link to ~/
 ok    version     rafikicode ..., stable channel, installed by the installer script, rafikicode update applies
 ```
 
-The home directory is shortened to `~`, and the version number and the account details to `...`. With no key at all the `credential` line reads `FAIL  credential  none. Fix: Run rafikicode login, or set RAFIKICODE_API_KEY on servers and in CI.`, the `key`, `tiers` and `limits` lines are skipped, and `doctor` exits 1. A key that works at the gateway but was not created in the Rafiki AI console gives `WARN  console ... does not know this key (401)`, and `doctor` still exits 0; see [Troubleshooting](./troubleshooting.md#keys-and-credits). The `trust` line reads `ok` once the job sets `RAFIKICODE_TRUST_WORKSPACE=1` or the machine has run `rafikicode trust`.
+The home directory is shortened to `~`, and the version number and the account details to `...`. With no key at all the `credential` line reads `FAIL  credential  none. Fix: Run rafikicode login, or set RAFIKICODE_API_KEY on servers and in CI.`, the `key`, `tiers` and `limits` lines are skipped, and `doctor` exits 1. A key that works at the gateway but was not created in the Rafiki AI Console gives `WARN  console ... does not know this key (401)`, and `doctor` still exits 0; see [Troubleshooting](./troubleshooting.md#keys-and-credits). The `trust` line reads `ok` once the job sets `RAFIKICODE_TRUST_WORKSPACE=1` or the machine has run `rafikicode trust`.
 
 The checks, in order:
 
@@ -202,10 +202,10 @@ The checks, in order:
 | `trust` | whether this directory is trusted and by what: `RAFIKICODE_TRUST_WORKSPACE` for this run, or the stored list in `~/.rafikicode/trusted-workspaces.json`. An untrusted directory is a `WARN`, not a failure, and the note says what it costs: the project plugins, custom tools, local MCP servers, formatters, language servers and permission rules the directory declares are not loaded. See [workspace trust](security/workspace-trust.md) |
 | `credential` | which credential a run would use: `RAFIKICODE_API_KEY`, a stored sign-in, or none. A stored browser sign-in is reported as refused when `CI` is set, and so is a credential file other users can read or write |
 | `gateway` | the gateway answers its liveness probe, with the round trip time |
-| `key` | the gateway knows the key: alias, spend, budget and expiry as numbers and dates. A revoked key, a spent budget or an expired key fail here. A key made in the Rafiki AI console without the Rafiki Code option gives `WARN` (exit code still 0): create one with the option ticked, or run `rafikicode login` |
+| `key` | the gateway knows the key: alias, spend, budget and expiry as numbers and dates. A revoked key, a spent budget or an expired key fail here. A general Rafiki AI Console key not made for Rafiki AI Code gives `WARN` (exit code still 0): create one at code.rafikiai.io/keys, or run `rafikicode login` |
 | `tiers` | which Rafiki tiers (`rafiki-fast`, `rafiki-pro`) the key may use |
 | `limits` | the requests per minute and tokens per minute the gateway allows the key, or that it has no such limit. A session compacts before a single request would come near the tokens per minute limit, see [Troubleshooting](./troubleshooting.md#keys-and-credits) |
-| `console` | the Rafiki AI console answers, and with a key, the account and its credit balance |
+| `console` | the Rafiki AI Console answers, and with a key, the account and its credit balance |
 | `path` | the name your shell resolves `rafikicode` to is the binary running this check, with symbolic links resolved on both sides, so the link the installer makes into a `PATH` directory is the normal passing case. A second copy earlier on `PATH`, or a stale link from an older install, fails here and the fix prints both paths. A launcher script put on `PATH` by a package manager or a version manager is a `WARN`, because nothing is broken. `skip` in a source checkout, where the process runs from `bun` and there is nothing to compare |
 | `version` | the installed version, its update channel, and how it was installed |
 
@@ -221,7 +221,7 @@ The sign-in commands (`login`, `logout`, `whoami`) use a fixed table so scripts 
 | 1 | the request was refused (for example the sign-in was denied in the browser) |
 | 2 | usage: not signed in, or a browser sign-in was attempted where no terminal is attached |
 | 3 | credits or key budget spent |
-| 4 | network problem reaching the Rafiki AI console or the gateway |
+| 4 | network problem reaching the Rafiki AI Console or the gateway |
 | 5 | internal error |
 | 6 | this machine or this build cannot run `rafikicode`: a library that cannot be loaded, a processor without the instructions the build needs, a C library mismatch, no directory it may write to |
 | 7 | `rafikicode` runs on this machine, but this terminal cannot host the full screen interface. `rafikicode run` works |
@@ -239,7 +239,7 @@ A run stopped from outside exits with its own code: 143 on `SIGTERM` (what `time
 
 A run needs the gateway (`gateway.rafikiai.io`) and nothing else:
 
-- The Rafiki AI console (`console.rafikiai.io`) is asked for the key's spend and the credits left, for the summary line after the answer. When it cannot be reached, the line says less and the run is otherwise unchanged.
+- The Rafiki AI Console (`console.rafikiai.io`) is asked for the key's spend and the credits left, for the summary line after the answer. When it cannot be reached, the line says less and the run is otherwise unchanged.
 - No model catalogue is fetched: the Rafiki tiers are built in.
 - No package is installed unless a configuration folder holds plugins or custom tools that need one.
 - The search tools use ripgrep (`rg`) when it is on the `PATH` or was downloaded earlier; otherwise it is downloaded once from GitHub. When that download fails, the built-in search takes over and one line says so: it is slower and does not read `.gitignore`. Install ripgrep on a machine without access to GitHub to keep the faster search.
@@ -248,11 +248,11 @@ A run needs the gateway (`gateway.rafikiai.io`) and nothing else:
 
 Every key has a budget, and your Rafiki AI account has a credit balance. When either is spent, the gateway refuses the next request with a budget exceeded error and the run stops. Nothing is charged for the refused request. To continue:
 
-- add credits to your Rafiki AI account in the Rafiki AI console, or
+- add credits to your Rafiki AI account in the Rafiki AI Console, or
 - raise the key's budget on the key page, or
 - point the job at a different key.
 
-A refused request from a revoked or expired key is reported the same way with a message naming the cause. API keys do not refresh themselves; give them a long enough lifetime for the job, or replace them from the Rafiki AI console.
+A refused request from a revoked or expired key is reported the same way with a message naming the cause. API keys do not refresh themselves; give them a long enough lifetime for the job, or replace them from the Rafiki AI Console.
 
 ## Examples
 

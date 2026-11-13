@@ -1,12 +1,12 @@
-# Rafiki Code CLI
+# Rafiki AI Code CLI
 
-`rafikicode` is the terminal coding agent of [Rafiki Code](https://code.rafikiai.io). Rafiki Code is part of Rafiki AI by PANEOTECH. The agent runs in your repository, reads your project's `AGENTS.md`, edits files and runs commands. Every model call it makes uses credits in your Rafiki AI account.
+`rafikicode` is the terminal coding agent of [Rafiki AI Code](https://code.rafikiai.io). Rafiki AI Code is part of Rafiki AI by PANEOTECH. The agent runs in your repository, reads your project's `AGENTS.md`, edits files and runs commands. Every model call it makes uses credits in your Rafiki AI account.
 
 It is a thin fork of an open source coding agent; see [Attribution](#attribution).
 
 ## Install
 
-The latest release is **0.1.15** ([release notes](./docs/releases/0.1.15.md), [all releases](https://github.com/paneotech-dev/rafiki-code-cli/releases)). Already installed? Run `rafikicode update`, then `rafikicode --version` to check.
+The latest release is **0.1.16** ([release notes](./docs/releases/0.1.16.md), [all releases](https://github.com/paneotech-dev/rafiki-code-cli/releases)). Already installed? Run `rafikicode update`, then `rafikicode --version` to check.
 
 One line installer for Linux and macOS:
 
@@ -98,7 +98,7 @@ If the shell answers `rafikicode: command not found`, the installer could not li
 
 `rafikicode login` prints a code and a link. Open https://console.rafikiai.io/device, sign in with your Rafiki AI account, enter the code and approve. The terminal then stores its key in `~/.rafikicode/credentials`. `rafikicode whoami` shows the account in use, and `rafikicode logout` signs out and revokes the key.
 
-On a server or in CI, where nobody can open a browser, use an API key instead: create a key in the Rafiki AI console at [console.rafikiai.io/keys](https://console.rafikiai.io/keys) and tick the Rafiki Code option, then:
+On a server or in CI, where nobody can open a browser, use an API key instead: create one at [code.rafikiai.io/keys](https://code.rafikiai.io/keys), then:
 
 ```bash
 export RAFIKICODE_API_KEY=...          # the key you created
@@ -106,7 +106,7 @@ rafikicode doctor                      # checks the key, the gateway, your tiers
 rafikicode run "fix the failing test in packages/api" < /dev/null
 ```
 
-Keys created without the Rafiki Code option are not billed through Rafiki Code; always tick it for keys you use with `rafikicode`. In scripts, add `< /dev/null` so `run` does not wait for input.
+In scripts, add `< /dev/null` so `run` does not wait for input.
 
 The full walkthrough is in [docs/quickstart.md](./docs/quickstart.md), and common messages are explained in [docs/troubleshooting.md](./docs/troubleshooting.md).
 
@@ -139,7 +139,7 @@ Environment variables:
 |---|---|
 | `RAFIKICODE_API_KEY` | API key used by every run; takes precedence over a stored sign in |
 | `RAFIKICODE_GATEWAY_URL` | override the gateway base URL (local test servers) |
-| `RAFIKICODE_CONSOLE_URL` | override the Rafiki AI console base URL used by `login`, `logout` and `whoami`; https only (plain http only for 127.0.0.1, [::1] or localhost), otherwise ignored with a warning |
+| `RAFIKICODE_CONSOLE_URL` | override the Rafiki AI Console base URL used by `login`, `logout` and `whoami`; https only (plain http only for 127.0.0.1, [::1] or localhost), otherwise ignored with a warning |
 | `RAFIKICODE_INSTALL_DIR` | installer target directory (default `~/.rafikicode/bin`) |
 | `RAFIKICODE_RELEASE_API`, `RAFIKICODE_RELEASE_BASE` | point the installer and updater at another release server (tests, mirrors) |
 | `OPENCODE_CONFIG_DIR` | add another configuration directory, read as `config.json` or `rafikicode.json` there |
@@ -160,7 +160,7 @@ Put an `AGENTS.md` at the root of your repository (or in any subdirectory) and `
 - [Pull request review](./docs/review-recipe.md): review a diff from the terminal, or every pull request with the bundled GitHub Action.
 - [GitHub Action recipe](./docs/github-action.md): one workflow file that reviews every pull request and posts a comment.
 - [MCP: n8n and Dify](./docs/mcp-rafiki-services.md): give the agent tools from your n8n workflows and Dify apps.
-- [Editors](./docs/ide.md): the Rafiki Code agent in Zed and JetBrains IDEs through ACP, and settings for Cline and Aider.
+- [Editors](./docs/ide.md): the Rafiki AI Code agent in Zed and JetBrains IDEs through ACP, and settings for Cline and Aider.
 - [Cline settings](./docs/ide-preset.md): Cline pointed at the Rafiki AI gateway, field by field.
 - [Workspace trust](./docs/security/workspace-trust.md): what a repository may load and run, and how to trust one.
 - [Troubleshooting](./docs/troubleshooting.md): messages, causes, fixes.
@@ -201,7 +201,7 @@ Everything Rafiki specific lives in `packages/core/src/brand/` and `packages/ope
 
 ## Attribution
 
-Rafiki Code CLI is a fork of [opencode](https://github.com/anomalyco/opencode), copyright (c) 2025 opencode and contributors, licensed under the MIT License (see [LICENSE](./LICENSE) and [NOTICE](./NOTICE)). It is not built by, affiliated with, or endorsed by the opencode team. Upstream documentation for features that are unchanged in this fork is at [opencode.ai/docs](https://opencode.ai/docs).
+Rafiki AI Code CLI is a fork of [opencode](https://github.com/anomalyco/opencode), copyright (c) 2025 opencode and contributors, licensed under the MIT License (see [LICENSE](./LICENSE) and [NOTICE](./NOTICE)). It is not built by, affiliated with, or endorsed by the opencode team. Upstream documentation for features that are unchanged in this fork is at [opencode.ai/docs](https://opencode.ai/docs).
 
 ## License
 
