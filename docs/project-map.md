@@ -46,7 +46,7 @@ For good, in `rafikicode.json`:
 
 `RAFIKICODE_MAP=0` turns it off for a run and wins over the setting.
 
-When the map is on, each session builds or refreshes the map when it starts (only changed files are read again; the first build of a large project is given up to 90 seconds, after which `/map` finishes it) and gives the agent four tools:
+When the map is on, each session gives the agent four tools. A map from an earlier session is used at once and refreshed in the background (only changed files are read again). In a project with no map yet, the session waits for the first build, for up to 90 seconds; in a large project run `/map` once, which has no time limit.
 
 | Tool | What it answers |
 |---|---|
