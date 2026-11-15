@@ -29,8 +29,11 @@ export const TOOLS = ["query_graph", "get_neighbors", "get_node", "shortest_path
 // tool filter applies to it and never to a "graphify" server someone
 // configured by hand.
 export const MARKER = "RAFIKICODE_PROJECT_MAP"
-// Longest first build at the start of a session; /map has no limit.
+// Longest first build at the start of a session (the session waits for it);
+// /map has no limit.
 export const START_BUILD_MS = 90_000
+// Longest refresh of an existing map in the background at the start of a session.
+export const REFRESH_MS = 600_000
 
 export interface Settings {
   graphify?: boolean
@@ -228,6 +231,28 @@ export interface BuildOptions {
   env?: Record<string, string | undefined>
 }
 
+// graphify extract starts itself again as a child process (to pin the hash
+// seed), so a stop must take the whole process tree: its own process group on
+// Linux and macOS, taskkill /T on Windows. Builds still running when this
+// process exits are stopped the same way.
+const running = new Set<ReturnType<typeof spawn>>()
+let exitHook = false
+
+export function killTree(child: { pid?: number; kill(signal?: NodeJS.Signals): boolean }) {
+  if (!child.pid) return
+  if (process.platform === "win32") {
+    try {
+      spawn.sync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore", windowsHide: true })
+    } catch {}
+    return
+  }
+  try {
+    process.kill(-child.pid, "SIGTERM")
+  } catch {
+    child.kill("SIGTERM")
+  }
+}
+
 // Builds or refreshes the graph (graphify extract --code-only, incremental
 // after the first run). Never writes into the project; if graphify ever
 // leaves a graphify-out folder there, it is listed in .git/info/exclude.
@@ -251,19 +276,34 @@ export function build(launcher: Launcher, root: string, cache: string, options: 
       if (settled) return
       settled = true
       if (timer) clearTimeout(timer)
+      running.delete(child)
       if (!hadOutput) excludeOutput(root)
       resolve({ ...result, ms: Date.now() - started, graph })
     }
-    let child: ReturnType<typeof spawn>
+    let child!: ReturnType<typeof spawn>
     try {
-      child = spawn(bin, args, { cwd: out, env, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] })
+      child = spawn(bin, args, {
+        cwd: out,
+        env,
+        windowsHide: true,
+        stdio: ["ignore", "pipe", "pipe"],
+        // Its own process group, so a stop reaches graphify's child too.
+        detached: process.platform !== "win32",
+      })
+      running.add(child)
+      if (!exitHook) {
+        exitHook = true
+        process.once("exit", () => {
+          for (const item of running) killTree(item)
+        })
+      }
     } catch (error) {
       finish({ ok: false, files: 0, nodes: 0, edges: 0, error: error instanceof Error ? error.message : String(error) })
       return
     }
     if (options.timeoutMs)
       timer = setTimeout(() => {
-        child.kill()
+        killTree(child)
         finish({ ok: false, ...parseOutput(text), error: `stopped after ${Math.round(options.timeoutMs! / 1000)} s` })
       }, options.timeoutMs)
     const read = (chunk: Buffer) => {

@@ -554,7 +554,10 @@ const layer = Layer.effect(
             s.defs[ProjectMap.NAME] = result.defs!
             watch(s, ProjectMap.NAME, result.mcpClient, bridge, map.entry.timeout)
           }
-          yield* Effect.logInfo("project map", { summary: ProjectMap.summary(map.build), status: result.status.status })
+          yield* Effect.logInfo("project map", {
+            summary: map.build ? ProjectMap.summary(map.build) : "existing map, refreshing in the background",
+            status: result.status.status,
+          })
         }
 
         yield* Effect.addFinalizer(() =>

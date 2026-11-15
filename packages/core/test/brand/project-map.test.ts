@@ -278,6 +278,15 @@ console.log("[graphify extract] wrote " + out + "/graphify-out/graph.json: 9 nod
     expect(result.error).toContain("stopped after")
   })
 
+  test("a stop takes graphify's own child process too", async () => {
+    const marker = path.join(cache, "child-still-ran")
+    const body = `require("child_process").spawn(process.execPath, ["-e", "setTimeout(() => require('fs').writeFileSync(" + JSON.stringify(${JSON.stringify(marker)}) + ", 'x'), 1500)"], { stdio: "ignore" }); Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20000)`
+    const result = await ProjectMap.build(fakeGraphify(body), project, cache, { timeoutMs: 400 })
+    expect(result.ok).toBe(false)
+    await Bun.sleep(2500)
+    expect(fs.existsSync(marker)).toBe(false)
+  })
+
   test("a launcher that does not exist fails cleanly", async () => {
     const launcher: ProjectMap.Launcher = { via: "path", cli: [path.join(project, "missing-graphify")], mcp: [] }
     const result = await ProjectMap.build(launcher, project, cache, {})

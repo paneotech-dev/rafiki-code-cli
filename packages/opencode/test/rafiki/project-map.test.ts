@@ -106,6 +106,8 @@ describe("project map at session start", () => {
     })
     expect(result.kind).toBe("ready")
     if (result.kind !== "ready") return
+    // No map yet: the session waited for the first build.
+    expect(result.build?.ok).toBe(true)
     expect(result.entry.command).toEqual(["graphify-mcp", ProjectMap.graphFile(project, cache)])
     expect(result.entry.environment.GRAPHIFY_BACKEND).toBe("none")
     expect(result.entry.environment.OPENAI_API_KEY).toBe("")
@@ -113,7 +115,12 @@ describe("project map at session start", () => {
     expect(fs.readdirSync(project)).toEqual([])
   })
 
-  test("a failed refresh keeps serving the last graph", async () => {
+  test("an existing map is served at once and refreshed in the background", async () => {
+    const graph = ProjectMap.graphFile(project, cache)
+    fs.mkdirSync(path.dirname(graph), { recursive: true })
+    fs.writeFileSync(graph, "{}")
+    let release!: (value: ProjectMap.BuildResult) => void
+    let timeout: number | undefined
     const result = await Session.start({
       settings: { graphify: true },
       directory: project,
@@ -121,9 +128,19 @@ describe("project map at session start", () => {
       env: {},
       cache,
       detect: () => launcher,
-      build: fakeBuild(false, true),
+      build: (_l, _r, _c, options) => {
+        timeout = options?.timeoutMs
+        return new Promise((resolve) => (release = resolve))
+      },
     })
+    // Returned while the refresh is still running.
     expect(result.kind).toBe("ready")
+    if (result.kind !== "ready") return
+    expect(result.build).toBeUndefined()
+    expect(result.refresh).toBeDefined()
+    expect(timeout).toBe(ProjectMap.REFRESH_MS)
+    release({ ok: false, files: 0, nodes: 0, edges: 0, ms: 1, graph, error: "stopped" })
+    expect((await result.refresh!).ok).toBe(false)
   })
 
   test("a failed first build registers nothing", async () => {

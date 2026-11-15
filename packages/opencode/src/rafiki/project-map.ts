@@ -13,7 +13,14 @@ export type Start =
   | { kind: "configured" }
   | { kind: "missing"; message: string }
   | { kind: "failed"; message: string }
-  | { kind: "ready"; entry: ReturnType<typeof ProjectMap.mcpEntry>; build: ProjectMap.BuildResult }
+  | {
+      kind: "ready"
+      entry: ReturnType<typeof ProjectMap.mcpEntry>
+      // The first build, when the session waited for it.
+      build?: ProjectMap.BuildResult
+      // The refresh of an existing map, running in the background.
+      refresh?: Promise<ProjectMap.BuildResult>
+    }
 
 export interface StartInput {
   settings: ProjectMap.Settings | undefined
@@ -40,11 +47,17 @@ export async function start(input: StartInput): Promise<Start> {
   if (!launcher)
     return { kind: "missing", message: ProjectMap.missingMessage(platform, (cmd) => which(cmd, env as NodeJS.ProcessEnv)) }
   const cache = input.cache ?? Global.Path.cache
-  const build = await (input.build ?? ProjectMap.build)(launcher, input.directory, cache, {
-    timeoutMs: ProjectMap.START_BUILD_MS,
-    env,
-  })
-  // A failed refresh still serves the last good graph; with none there is nothing to serve.
+  const entry = ProjectMap.mcpEntry(launcher, input.directory, cache, env)
+  const run = input.build ?? ProjectMap.build
+  // A map from an earlier session is served at once and refreshed in the
+  // background (graphify reloads graph.json when it changes), so the session
+  // never waits for a large project.
+  if (fs.existsSync(ProjectMap.graphFile(input.directory, cache))) {
+    const refresh = run(launcher, input.directory, cache, { timeoutMs: ProjectMap.REFRESH_MS, env })
+    return { kind: "ready", entry, refresh }
+  }
+  const build = await run(launcher, input.directory, cache, { timeoutMs: ProjectMap.START_BUILD_MS, env })
+  // A first build that failed leaves nothing to serve.
   if (!build.ok && !fs.existsSync(build.graph)) return { kind: "failed", message: ProjectMap.summary(build) }
-  return { kind: "ready", entry: ProjectMap.mcpEntry(launcher, input.directory, cache, env), build }
+  return { kind: "ready", entry, build }
 }
