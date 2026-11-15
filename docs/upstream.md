@@ -73,12 +73,12 @@ counted with `git diff --numstat -M` against the upstream base.
 
 <!-- upstream-files:start -->
 
-Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 221. Changed lines: 9510 (6367 added, 3143 removed).
+Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 221. Changed lines: 9562 (6417 added, 3145 removed).
 
 | Class | Files | Added | Removed |
 | --- | ---: | ---: | ---: |
-| Source: a call into this fork's modules | 62 | 2349 | 431 |
-| Source: product name, file names and wording | 42 | 414 | 210 |
+| Source: a call into this fork's modules | 62 | 2351 | 431 |
+| Source: product name, file names and wording | 42 | 462 | 212 |
 | Source: behaviour changed in place | 23 | 782 | 249 |
 | Tests of upstream, adapted | 39 | 780 | 186 |
 | Generated files | 4 | 391 | 188 |
@@ -86,7 +86,7 @@ Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 221. Changed lin
 | Documentation | 23 | 203 | 1182 |
 | Repository tooling and workflows | 6 | 23 | 8 |
 | Editor extension | 13 | 1405 | 210 |
-| Total | 221 | 6367 | 3143 |
+| Total | 221 | 6417 | 3145 |
 
 ### Source: a call into this fork's modules
 
@@ -153,7 +153,7 @@ On a conflict: Take upstream's side of the conflict, then put the call back at t
 | `packages/tui/src/component/dialog-model.tsx` | 40 | 4 | Tiers that are not listed are hidden (`Brand.provider.listed`); each tier states its price in credits, and Rafiki Max is confirmed once per session and checked against the key (`component/tier-choice.tsx`). |
 | `packages/tui/src/config/keybind.ts` | 7 | 1 | The key that opens the History panel (`recent_open`, `<leader>o`, `feature-plugins/rafiki-history.tsx`). Shift+Tab cycles the permission mode (`permission_mode_cycle`); the previous agent has no key by default. The send now key (`session_send_now`, `<leader>return`). |
 | `packages/tui/src/context/sync.tsx` | 27 | 5 | Auto mode answers for a server that does not apply it, but never for a guarded action or a push (`core/brand/guarded.ts`); passes the permission config to `context/permission.tsx`. A todo update that arrives while a session is read is not replaced by the older list read. |
-| `packages/tui/src/feature-plugins/builtins.ts` | 12 | 0 | Registers the spend plugin (`feature-plugins/rafiki-cost.tsx`), the History plugin (`feature-plugins/rafiki-history.tsx`) and the GitHub setup (`feature-plugins/rafiki-github.tsx`). Registers the project description (`feature-plugins/rafiki-about.tsx`) and Agents (`feature-plugins/rafiki-agents.tsx`). |
+| `packages/tui/src/feature-plugins/builtins.ts` | 14 | 0 | Registers the spend plugin (`feature-plugins/rafiki-cost.tsx`), the History plugin (`feature-plugins/rafiki-history.tsx`) and the GitHub setup (`feature-plugins/rafiki-github.tsx`). Registers the project description (`feature-plugins/rafiki-about.tsx`) and Agents (`feature-plugins/rafiki-agents.tsx`). |
 | `packages/tui/src/feature-plugins/sidebar/todo.tsx` | 21 | 3 | Placed under the project description and Agents, and shows the running subagent's list (`feature-plugins/rafiki-agents.tsx`). |
 | `packages/tui/src/routes/session/subagent-footer.tsx` | 6 | 14 | The context figure is what the last request sent (`core/brand/context.ts`); the amount from the model price table is not shown. |
 
@@ -167,7 +167,7 @@ On a conflict: Take upstream's side, then replace the literal with the value fro
 | `packages/core/src/oauth/page.ts` | 11 | 26 | The sign in result page names this product and shows its name where upstream draws its wordmark. |
 | `packages/core/src/plugin/agent.ts` | 2 | 1 | The plan agent may edit plans under each project directory name in `Brand.project.dirs`. |
 | `packages/core/src/plugin/command/initialize.txt` | 3 | 3 | Prompt text names this product and its configuration file. |
-| `packages/core/src/v1/config/config.ts` | 98 | 2 | The `compaction.prune` description gives this product's default (on for Rafiki tiers). The `verify` key configures the checks after a change (`rafiki/verify.ts`). The `channel` key is the update channel (`rafiki/update.ts`). The `compaction.threshold` and `compaction.warn_at` keys set the compaction point and the large request line (`rafiki/context-size.ts`). The `tool_output.max_bytes` description gives the cap of `rafiki/tool-output.ts` (32768) and says the head and the tail are kept. The `design` key turns the design guide and the layout plan of user interface work on or off (`rafiki/design.ts`). |
+| `packages/core/src/v1/config/config.ts` | 108 | 2 | The `compaction.prune` description gives this product's default (on for Rafiki tiers). The `verify` key configures the checks after a change (`rafiki/verify.ts`). The `channel` key is the update channel (`rafiki/update.ts`). The `compaction.threshold` and `compaction.warn_at` keys set the compaction point and the large request line (`rafiki/context-size.ts`). The `tool_output.max_bytes` description gives the cap of `rafiki/tool-output.ts` (32768) and says the head and the tail are kept. The `design` key turns the design guide and the layout plan of user interface work on or off (`rafiki/design.ts`). |
 | `packages/opencode/src/cli/cmd/agent.ts` | 2 | 1 | New agents are written under this product's project directory. |
 | `packages/opencode/src/cli/cmd/debug/index.ts` | 2 | 1 | The version line names this product. |
 | `packages/opencode/src/cli/cmd/mcp.ts` | 7 | 5 | Messages name this product; the configuration file candidates come from the brand module. |
@@ -183,7 +183,7 @@ On a conflict: Take upstream's side, then replace the literal with the value fro
 | `packages/opencode/src/config/paths.ts` | 5 | 4 | Several base names and the project directory names come from the brand module. |
 | `packages/opencode/src/config/tui-migrate.ts` | 5 | 4 | Schema address and file names come from the brand module. |
 | `packages/opencode/src/config/v2-compat.ts` | 1 | 1 | A message that named other products names the key to use. |
-| `packages/opencode/src/mcp/index.ts` | 2 | 1 | A message names this product's command. |
+| `packages/opencode/src/mcp/index.ts` | 32 | 3 | A message names this product's command. |
 | `packages/opencode/src/mcp/oauth-provider.ts` | 3 | 2 | Client name and address given to an MCP server. |
 | `packages/opencode/src/plugin/install.ts` | 20 | 7 | The plugin entry is written to this product's configuration file, project or global. |
 | `packages/opencode/src/plugin/tui/runtime.ts` | 4 | 3 | Themes and the interface configuration live under this product's project directory. |
@@ -196,7 +196,7 @@ On a conflict: Take upstream's side, then replace the literal with the value fro
 | `packages/tui/src/component/dialog-provider.tsx` | 3 | 2 | Messages name this product's configuration file. |
 | `packages/tui/src/component/dialog-status.tsx` | 2 | 1 | A message names this product's command. |
 | `packages/tui/src/component/error-component.tsx` | 7 | 6 | The crash screen names this product and links to its issue tracker. |
-| `packages/tui/src/component/prompt/index.tsx` | 65 | 22 | The message shown without a provider names the sign in command; the context figure is what the last request sent (`core/brand/context.ts`), the amount from the model price table is not shown (the spend is read from the gateway by `feature-plugins/rafiki-cost.tsx`), and an empty provider label (`Brand.provider.label`) is not drawn. The permission mode in the status row and the footer (`context/permission.tsx`). Send now: Enter on an empty prompt, the `session.send_now` command and a marked prompt (`component/prompt/send-now.ts`). |
+| `packages/tui/src/component/prompt/index.tsx` | 73 | 22 | The message shown without a provider names the sign in command; the context figure is what the last request sent (`core/brand/context.ts`), the amount from the model price table is not shown (the spend is read from the gateway by `feature-plugins/rafiki-cost.tsx`), and an empty provider label (`Brand.provider.label`) is not drawn. The permission mode in the status row and the footer (`context/permission.tsx`). Send now: Enter on an empty prompt, the `session.send_now` command and a marked prompt (`component/prompt/send-now.ts`). |
 | `packages/tui/src/context/local.tsx` | 26 | 4 | The labels shown without a provider name the sign in command; the provider name is not repeated after a model name that starts with it (`Brand.provider.label`); a new session never starts on Rafiki Max from the recent list, and the cycling shortcuts never move to it before it was confirmed (`core/brand/tier.ts`). |
 | `packages/tui/src/context/theme.tsx` | 8 | 7 | The default theme name and the project directory names come from the brand module. |
 | `packages/tui/src/feature-plugins/home/tips-view.tsx` | 19 | 25 | Tips name this product's commands and paths; tips about upstream services are removed. |
