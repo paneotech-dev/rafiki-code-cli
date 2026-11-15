@@ -191,6 +191,16 @@ export const Info = Schema.Struct({
   ).annotate({
     description: "Project memory: short notes on the project, its decisions and progress, carried from one session to the next",
   }),
+  map: Schema.optional(
+    Schema.Struct({
+      graphify: Schema.optional(Schema.Boolean).annotate({
+        description:
+          "Project map: a code graph built locally by graphify (code only, no model, nothing sent) that the agent queries through tools when it needs it; graphify must be installed (default: false; RAFIKICODE_MAP overrides it)",
+      }),
+    }),
+  ).annotate({
+    description: "Project map: who calls what in the code, queried on demand by the agent, never added to the prompt",
+  }),
   verify: Schema.optional(
     Schema.Struct({
       enabled: Schema.optional(Schema.Boolean).annotate({

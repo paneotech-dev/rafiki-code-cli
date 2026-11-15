@@ -35,6 +35,8 @@ import { CrossSpawnSpawner } from "@opencode-ai/core/cross-spawn-spawner"
 import { McpCatalog } from "./catalog"
 import { McpEvent } from "@opencode-ai/schema/mcp-event"
 import { McpBrowser } from "./browser"
+import * as ProjectMap from "@opencode-ai/core/brand/project-map"
+import * as ProjectMapSession from "@/rafiki/project-map"
 
 const DEFAULT_TIMEOUT = 30_000
 const CLIENT_OPTIONS = {
@@ -389,10 +391,12 @@ const layer = Layer.effect(
         }
 
         return yield* Effect.gen(function* () {
-          const listed = mcpClient.getServerCapabilities()?.tools ? yield* McpCatalog.defs(mcpClient, mcp.timeout) : []
-          if (!listed) {
+          const all = mcpClient.getServerCapabilities()?.tools ? yield* McpCatalog.defs(mcpClient, mcp.timeout) : []
+          if (!all) {
             return yield* Effect.fail(new Error("Failed to get tools"))
           }
+          // The project map's server (rafiki/project-map.ts): only its code graph tools.
+          const listed = mcp.type === "local" && ProjectMap.isOurs(mcp) ? ProjectMap.filterTools(all) : all
           return {
             mcpClient,
             status,
@@ -528,6 +532,30 @@ const layer = Layer.effect(
             }),
           { concurrency: "unbounded" },
         )
+
+        // The project map (off by default): graphify's MCP server for this project.
+        const directory = yield* InstanceState.directory
+        const map = yield* Effect.promise(() =>
+          ProjectMapSession.start({
+            settings: cfg.map,
+            directory,
+            configured: Object.hasOwn(config, ProjectMap.NAME),
+          }),
+        ).pipe(Effect.catchCause(() => Effect.succeed({ kind: "off" } as ProjectMapSession.Start)))
+        if (map.kind === "missing" || map.kind === "failed") {
+          yield* Effect.logWarning("project map unavailable", { message: map.message })
+        }
+        if (map.kind === "ready") {
+          s.config[ProjectMap.NAME] = map.entry
+          const result = yield* create(ProjectMap.NAME, map.entry)
+          s.status[ProjectMap.NAME] = result.status
+          if (result.mcpClient) {
+            s.clients[ProjectMap.NAME] = result.mcpClient
+            s.defs[ProjectMap.NAME] = result.defs!
+            watch(s, ProjectMap.NAME, result.mcpClient, bridge, map.entry.timeout)
+          }
+          yield* Effect.logInfo("project map", { summary: ProjectMap.summary(map.build), status: result.status.status })
+        }
 
         yield* Effect.addFinalizer(() =>
           Effect.gen(function* () {

@@ -1325,6 +1325,17 @@
           "additionalProperties": false,
           "description": "Project memory: short notes on the project, its decisions and progress, carried from one session to the next"
         },
+        "map": {
+          "type": "object",
+          "properties": {
+            "graphify": {
+              "type": "boolean",
+              "description": "Project map: a code graph built locally by graphify (code only, no model, nothing sent) that the agent queries through tools when it needs it; graphify must be installed (default: false; RAFIKICODE_MAP overrides it)"
+            }
+          },
+          "additionalProperties": false,
+          "description": "Project map: who calls what in the code, queried on demand by the agent, never added to the prompt"
+        },
         "verify": {
           "type": "object",
           "properties": {

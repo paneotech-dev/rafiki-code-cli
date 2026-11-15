@@ -53,6 +53,7 @@ import { createFadeIn } from "../../util/signal"
 import { DialogSkill } from "../dialog-skill"
 import { DialogWorkspaceUnavailable } from "../dialog-workspace-unavailable"
 import { useArgs } from "../../context/args"
+import { TYPED as RafikiMapTyped } from "../../feature-plugins/rafiki-map"
 import { OPENCODE_BASE_MODE, useBindings, useCommandShortcut, useLeaderActive, useOpencodeKeymap } from "../../keymap"
 import { useTuiConfig } from "../../config"
 import { usePromptWorkspace } from "./workspace"
@@ -994,6 +995,13 @@ export function Prompt(props: PromptProps) {
     const trimmed = store.prompt.input.trim()
     if (trimmed === "exit" || trimmed === "quit" || trimmed === ":q") {
       void exit()
+      return true
+    }
+    // "/map off" (feature-plugins/rafiki-map.tsx): a slash command with an argument that runs here.
+    const typed = Object.hasOwn(RafikiMapTyped, trimmed) ? RafikiMapTyped[trimmed] : undefined
+    if (typed) {
+      clearPrompt()
+      keymap.dispatchCommand(typed)
       return true
     }
     const selectedModel = local.model.current()

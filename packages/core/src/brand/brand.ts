@@ -394,6 +394,9 @@ export const Brand = {
     // Project memory (.rafiki/memory/): 0, off or false turns it off, 1, on or
     // true turns it on; it wins over memory.enabled in the config.
     memory: "RAFIKICODE_MEMORY",
+    // Project map (graphify code graph as on-demand tools): 1, on or true
+    // turns it on, 0, off or false turns it off; it wins over map.graphify.
+    map: "RAFIKICODE_MAP",
     // The verify step after a turn that changed files: 1, on or true turns it
     // on, 0, off or false turns it off; it wins over verify.enabled.
     verify: "RAFIKICODE_VERIFY",

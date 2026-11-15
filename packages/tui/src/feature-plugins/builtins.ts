@@ -6,6 +6,7 @@ import RafikiAgents from "./rafiki-agents"
 import RafikiCost from "./rafiki-cost"
 import RafikiGithub from "./rafiki-github"
 import RafikiHistory from "./rafiki-history"
+import RafikiMap from "./rafiki-map"
 import RafikiMemory from "./rafiki-memory"
 import SidebarContext from "./sidebar/context"
 import SidebarFiles from "./sidebar/files"
@@ -35,6 +36,7 @@ export function createBuiltinPlugins(options: { experimentalEventSystem: boolean
     RafikiHistory,
     RafikiGithub,
     RafikiMemory,
+    RafikiMap,
     SidebarMcp,
     SidebarLsp,
     SidebarTodo,
