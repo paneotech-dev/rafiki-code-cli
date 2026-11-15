@@ -9,7 +9,7 @@ import path from "path"
 import * as ProjectMap from "@opencode-ai/core/brand/project-map"
 import type { TuiPluginApi } from "@opencode-ai/plugin/tui"
 import { createBuiltinPlugins } from "../../src/feature-plugins/builtins"
-import plugin, { COMMAND, COMMAND_OFF, TYPED, build, off, type Io } from "../../src/feature-plugins/rafiki-map"
+import plugin, { COMMAND, COMMAND_OFF, TYPED, build, off, refresh, type Io } from "../../src/feature-plugins/rafiki-map"
 
 let dir: string
 let cache: string
@@ -128,5 +128,20 @@ describe("the map plugin", () => {
     const message = await off(api)
     expect(calls.disconnected).toEqual(["graphify"])
     expect(message).toContain("off for this session")
+  })
+
+  test("the status the interface shows is reloaded after a build and after off", async () => {
+    let reloads = 0
+    refresh.mcp = async () => {
+      reloads++
+    }
+    try {
+      const { api } = fake()
+      await build(api, io())
+      await off(api)
+      expect(reloads).toBe(2)
+    } finally {
+      refresh.mcp = undefined
+    }
   })
 })

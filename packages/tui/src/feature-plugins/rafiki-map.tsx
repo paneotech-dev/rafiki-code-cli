@@ -21,6 +21,10 @@ export const TYPED: Record<string, string> = {
   "/map off": COMMAND_OFF,
 }
 
+// Set by the prompt (component/prompt/index.tsx): reloads the MCP status the
+// interface shows (/mcps, the status bar), which is read once at start.
+export const refresh: { mcp?: () => Promise<void> } = {}
+
 export interface Io {
   platform: NodeJS.Platform
   cache: string
@@ -70,6 +74,7 @@ export async function build(api: TuiPluginApi, io: Io = defaults()) {
     }
     const entry = ProjectMap.mcpEntry(launcher, directory, io.cache)
     const added = await api.client.mcp.add({ name: ProjectMap.NAME, config: entry }).catch(() => undefined)
+    await refresh.mcp?.().catch(() => {})
     const status = (added?.data as Record<string, { status: string; error?: string }> | undefined)?.[ProjectMap.NAME]
     const connected = status?.status === "connected"
     const message = [
@@ -91,6 +96,7 @@ export async function build(api: TuiPluginApi, io: Io = defaults()) {
 
 export async function off(api: TuiPluginApi) {
   const result = await api.client.mcp.disconnect({ name: ProjectMap.NAME }).catch(() => undefined)
+  await refresh.mcp?.().catch(() => {})
   const message = result?.data
     ? `${TITLE} off for this session: the agent no longer has the map tools. "/map" turns it back on.`
     : `${TITLE} was not on in this session.`

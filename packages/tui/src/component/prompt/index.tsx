@@ -53,7 +53,7 @@ import { createFadeIn } from "../../util/signal"
 import { DialogSkill } from "../dialog-skill"
 import { DialogWorkspaceUnavailable } from "../dialog-workspace-unavailable"
 import { useArgs } from "../../context/args"
-import { TYPED as RafikiMapTyped } from "../../feature-plugins/rafiki-map"
+import { TYPED as RafikiMapTyped, refresh as RafikiMapRefresh } from "../../feature-plugins/rafiki-map"
 import { OPENCODE_BASE_MODE, useBindings, useCommandShortcut, useLeaderActive, useOpencodeKeymap } from "../../keymap"
 import { useTuiConfig } from "../../config"
 import { usePromptWorkspace } from "./workspace"
@@ -168,6 +168,11 @@ export function Prompt(props: PromptProps) {
   const history = usePromptHistory()
   const stash = usePromptStash()
   const keymap = useOpencodeKeymap()
+  // /map and "/map off" change the MCP servers: show the new status.
+  RafikiMapRefresh.mcp = async () => {
+    const status = await sdk.client.mcp.status()
+    if (status.data) sync.set("mcp", status.data)
+  }
   const agentShortcut = useCommandShortcut("agent.cycle")
   const permissionModeShortcut = useCommandShortcut("permission.mode.cycle")
   // The permission mode in the status row and the footer (context/permission.tsx).
