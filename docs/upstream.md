@@ -73,12 +73,12 @@ counted with `git diff --numstat -M` against the upstream base.
 
 <!-- upstream-files:start -->
 
-Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 221. Changed lines: 9562 (6417 added, 3145 removed).
+Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 221. Changed lines: 9570 (6425 added, 3145 removed).
 
 | Class | Files | Added | Removed |
 | --- | ---: | ---: | ---: |
 | Source: a call into this fork's modules | 62 | 2351 | 431 |
-| Source: product name, file names and wording | 42 | 462 | 212 |
+| Source: product name, file names and wording | 42 | 470 | 212 |
 | Source: behaviour changed in place | 23 | 782 | 249 |
 | Tests of upstream, adapted | 39 | 780 | 186 |
 | Generated files | 4 | 391 | 188 |
@@ -86,7 +86,7 @@ Upstream base: `a79ecfe109` (`1.18.34`). Upstream files edited: 221. Changed lin
 | Documentation | 23 | 203 | 1182 |
 | Repository tooling and workflows | 6 | 23 | 8 |
 | Editor extension | 13 | 1405 | 210 |
-| Total | 221 | 6417 | 3145 |
+| Total | 221 | 6425 | 3145 |
 
 ### Source: a call into this fork's modules
 
@@ -183,7 +183,7 @@ On a conflict: Take upstream's side, then replace the literal with the value fro
 | `packages/opencode/src/config/paths.ts` | 5 | 4 | Several base names and the project directory names come from the brand module. |
 | `packages/opencode/src/config/tui-migrate.ts` | 5 | 4 | Schema address and file names come from the brand module. |
 | `packages/opencode/src/config/v2-compat.ts` | 1 | 1 | A message that named other products names the key to use. |
-| `packages/opencode/src/mcp/index.ts` | 32 | 3 | A message names this product's command. |
+| `packages/opencode/src/mcp/index.ts` | 35 | 3 | A message names this product's command. |
 | `packages/opencode/src/mcp/oauth-provider.ts` | 3 | 2 | Client name and address given to an MCP server. |
 | `packages/opencode/src/plugin/install.ts` | 20 | 7 | The plugin entry is written to this product's configuration file, project or global. |
 | `packages/opencode/src/plugin/tui/runtime.ts` | 4 | 3 | Themes and the interface configuration live under this product's project directory. |
@@ -196,7 +196,7 @@ On a conflict: Take upstream's side, then replace the literal with the value fro
 | `packages/tui/src/component/dialog-provider.tsx` | 3 | 2 | Messages name this product's configuration file. |
 | `packages/tui/src/component/dialog-status.tsx` | 2 | 1 | A message names this product's command. |
 | `packages/tui/src/component/error-component.tsx` | 7 | 6 | The crash screen names this product and links to its issue tracker. |
-| `packages/tui/src/component/prompt/index.tsx` | 73 | 22 | The message shown without a provider names the sign in command; the context figure is what the last request sent (`core/brand/context.ts`), the amount from the model price table is not shown (the spend is read from the gateway by `feature-plugins/rafiki-cost.tsx`), and an empty provider label (`Brand.provider.label`) is not drawn. The permission mode in the status row and the footer (`context/permission.tsx`). Send now: Enter on an empty prompt, the `session.send_now` command and a marked prompt (`component/prompt/send-now.ts`). |
+| `packages/tui/src/component/prompt/index.tsx` | 78 | 22 | The message shown without a provider names the sign in command; the context figure is what the last request sent (`core/brand/context.ts`), the amount from the model price table is not shown (the spend is read from the gateway by `feature-plugins/rafiki-cost.tsx`), and an empty provider label (`Brand.provider.label`) is not drawn. The permission mode in the status row and the footer (`context/permission.tsx`). Send now: Enter on an empty prompt, the `session.send_now` command and a marked prompt (`component/prompt/send-now.ts`). |
 | `packages/tui/src/context/local.tsx` | 26 | 4 | The labels shown without a provider name the sign in command; the provider name is not repeated after a model name that starts with it (`Brand.provider.label`); a new session never starts on Rafiki Max from the recent list, and the cycling shortcuts never move to it before it was confirmed (`core/brand/tier.ts`). |
 | `packages/tui/src/context/theme.tsx` | 8 | 7 | The default theme name and the project directory names come from the brand module. |
 | `packages/tui/src/feature-plugins/home/tips-view.tsx` | 19 | 25 | Tips name this product's commands and paths; tips about upstream services are removed. |
