@@ -13,7 +13,8 @@
 // graph is written to the cache folder of this app, keyed by project, never
 // into the project. graphify is never installed for the person: when it is
 // missing, the one-line install command for their system is shown instead.
-import { spawn, spawnSync } from "child_process"
+// cross-spawn, as the MCP stdio transport uses: .cmd shims and paths with spaces work on Windows.
+import spawn from "cross-spawn"
 import { createHash } from "crypto"
 import fs from "fs"
 import path from "path"
@@ -95,7 +96,7 @@ export function detect(io: DetectIo): Launcher | undefined {
 export function defaultProbe(cmd: string[]) {
   const [bin, ...args] = cmd
   try {
-    const result = spawnSync(bin, args, { stdio: "ignore", timeout: 15_000, windowsHide: true })
+    const result = spawn.sync(bin, args, { stdio: "ignore", timeout: 15_000, windowsHide: true })
     return result.status === 0
   } catch {
     return false
