@@ -217,6 +217,12 @@ describe("building", () => {
     ].join("\n")
     expect(ProjectMap.parseOutput(text)).toEqual({ files: 12, nodes: 40, edges: 52 })
     expect(ProjectMap.parseOutput("nothing")).toEqual({ files: 0, nodes: 0, edges: 0 })
+    // A refresh prints no "found" line: the files are those cached plus those read again.
+    const refresh = [
+      "[graphify extract] incremental summary: 11 files cached/unchanged, 1 re-extracted, 0 deleted",
+      "[graphify extract] wrote /c/graphify-out/graph.json: 40 nodes, 52 edges, 3 communities",
+    ].join("\n")
+    expect(ProjectMap.parseOutput(refresh)).toEqual({ files: 12, nodes: 40, edges: 52 })
   })
 
   // A stand-in for graphify: checks its arguments and environment, writes the graph to --out.

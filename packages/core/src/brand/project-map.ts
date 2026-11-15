@@ -211,10 +211,13 @@ export interface BuildResult {
   error?: string
 }
 
-// Reads graphify extract's progress lines: "found 12 code, ..." and
-// "wrote .../graph.json: 40 nodes, 52 edges, 3 communities".
+// Reads graphify extract's progress lines: "found 12 code, ..." on a first
+// build, "incremental summary: 11 files cached/unchanged, 1 re-extracted" on a
+// refresh, and "wrote .../graph.json: 40 nodes, 52 edges, 3 communities".
 export function parseOutput(text: string) {
-  const files = Number(/found (\d+) code/.exec(text)?.[1] ?? 0)
+  const found = /found (\d+) code/.exec(text)
+  const refresh = /(\d+) files? cached\/unchanged, (\d+) re-extracted/.exec(text)
+  const files = found ? Number(found[1]) : refresh ? Number(refresh[1]) + Number(refresh[2]) : 0
   const wrote = /graph\.json: (\d+) nodes, (\d+) edges/.exec(text)
   return { files, nodes: Number(wrote?.[1] ?? 0), edges: Number(wrote?.[2] ?? 0) }
 }
